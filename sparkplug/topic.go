@@ -35,6 +35,7 @@ const (
 	NCMD   MessageType = "NCMD"   // Node command message.
 	DCMD   MessageType = "DCMD"   // Device command message.
 	STATE  MessageType = "STATE"  // Critical application state message.
+	ANY    MessageType = "+"
 )
 
 var (
