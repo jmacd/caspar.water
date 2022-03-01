@@ -53,8 +53,18 @@ func (o *ClientOptions) SetOnConnectHandler(onConn OnConnectHandler) *ClientOpti
 
 type MessageHandler func(Client, Message)
 
-func (c Client) Subscribe(topic Topic, qos byte, callback MessageHandler) mqtt.Token {
+func (c Client) SubscribeSparkplug(topic Topic, qos byte, callback MessageHandler) mqtt.Token {
 	return c.client.Subscribe(topic.String(), qos, func(c mqtt.Client, m mqtt.Message) {
+		callback(Client{
+			client: c,
+		}, Message{
+			Message: m,
+		})
+	})
+}
+
+func (c Client) SubscribeString(topic string, qos byte, callback MessageHandler) mqtt.Token {
+	return c.client.Subscribe(topic, qos, func(c mqtt.Client, m mqtt.Message) {
 		callback(Client{
 			client: c,
 		}, Message{
@@ -67,11 +77,19 @@ func (c Client) Connect() mqtt.Token {
 	return c.client.Connect()
 }
 
-func (c Client) Publish(topic Topic, qos byte, retained bool, payload *bproto.Payload) mqtt.Token {
+func (c Client) PublishSparkplug(topic Topic, qos byte, retained bool, payload *bproto.Payload) mqtt.Token {
 	data, err := proto.Marshal(payload)
 	if err != nil {
 		// @@@
 		panic(err)
 	}
 	return c.client.Publish(topic.String(), qos, retained, data)
+}
+
+// func (c Client) PublishString(topic Topic, qos byte, retained bool, payload string) mqtt.Token {
+// 	return c.client.Publish(topic.String(), qos, retained, payload)
+// }
+
+func (c Client) PublishString(topic string, qos byte, retained bool, payload string) mqtt.Token {
+	return c.client.Publish(topic, qos, retained, payload)
 }

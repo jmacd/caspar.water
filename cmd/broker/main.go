@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/logrusorgru/aurora"
 
@@ -51,42 +50,20 @@ func main() {
 
 	// Add OnConnect Event Hook
 	server.Events.OnConnect = func(cl events.Client, pk events.Packet) {
-		fmt.Printf("<< OnConnect client connected %s: %+v\n", cl.ID, pk)
+		fmt.Println("<< OnConnect client connected", cl.ID)
 	}
 
 	// Add OnDisconnect Event Hook
 	server.Events.OnDisconnect = func(cl events.Client, err error) {
-		fmt.Printf("<< OnDisconnect client dicconnected %s: %v\n", cl.ID, err)
+		fmt.Println("<< OnDisconnect client disconnected", cl.ID, err)
 	}
 
 	// Add OnMessage Event Hook
 	server.Events.OnMessage = func(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
 		pkx = pk
-		if string(pk.Payload) == "hello" {
-			pkx.Payload = []byte("hello world")
-			fmt.Printf("< OnMessage modified message from client %s: %s\n", cl.ID, string(pkx.Payload))
-		} else {
-			fmt.Printf("< OnMessage received message from client %s: %s\n", cl.ID, string(pkx.Payload))
-		}
-
-		// Example of using AllowClients to selectively deliver/drop messages.
-		// Only a client with the id of `allowed-client` will received messages on the topic.
-		if pkx.TopicName == "a/b/restricted" {
-			pkx.AllowClients = []string{"allowed-client"} // slice of known client ids
-		}
-
+		fmt.Printf("< OnMessage received message from client %s: %s\n", cl.ID, pkx.TopicName)
 		return pkx, nil
 	}
-
-	// Demonstration of directly publishing messages to a topic via the
-	// `server.Publish` method. Subscribe to `direct/publish` using your
-	// MQTT client to see the messages.
-	go func() {
-		for range time.Tick(time.Second * 10) {
-			server.Publish("direct/publish", []byte("scheduled message"), false)
-			fmt.Println("> issued direct message to direct/publish")
-		}
-	}()
 
 	fmt.Println(aurora.BgMagenta("  Started!  "))
 

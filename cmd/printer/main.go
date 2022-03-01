@@ -20,19 +20,26 @@ func messageReceived(client mqtt.Client, msg mqtt.Message) {
 		fmt.Println("payload parse:", err)
 	}
 
-	fmt.Println(topic, ": ", prototext.Format(payload))
+	fmt.Println("Event", topic, ": ", prototext.Format(payload))
+}
+
+func stateReceived(client mqtt.Client, msg mqtt.Message) {
+	fmt.Println("State", msg.Topic(), ": ", string(msg.Payload()))
 }
 
 func main() {
 	server := flag.String("server", "tcp://localhost:1883", "The MQTT server to connect to")
 	flag.Parse()
 
-	subTopic := sparkplug.NewTopic("+", sparkplug.DDATA, "+", "+")
+	sparkTopic := sparkplug.NewTopic("+", sparkplug.ANY, "+", "+")
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(*server).SetClientID("printer").SetCleanSession(true)
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
-		if token := c.Subscribe(subTopic, 1, messageReceived); token.Wait() && token.Error() != nil {
+		if token := c.SubscribeSparkplug(sparkTopic, 1, messageReceived); token.Wait() && token.Error() != nil {
+			panic(token.Error())
+		}
+		if token := c.SubscribeString("STATE/+", 1, stateReceived); token.Wait() && token.Error() != nil {
 			panic(token.Error())
 		}
 	})
