@@ -45,13 +45,16 @@ var (
 )
 
 func (t Topic) String() string {
-	return strings.Join([]string{
+	a := []string{
 		spBv10,
 		t.GroupID,
 		string(t.MessageType),
 		t.EdgeNodeID,
-		t.DeviceID,
-	}, "/")
+	}
+	if t.DeviceID != "" {
+		a = append(a, t.DeviceID)
+	}
+	return strings.Join(a, "/")
 }
 
 func ParseTopic(ts string) (Topic, error) {

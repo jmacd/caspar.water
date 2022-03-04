@@ -135,6 +135,7 @@ message Payload {
         // Bytes specific metadata
         optional bool   is_multi_part   = 1;
 
+
         // General metadata
         optional string content_type    = 2;        // Content/Media type
         optional uint64 size            = 3;        // File size, String size, Multi-part size, etc
