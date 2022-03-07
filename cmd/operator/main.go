@@ -12,7 +12,7 @@ func main() {
 	server := flag.String("server", "tcp://localhost:1883", "The MQTT server to connect to")
 	flag.Parse()
 
-	stateTopicString := "STATE/shed"
+	stateTopicString := "STATE/waterco"
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(*server).SetClientID("operator").SetCleanSession(false)

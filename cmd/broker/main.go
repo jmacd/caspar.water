@@ -35,11 +35,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server.Events.OnMessage = func(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
-		fmt.Println("PK is", pk)
-		return
-	}
-
 	// Start the server
 	go func() {
 		err := server.Serve()
@@ -48,21 +43,22 @@ func main() {
 		}
 	}()
 
-	// Add OnConnect Event Hook
 	server.Events.OnConnect = func(cl events.Client, pk events.Packet) {
 		fmt.Println("<< OnConnect client connected", cl.ID)
 	}
 
-	// Add OnDisconnect Event Hook
 	server.Events.OnDisconnect = func(cl events.Client, err error) {
 		fmt.Println("<< OnDisconnect client disconnected", cl.ID, err)
 	}
 
-	// Add OnMessage Event Hook
 	server.Events.OnMessage = func(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
 		pkx = pk
 		fmt.Printf("< OnMessage received message from client %s: %s\n", cl.ID, pkx.TopicName)
 		return pkx, nil
+	}
+
+	server.Events.OnError = func(cl events.Client, err error) {
+		fmt.Printf("< OnError from %v/%v on %v: %v\n", cl.ID, "@@@", cl.Listener, err)
 	}
 
 	fmt.Println(aurora.BgMagenta("  Started!  "))
