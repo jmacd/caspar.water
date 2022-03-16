@@ -1,0 +1,21 @@
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: localhost:55680
+
+processors:
+
+exporters:
+  logging:
+    loglevel: debug
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+        - otlp
+      processors: []
+      exporters:
+        - logging
