@@ -7,6 +7,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/service"
 	"go.opentelemetry.io/collector/service/defaultcomponents"
+
+	"github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver"
 )
 
 func main() {
@@ -14,6 +16,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to build components: %v", err)
 	}
+
+	spr := sparkplugreceiver.NewFactory()
+	factories.Receivers[spr.Type()] = spr
 
 	info := component.BuildInfo{
 		Command:     "caspar-water-collector",

@@ -4,6 +4,11 @@ receivers:
     protocols:
       grpc:
         endpoint: localhost:55680
+  sparkplug:
+    broker:
+      host_id: waterco
+      self_hosted: true
+      endpoint: :1883
 
 processors:
 
@@ -16,6 +21,7 @@ service:
     metrics:
       receivers:
         - otlp
+        - sparkplug
       processors: []
       exporters:
         - logging

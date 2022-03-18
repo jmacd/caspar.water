@@ -54,6 +54,12 @@ func (t Topic) String() string {
 	if t.DeviceID != "" {
 		a = append(a, t.DeviceID)
 	}
+	for i, x := range a {
+		if x == "#" {
+			a = a[:i+1]
+			break
+		}
+	}
 	return strings.Join(a, "/")
 }
 
@@ -80,11 +86,16 @@ func ParseTopic(ts string) (Topic, error) {
 		return Topic{}, ErrInvalidMessageType
 	}
 
+	var device string
+	if len(elems) == 5 {
+		device = elems[4]
+	}
+
 	return Topic{
 		GroupID:     elems[1],
 		MessageType: MessageType(elems[2]),
 		EdgeNodeID:  elems[3],
-		DeviceID:    elems[4],
+		DeviceID:    device,
 	}, nil
 }
 

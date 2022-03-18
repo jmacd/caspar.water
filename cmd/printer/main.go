@@ -43,6 +43,9 @@ func (s *state) messageReceived(client mqtt.Client, msg mqtt.Message) {
 			o = s.Define(id, m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
 		} else if m.Alias != nil {
 			o = s.Lookup(id, m.GetAlias())
+		} else {
+			// ERROR! We need a rebirth.
+			// @@@
 		}
 		o.Timestamp = m.GetTimestamp()
 
@@ -58,7 +61,7 @@ func main() {
 	server := flag.String("server", "tcp://localhost:1883", "The MQTT server to connect to")
 	flag.Parse()
 
-	sparkTopic := sparkplug.NewTopic("+", sparkplug.ANY, "+", "+")
+	sparkTopic := sparkplug.NewTopic("#", "", "", "")
 
 	state := state{otlp.DeviceMap{}}
 
