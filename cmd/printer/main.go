@@ -7,7 +7,7 @@ import (
 	_ "github.com/jmacd/caspar.water/cmd/internal"
 	"github.com/jmacd/caspar.water/otlp"
 	"github.com/jmacd/caspar.water/sparkplug"
-	mqtt "github.com/jmacd/caspar.water/sparkplug"
+	"github.com/jmacd/caspar.water/sparkplug/sparkplugclient"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
@@ -15,7 +15,7 @@ type state struct {
 	otlp.DeviceMap
 }
 
-func (s *state) messageReceived(client mqtt.Client, msg mqtt.Message) {
+func (s *state) messageReceived(client sparkplugclient.Client, msg sparkplugclient.Message) {
 	topic, err := msg.SparkplugBTopic()
 	if err != nil {
 		fmt.Println("topic parse:", err)
@@ -53,7 +53,7 @@ func (s *state) messageReceived(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-func stateReceived(client mqtt.Client, msg mqtt.Message) {
+func stateReceived(client sparkplugclient.Client, msg sparkplugclient.Message) {
 	fmt.Println("State", msg.Topic(), ": ", string(msg.Payload()))
 }
 
@@ -65,9 +65,9 @@ func main() {
 
 	state := state{otlp.DeviceMap{}}
 
-	opts := mqtt.NewClientOptions()
+	opts := sparkplugclient.NewOptions()
 	opts.AddBroker(*server).SetClientID("printer").SetCleanSession(true)
-	opts.SetOnConnectHandler(func(c mqtt.Client) {
+	opts.SetOnConnectHandler(func(c sparkplugclient.Client) {
 		if token := c.SubscribeSparkplug(sparkTopic, 1, state.messageReceived); token.Wait() && token.Error() != nil {
 			panic(token.Error())
 		}
@@ -76,7 +76,7 @@ func main() {
 		}
 	})
 
-	client := mqtt.NewClient(opts)
+	client := sparkplugclient.NewClient(opts)
 
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())

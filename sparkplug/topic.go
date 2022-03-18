@@ -24,7 +24,7 @@ type (
 )
 
 const (
-	spBv10 = "spBv1.0"
+	BTopicPrefix = "spBv1.0"
 
 	NBIRTH MessageType = "NBIRTH" // Birth certificate for MQTT EoN nodes.
 	NDEATH MessageType = "NDEATH" // Death certificate for MQTT EoN nodes.
@@ -46,7 +46,7 @@ var (
 
 func (t Topic) String() string {
 	a := []string{
-		spBv10,
+		BTopicPrefix,
 		t.GroupID,
 		string(t.MessageType),
 		t.EdgeNodeID,
@@ -70,7 +70,7 @@ func ParseTopic(ts string) (Topic, error) {
 		return Topic{}, ErrTopicSyntax
 	}
 
-	if elems[0] != spBv10 {
+	if elems[0] != BTopicPrefix {
 		return Topic{}, ErrSparkplugNamespace
 	}
 

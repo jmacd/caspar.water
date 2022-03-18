@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	_ "github.com/jmacd/caspar.water/cmd/internal"
-	mqtt "github.com/jmacd/caspar.water/sparkplug"
+	"github.com/jmacd/caspar.water/sparkplug/sparkplugclient"
 )
 
 func main() {
@@ -14,16 +14,16 @@ func main() {
 
 	stateTopicString := "STATE/waterco"
 
-	opts := mqtt.NewClientOptions()
+	opts := sparkplugclient.NewOptions()
 	opts.AddBroker(*server).SetClientID("operator").SetCleanSession(false)
 	opts.SetWill(stateTopicString, "OFFLINE", 1, true)
-	opts.SetOnConnectHandler(func(c mqtt.Client) {
+	opts.SetOnConnectHandler(func(c sparkplugclient.Client) {
 		if token := c.PublishString(stateTopicString, 1, true, "ONLINE"); token.Wait() && token.Error() != nil {
 			fmt.Println("subscribe:", token.Error())
 		}
 	})
 
-	client := mqtt.NewClient(opts)
+	client := sparkplugclient.NewClient(opts)
 
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())

@@ -3,16 +3,21 @@ package sparkplugreceiver
 import (
 	"context"
 	"fmt"
+	"strings"
 
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/consumer"
-	"go.uber.org/zap"
-
+	"github.com/jmacd/caspar.water/otlp"
+	"github.com/jmacd/caspar.water/sparkplug"
+	"github.com/jmacd/caspar.water/sparkplug/bproto"
 	mqtt "github.com/mochi-co/mqtt/server"
 	"github.com/mochi-co/mqtt/server/events"
 	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/mochi-co/mqtt/server/listeners/auth"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/component/componenterror"
+	"go.opentelemetry.io/collector/consumer"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/proto"
 )
 
 type sparkplugReceiver struct {
@@ -21,7 +26,12 @@ type sparkplugReceiver struct {
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
 	brokerDone   chan error
+	deviceState  otlp.DeviceMap
 }
+
+var (
+	ErrUnexpectedTopic = fmt.Errorf("unexpected topic")
+)
 
 // New creates the Sparkplug receiver with the given parameters.
 func New(
@@ -127,5 +137,57 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 		)
 	}
 
+	r.broker.Events.OnMessage = func(cl events.Client, pk events.Packet) (events.Packet, error) {
+		if !strings.HasPrefix(pk.TopicName, sparkplug.BTopicPrefix) {
+			// A "STATE/host_id" message is valid but
+			// unexpected.  In a self-hosted broker it's not
+			// clear who would do this or why.
+			return pk, fmt.Errorf("%w: %s", ErrUnexpectedTopic, pk.TopicName)
+		}
+
+		topic, err := sparkplug.ParseTopic(pk.TopicName)
+		if err != nil {
+			return pk, fmt.Errorf("parse topic: %w: %s", err, pk.TopicName)
+		}
+
+		b := &bproto.Payload{}
+		if err := proto.Unmarshal(pk.Payload, b); err != nil {
+			return pk, fmt.Errorf("sparkplug payload: %w", err)
+		}
+
+		r.sparkplugPayload(topic, b)
+
+		return pk, nil
+	}
+
 	return nil
+}
+
+func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) {
+
+	if topic.MessageType != sparkplug.DDATA && topic.MessageType != sparkplug.DBIRTH {
+		fmt.Println("Event", topic, ": ", prototext.Format(payload))
+		return
+	}
+
+	for _, m := range payload.Metrics {
+		id := otlp.SparkplugID{
+			GroupID:    topic.GroupID,
+			EdgeNodeID: topic.EdgeNodeID,
+			DeviceID:   topic.DeviceID,
+		}
+
+		var o *otlp.Metric
+		if m.GetName() != "" {
+			o = r.deviceState.Define(id, m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
+		} else if m.Alias != nil {
+			o = r.deviceState.Lookup(id, m.GetAlias())
+		} else {
+			// ERROR! We need a rebirth.
+			// @@@
+		}
+		o.Timestamp = m.GetTimestamp()
+
+		fmt.Println("Metric", o.Name, "=", m.Value)
+	}
 }
