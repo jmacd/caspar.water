@@ -26,10 +26,13 @@ type sparkplugReceiver struct {
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
 	brokerDone   chan error
-	deviceState  otlp.DeviceMap
+	state        otlp.SparkplugState
 }
 
 var (
+	// ErrUnexpectedTopic happens in self-hosted mode where we
+	// do not expect another broker or another host application
+	// to be using MQTT.
 	ErrUnexpectedTopic = fmt.Errorf("unexpected topic")
 )
 
@@ -52,6 +55,7 @@ func New(
 		settings:     set,
 		config:       config,
 		nextConsumer: nextConsumer,
+		state:        otlp.SparkplugState{}.Init(),
 	}
 	return r, nil
 }
@@ -130,7 +134,7 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 
 	r.broker.Events.OnError = func(cl events.Client, err error) {
 		r.settings.Logger.Error(
-			"client error",
+			"server error",
 			zap.String("client_id", cl.ID),
 			zap.String("remote_addr", cl.Remote),
 			zap.Error(err),
@@ -138,56 +142,65 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 	}
 
 	r.broker.Events.OnMessage = func(cl events.Client, pk events.Packet) (events.Packet, error) {
-		if !strings.HasPrefix(pk.TopicName, sparkplug.BTopicPrefix) {
-			// A "STATE/host_id" message is valid but
-			// unexpected.  In a self-hosted broker it's not
-			// clear who would do this or why.
-			return pk, fmt.Errorf("%w: %s", ErrUnexpectedTopic, pk.TopicName)
-		}
+		pk, err := r.onMessage(cl, pk)
 
-		topic, err := sparkplug.ParseTopic(pk.TopicName)
 		if err != nil {
-			return pk, fmt.Errorf("parse topic: %w: %s", err, pk.TopicName)
+			r.settings.Logger.Warn(
+				"message error",
+				zap.String("client_id", cl.ID),
+				zap.String("remote_addr", cl.Remote),
+				zap.Error(err),
+			)
 		}
 
-		b := &bproto.Payload{}
-		if err := proto.Unmarshal(pk.Payload, b); err != nil {
-			return pk, fmt.Errorf("sparkplug payload: %w", err)
-		}
-
-		r.sparkplugPayload(topic, b)
-
-		return pk, nil
+		return pk, err
 	}
 
 	return nil
 }
 
-func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) {
-
-	if topic.MessageType != sparkplug.DDATA && topic.MessageType != sparkplug.DBIRTH {
-		fmt.Println("Event", topic, ": ", prototext.Format(payload))
-		return
+func (r *sparkplugReceiver) onMessage(cl events.Client, pk events.Packet) (events.Packet, error) {
+	if !strings.HasPrefix(pk.TopicName, sparkplug.BTopicPrefix) {
+		// A "STATE/host_id" message is valid but
+		// unexpected.  In a self-hosted broker it's not
+		// clear who would do this or why.
+		return pk, fmt.Errorf("%w: %s", ErrUnexpectedTopic, pk.TopicName)
 	}
 
-	for _, m := range payload.Metrics {
-		id := otlp.SparkplugID{
-			GroupID:    topic.GroupID,
-			EdgeNodeID: topic.EdgeNodeID,
-			DeviceID:   topic.DeviceID,
-		}
-
-		var o *otlp.Metric
-		if m.GetName() != "" {
-			o = r.deviceState.Define(id, m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
-		} else if m.Alias != nil {
-			o = r.deviceState.Lookup(id, m.GetAlias())
-		} else {
-			// ERROR! We need a rebirth.
-			// @@@
-		}
-		o.Timestamp = m.GetTimestamp()
-
-		fmt.Println("Metric", o.Name, "=", m.Value)
+	topic, err := sparkplug.ParseTopic(pk.TopicName)
+	if err != nil {
+		return pk, fmt.Errorf("parse topic: %w: %s", err, pk.TopicName)
 	}
+
+	b := &bproto.Payload{}
+	if err := proto.Unmarshal(pk.Payload, b); err != nil {
+		return pk, fmt.Errorf("payload unmarshal: %v: %w", pk.TopicName, err)
+	}
+
+	return pk, r.sparkplugPayload(topic, b)
+}
+
+func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) error {
+
+	if topic.MessageType == sparkplug.NDATA || topic.MessageType == sparkplug.NBIRTH {
+		fmt.Println("NODE", prototext.Format(payload))
+		return r.sparkplugNodePayload(topic, payload)
+	}
+
+	if topic.MessageType == sparkplug.DDATA || topic.MessageType == sparkplug.DBIRTH {
+		fmt.Println("DEVICE", prototext.Format(payload))
+		return r.sparkplugDevicePayload(topic, payload)
+	}
+
+	// Unexpected in a self-hosted broker situation.  STATE/* was
+	// checked above, so these are death messages or node/device commands.
+	return fmt.Errorf("%w: %v", ErrUnexpectedTopic, topic.MessageType)
+}
+
+func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
+	return r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Visit(payload)
+}
+
+func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
+	return r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Get(topic.DeviceID).Visit(payload)
 }

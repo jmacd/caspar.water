@@ -11,11 +11,15 @@ import (
 )
 
 type (
+	GroupID    string
+	EdgeNodeID string
+	DeviceID   string
+
 	Topic struct {
-		GroupID     string
+		GroupID     GroupID
 		MessageType MessageType
-		EdgeNodeID  string
-		DeviceID    string
+		EdgeNodeID  EdgeNodeID
+		DeviceID    DeviceID
 	}
 
 	MessageType string
@@ -47,12 +51,12 @@ var (
 func (t Topic) String() string {
 	a := []string{
 		BTopicPrefix,
-		t.GroupID,
+		string(t.GroupID),
 		string(t.MessageType),
-		t.EdgeNodeID,
+		string(t.EdgeNodeID),
 	}
 	if t.DeviceID != "" {
-		a = append(a, t.DeviceID)
+		a = append(a, string(t.DeviceID))
 	}
 	for i, x := range a {
 		if x == "#" {
@@ -92,14 +96,14 @@ func ParseTopic(ts string) (Topic, error) {
 	}
 
 	return Topic{
-		GroupID:     elems[1],
+		GroupID:     GroupID(elems[1]),
 		MessageType: MessageType(elems[2]),
-		EdgeNodeID:  elems[3],
-		DeviceID:    device,
+		EdgeNodeID:  EdgeNodeID(elems[3]),
+		DeviceID:    DeviceID(device),
 	}, nil
 }
 
-func NewTopic(grp string, mt MessageType, edge, dev string) Topic {
+func NewTopic(grp GroupID, mt MessageType, edge EdgeNodeID, dev DeviceID) Topic {
 	return Topic{
 		GroupID:     grp,
 		MessageType: mt,
