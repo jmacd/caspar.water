@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 	
-	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
+	// otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
+	// "go.opentelemetry.io/collector/model/pdata"
 
 	"github.com/jmacd/caspar.water/sparkplug"
 	"github.com/jmacd/caspar.water/sparkplug/bproto"
@@ -35,20 +36,19 @@ type (
 	}
 
 	Store struct {
-		AliasMap  AliasMap
-		MetricMap MetricMap
+		NameMap  NameMap
+		AliasMap AliasMap
 	}
 
-	AliasMap map[string]uint64
-
-	MetricMap map[uint64]*Metric
+	NameMap map[string]*Metric
+	AliasMap map[uint64]*Metric
 
 	Metric struct {
 		Name           string
 		StartTimestamp uint64
 		Timestamp      uint64
 		Description    string
-		Value          otlpcommon.AnyValue
+		Value          interface{}
 	}
 )
 
@@ -86,8 +86,8 @@ func (DeviceState) Init() DeviceState {
 
 func (Store) Init() Store {
 	return Store{
-		MetricMap: MetricMap{},
-		AliasMap:  AliasMap{},
+		AliasMap: AliasMap{},
+		NameMap:  NameMap{},
 	}
 }
 
@@ -104,29 +104,30 @@ func (items Items[K, T]) Get(id K) T {
 
 func (st Store) Define(name string, alias, ts uint64, desc string) *Metric {
 	if name == "" {
-		return st.MetricMap[alias]
+		return st.AliasMap[alias]
 	}
 
-	st.AliasMap[name] = alias
+	metric, ok := st.NameMap[name]
+	if ok {
+		return metric
+	}
 
-	metric, ok := st.MetricMap[alias]
+	metric = &Metric{
+		Name:           name,
+		StartTimestamp: ts,
+		Description:    desc,
+	}
 
-	// Note: this code doesn't check for redefinition using existing aliases.
+	st.NameMap[name] = metric
 
-	if !ok {
-		metric = &Metric{
-			Name:           name,
-			StartTimestamp: ts,
-			Description:    desc,
-		}
-		st.MetricMap[alias] = metric
+	if alias != 0 {
+		st.AliasMap[alias] = metric
 	}
 	return metric
 }
 
 func (st Store) Visit(payload *bproto.Payload) error {
 	for _, m := range payload.Metrics {
-
 		o := st.Define(m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
 		if o == nil {
 			return ErrRebirthNeeded
@@ -137,5 +138,8 @@ func (st Store) Visit(payload *bproto.Payload) error {
 }
 
 func (m *Metric) Update(ts uint64, value interface{}) {
+	m.Timestamp = ts
+	m.Value = value
+	
 	fmt.Println("Metric:", m.Name, "=", value, "@", time.UnixMilli(int64(ts)))
 }

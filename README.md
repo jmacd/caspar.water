@@ -1,6 +1,6 @@
 System for managing and monitoring a small water system.
 
-The system consists of as single well and a [small off-the-shelf MQTT
+The system consists of a single well and a [small off-the-shelf MQTT
 Sparkplug B edge node](https://www.opto22.com/products/groov-rio) for reading 
 4-20mA sensors.
 

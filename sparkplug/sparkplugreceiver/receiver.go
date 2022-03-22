@@ -15,9 +15,14 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenterror"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/model/pdata"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	nodeControlPrefix    = "Node Control/"
+	nodePropertiesPrefix = "Node Properties/"
 )
 
 type sparkplugReceiver struct {
@@ -183,12 +188,12 @@ func (r *sparkplugReceiver) onMessage(cl events.Client, pk events.Packet) (event
 func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 
 	if topic.MessageType == sparkplug.NDATA || topic.MessageType == sparkplug.NBIRTH {
-		fmt.Println("NODE", prototext.Format(payload))
+		//fmt.Println("NODE", prototext.Format(payload))
 		return r.sparkplugNodePayload(topic, payload)
 	}
 
 	if topic.MessageType == sparkplug.DDATA || topic.MessageType == sparkplug.DBIRTH {
-		fmt.Println("DEVICE", prototext.Format(payload))
+		//fmt.Println("DEVICE", prototext.Format(payload))
 		return r.sparkplugDevicePayload(topic, payload)
 	}
 
@@ -198,9 +203,104 @@ func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bpr
 }
 
 func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
-	return r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Visit(payload)
+	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
+	if err := node.Visit(payload); err != nil {
+		return err
+	}
+	metrics := r.nodeToResource(topic, node)
+	rm := metrics.ResourceMetrics().At(0)
+
+	ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
+	ilm.InstrumentationLibrary().SetName("otel/conventions")
+
+	metric := ilm.Metrics().AppendEmpty()
+	metric.SetName("alive")
+	metric.SetDataType(pdata.MetricDataTypeSum)
+	metric.Sum().SetAggregationTemporality(pdata.MetricAggregationTemporalityCumulative)
+	metric.Sum().SetIsMonotonic(false)
+
+	dp := metric.Sum().DataPoints().AppendEmpty()
+	dp.SetIntVal(1)
+
+	if bd, ok := node.Store.NameMap["bdSeq"]; ok {
+		// @@@ Hmm, do we know true start timestamp?
+		dp.SetStartTimestamp(pdata.Timestamp(bd.StartTimestamp * 1e6))
+	}
+
+	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
+}
+
+func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.EdgeNodeState) pdata.Metrics {
+	m := pdata.NewMetrics()
+	rm := m.ResourceMetrics().AppendEmpty()
+
+	rm.Resource().Attributes().InsertString(
+		"group.id",
+		string(topic.GroupID),
+	)
+	rm.Resource().Attributes().InsertString(
+		"edgenode.id",
+		string(topic.EdgeNodeID),
+	)
+
+	for _, metric := range node.Store.NameMap {
+		switch {
+
+		case metric.Name == "bdSeq":
+			continue
+
+		case strings.HasPrefix(metric.Name, nodeControlPrefix):
+			continue
+
+		case strings.HasPrefix(metric.Name, nodePropertiesPrefix):
+			rm.Resource().Attributes().Insert(
+				resourceName(metric.Name[len(nodePropertiesPrefix):]),
+				anyValue(metric.Value),
+			)
+			continue
+		}
+
+		r.settings.Logger.Warn(
+			"unexpected edge node metric",
+			zap.String("name", metric.Name),
+		)
+	}
+	return m
+}
+
+func resourceName(name string) string {
+	return strings.Replace(strings.ToLower(name), " ", ".", -1)
+}
+
+func anyValue(value interface{}) pdata.AttributeValue {
+	switch t := value.(type) {
+	case *bproto.Payload_Metric_IntValue:
+		return pdata.NewAttributeValueInt(int64(t.IntValue))
+	case *bproto.Payload_Metric_LongValue:
+		return pdata.NewAttributeValueInt(int64(t.LongValue))
+	case *bproto.Payload_Metric_FloatValue:
+		return pdata.NewAttributeValueDouble(float64(t.FloatValue))
+	case *bproto.Payload_Metric_DoubleValue:
+		return pdata.NewAttributeValueDouble(t.DoubleValue)
+	case *bproto.Payload_Metric_BooleanValue:
+		return pdata.NewAttributeValueBool(t.BooleanValue)
+	case *bproto.Payload_Metric_StringValue:
+		return pdata.NewAttributeValueString(t.StringValue)
+	case *bproto.Payload_Metric_BytesValue:
+		return pdata.NewAttributeValueString(string(t.BytesValue))
+
+	case *bproto.Payload_Metric_DatasetValue,
+		*bproto.Payload_Metric_TemplateValue,
+		*bproto.Payload_Metric_ExtensionValue:
+		break
+	}
+	return pdata.NewAttributeValueString(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
 func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
-	return r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Get(topic.DeviceID).Visit(payload)
+	device := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Get(topic.DeviceID)
+	if err := device.Visit(payload); err != nil {
+		return err
+	}
+	return nil
 }
