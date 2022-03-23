@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jmacd/caspar.water/otlp"
 	"github.com/jmacd/caspar.water/sparkplug"
@@ -23,6 +24,19 @@ import (
 const (
 	nodeControlPrefix    = "Node Control/"
 	nodePropertiesPrefix = "Node Properties/"
+
+	deviceControlPrefix    = "Device Control/"
+	devicePropertiesPrefix = "Device Properties/"
+
+	libraryName = "OptoMMP/Modules/Channels"
+)
+
+var (
+	// Hacky denylist
+	denyNames = map[string]bool{
+		"Device Properties/Tag Access Time Ms": true,
+		"Device Properties/Write Queue Depth":  true,
+	}
 )
 
 type sparkplugReceiver struct {
@@ -32,6 +46,7 @@ type sparkplugReceiver struct {
 	broker       *mqtt.Server
 	brokerDone   chan error
 	state        otlp.SparkplugState
+	startTime    time.Time
 }
 
 var (
@@ -61,6 +76,7 @@ func New(
 		config:       config,
 		nextConsumer: nextConsumer,
 		state:        otlp.SparkplugState{}.Init(),
+		startTime:    time.Now(),
 	}
 	return r, nil
 }
@@ -211,7 +227,7 @@ func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload 
 	rm := metrics.ResourceMetrics().At(0)
 
 	ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
-	ilm.InstrumentationLibrary().SetName("otel/conventions")
+	ilm.InstrumentationLibrary().SetName("discovery")
 
 	metric := ilm.Metrics().AppendEmpty()
 	metric.SetName("alive")
@@ -223,8 +239,10 @@ func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload 
 	dp.SetIntVal(1)
 
 	if bd, ok := node.Store.NameMap["bdSeq"]; ok {
-		// @@@ Hmm, do we know true start timestamp?
-		dp.SetStartTimestamp(pdata.Timestamp(bd.StartTimestamp * 1e6))
+		// Note: we do not know the true start timestamp.
+		// However, we have no counters for which it matters.
+		dp.SetTimestamp(pdata.Timestamp(bd.Timestamp * 1e6))
+		dp.SetStartTimestamp(pdata.Timestamp(r.startTime.UnixNano()))
 	}
 
 	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
@@ -235,11 +253,11 @@ func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.Edge
 	rm := m.ResourceMetrics().AppendEmpty()
 
 	rm.Resource().Attributes().InsertString(
-		"group.id",
+		"group_id",
 		string(topic.GroupID),
 	)
 	rm.Resource().Attributes().InsertString(
-		"edgenode.id",
+		"edgenode_id",
 		string(topic.EdgeNodeID),
 	)
 
@@ -269,7 +287,11 @@ func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.Edge
 }
 
 func resourceName(name string) string {
-	return strings.Replace(strings.ToLower(name), " ", ".", -1)
+	return strings.Replace(strings.ToLower(name), " ", "_", -1)
+}
+
+func metricName(name string) string {
+	return strings.Replace(strings.ToLower(name), "/", "_", -1)
 }
 
 func anyValue(value interface{}) pdata.AttributeValue {
@@ -297,10 +319,80 @@ func anyValue(value interface{}) pdata.AttributeValue {
 	return pdata.NewAttributeValueString(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
+func (r *sparkplugReceiver) floatValue(value interface{}) float64 {
+	switch t := value.(type) {
+	case *bproto.Payload_Metric_IntValue:
+		return float64(t.IntValue)
+	case *bproto.Payload_Metric_LongValue:
+		return float64(t.LongValue)
+	case *bproto.Payload_Metric_FloatValue:
+		return float64(t.FloatValue)
+	case *bproto.Payload_Metric_DoubleValue:
+		return float64(t.DoubleValue)
+	}
+	r.settings.Logger.Info("non-numeric value",
+		zap.String("value", fmt.Sprint(value)),
+	)
+	return 0
+}
+
 func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
-	device := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID).Get(topic.DeviceID)
+	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
+	device := node.Get(topic.DeviceID)
 	if err := device.Visit(payload); err != nil {
 		return err
 	}
-	return nil
+	metrics := r.nodeToResource(topic, node)
+	rm := metrics.ResourceMetrics().At(0)
+
+	rm.Resource().Attributes().InsertString(
+		"device_id",
+		string(topic.DeviceID),
+	)
+
+	ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
+
+	// Hacky hard-coded library name
+	ilm.InstrumentationLibrary().SetName(libraryName)
+
+	for _, metric := range device.Store.NameMap {
+
+		if denyNames[metric.Name] {
+			continue
+		}
+
+		if strings.HasPrefix(metric.Name, deviceControlPrefix) {
+			continue
+		}
+
+		if strings.HasPrefix(metric.Name, devicePropertiesPrefix) {
+			rm.Resource().Attributes().Insert(
+				resourceName(metric.Name[len(devicePropertiesPrefix):]),
+				anyValue(metric.Value),
+			)
+			continue
+		}
+
+		if !metric.Changed {
+			continue
+		}
+		metric.Changed = false
+
+		name := metric.Name
+		if strings.HasPrefix(name, libraryName) {
+			name = name[len(libraryName)+1:]
+		}
+
+		output := ilm.Metrics().AppendEmpty()
+		output.SetName(metricName(name))
+		output.SetDataType(pdata.MetricDataTypeGauge)
+
+		dp := output.Gauge().DataPoints().AppendEmpty()
+		dp.SetDoubleVal(r.floatValue(metric.Value))
+
+		dp.SetTimestamp(pdata.Timestamp(metric.Timestamp * 1e6))
+		dp.SetStartTimestamp(pdata.Timestamp(r.startTime.UnixNano()))
+	}
+
+	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
 }

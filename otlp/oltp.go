@@ -2,11 +2,7 @@ package otlp
 
 import (
 	"fmt"
-	"time"
 	
-	// otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
-	// "go.opentelemetry.io/collector/model/pdata"
-
 	"github.com/jmacd/caspar.water/sparkplug"
 	"github.com/jmacd/caspar.water/sparkplug/bproto"
 )
@@ -49,6 +45,7 @@ type (
 		Timestamp      uint64
 		Description    string
 		Value          interface{}
+		Changed        bool
 	}
 )
 
@@ -132,14 +129,16 @@ func (st Store) Visit(payload *bproto.Payload) error {
 		if o == nil {
 			return ErrRebirthNeeded
 		}
-		o.Update(m.GetTimestamp(), m.GetValue())
+		o.Update(m.GetTimestamp(), m.GetValue(), payload.GetSeq())
 	}
 	return nil
 }
 
-func (m *Metric) Update(ts uint64, value interface{}) {
+func (m *Metric) Update(ts uint64, value interface{}, seq uint64) {
 	m.Timestamp = ts
-	m.Value = value
-	
-	fmt.Println("Metric:", m.Name, "=", value, "@", time.UnixMilli(int64(ts)))
+
+	if m.Value != value {
+		m.Value = value
+		m.Changed = true
+	}
 }
