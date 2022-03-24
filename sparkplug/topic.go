@@ -67,6 +67,10 @@ func (t Topic) String() string {
 	return strings.Join(a, "/")
 }
 
+func (mt MessageType) IsBirth() bool {
+	return mt == NBIRTH || mt == DBIRTH
+}
+
 func ParseTopic(ts string) (Topic, error) {
 	elems := strings.Split(ts, "/")
 

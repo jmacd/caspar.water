@@ -3,6 +3,7 @@ package sparkplugreceiver
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -76,7 +77,6 @@ func New(
 		config:       config,
 		nextConsumer: nextConsumer,
 		state:        otlp.SparkplugState{}.Init(),
-		startTime:    time.Now(),
 	}
 	return r, nil
 }
@@ -203,24 +203,20 @@ func (r *sparkplugReceiver) onMessage(cl events.Client, pk events.Packet) (event
 
 func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 
-	if topic.MessageType == sparkplug.NDATA || topic.MessageType == sparkplug.NBIRTH {
-		//fmt.Println("NODE", prototext.Format(payload))
+	switch topic.MessageType {
+	case sparkplug.NDATA, sparkplug.NBIRTH, sparkplug.NDEATH:
 		return r.sparkplugNodePayload(topic, payload)
-	}
-
-	if topic.MessageType == sparkplug.DDATA || topic.MessageType == sparkplug.DBIRTH {
-		//fmt.Println("DEVICE", prototext.Format(payload))
+	case sparkplug.DDATA, sparkplug.DBIRTH, sparkplug.DDEATH:
 		return r.sparkplugDevicePayload(topic, payload)
 	}
-
 	// Unexpected in a self-hosted broker situation.  STATE/* was
-	// checked above, so these are death messages or node/device commands.
+	// checked above, so these are node/device commands.
 	return fmt.Errorf("%w: %v", ErrUnexpectedTopic, topic.MessageType)
 }
 
 func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
-	if err := node.Visit(payload); err != nil {
+	if err := node.Visit(topic, payload); err != nil {
 		return err
 	}
 	metrics := r.nodeToResource(topic, node)
@@ -234,15 +230,14 @@ func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload 
 	metric.SetDataType(pdata.MetricDataTypeSum)
 	metric.Sum().SetAggregationTemporality(pdata.MetricAggregationTemporalityCumulative)
 	metric.Sum().SetIsMonotonic(false)
-
 	dp := metric.Sum().DataPoints().AppendEmpty()
-	dp.SetIntVal(1)
+	dp.SetTimestamp(pdata.Timestamp(payload.GetTimestamp() * 1e6))
+	dp.SetStartTimestamp(pdata.Timestamp(node.BirthTime.UnixNano()))
 
-	if bd, ok := node.Store.NameMap["bdSeq"]; ok {
-		// Note: we do not know the true start timestamp.
-		// However, we have no counters for which it matters.
-		dp.SetTimestamp(pdata.Timestamp(bd.Timestamp * 1e6))
-		dp.SetStartTimestamp(pdata.Timestamp(r.startTime.UnixNano()))
+	if topic.MessageType == sparkplug.NDEATH {
+		dp.SetFlags(pdata.MetricDataPointFlags(pdata.MetricDataPointFlagNoRecordedValue))
+	} else {
+		dp.SetIntVal(1)
 	}
 
 	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
@@ -319,27 +314,29 @@ func anyValue(value interface{}) pdata.AttributeValue {
 	return pdata.NewAttributeValueString(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
-func (r *sparkplugReceiver) floatValue(value interface{}) float64 {
+func (r *sparkplugReceiver) setNumberValue(point pdata.NumberDataPoint, value interface{}) {
 	switch t := value.(type) {
 	case *bproto.Payload_Metric_IntValue:
-		return float64(t.IntValue)
+		point.SetIntVal(int64(t.IntValue))
 	case *bproto.Payload_Metric_LongValue:
-		return float64(t.LongValue)
+		point.SetIntVal(int64(t.LongValue))
 	case *bproto.Payload_Metric_FloatValue:
-		return float64(t.FloatValue)
+		point.SetDoubleVal(float64(t.FloatValue))
 	case *bproto.Payload_Metric_DoubleValue:
-		return float64(t.DoubleValue)
+		point.SetDoubleVal(t.DoubleValue)
+	default:
+		r.settings.Logger.Info("non-numeric value",
+			zap.String("value", fmt.Sprint(value)),
+			zap.String("type", fmt.Sprintf("%T", value)),
+		)
+		point.SetDoubleVal(math.NaN())
 	}
-	r.settings.Logger.Info("non-numeric value",
-		zap.String("value", fmt.Sprint(value)),
-	)
-	return 0
 }
 
 func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
 	device := node.Get(topic.DeviceID)
-	if err := device.Visit(payload); err != nil {
+	if err := device.Visit(topic, payload); err != nil {
 		return err
 	}
 	metrics := r.nodeToResource(topic, node)
@@ -373,7 +370,7 @@ func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payloa
 			continue
 		}
 
-		if !metric.Changed {
+		if topic.MessageType == sparkplug.DDATA && !metric.Changed {
 			continue
 		}
 		metric.Changed = false
@@ -388,10 +385,14 @@ func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payloa
 		output.SetDataType(pdata.MetricDataTypeGauge)
 
 		dp := output.Gauge().DataPoints().AppendEmpty()
-		dp.SetDoubleVal(r.floatValue(metric.Value))
-
 		dp.SetTimestamp(pdata.Timestamp(metric.Timestamp * 1e6))
-		dp.SetStartTimestamp(pdata.Timestamp(r.startTime.UnixNano()))
+		dp.SetStartTimestamp(pdata.Timestamp(device.BirthTime.UnixNano()))
+
+		if topic.MessageType == sparkplug.DDEATH {
+			dp.SetFlags(pdata.MetricDataPointFlags(pdata.MetricDataPointFlagNoRecordedValue))
+		} else {
+			r.setNumberValue(dp, metric.Value)
+		}
 	}
 
 	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)

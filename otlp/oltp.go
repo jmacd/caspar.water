@@ -2,7 +2,8 @@ package otlp
 
 import (
 	"fmt"
-	
+	"time"
+
 	"github.com/jmacd/caspar.water/sparkplug"
 	"github.com/jmacd/caspar.water/sparkplug/bproto"
 )
@@ -34,6 +35,7 @@ type (
 	Store struct {
 		NameMap  NameMap
 		AliasMap AliasMap
+		BirthTime time.Time
 	}
 
 	NameMap map[string]*Metric
@@ -123,7 +125,11 @@ func (st Store) Define(name string, alias, ts uint64, desc string) *Metric {
 	return metric
 }
 
-func (st Store) Visit(payload *bproto.Payload) error {
+func (st Store) Visit(topic sparkplug.Topic, payload *bproto.Payload) error {
+	if topic.MessageType.IsBirth() && payload.GetTimestamp() != 0 {
+		st.BirthTime = time.UnixMilli(int64(payload.GetTimestamp()))
+	}
+
 	for _, m := range payload.Metrics {
 		o := st.Define(m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
 		if o == nil {
