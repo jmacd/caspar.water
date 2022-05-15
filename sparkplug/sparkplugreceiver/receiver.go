@@ -17,7 +17,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenterror"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -222,20 +223,20 @@ func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload 
 	metrics := r.nodeToResource(topic, node)
 	rm := metrics.ResourceMetrics().At(0)
 
-	ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
-	ilm.InstrumentationLibrary().SetName("discovery")
+	ilm := rm.ScopeMetrics().AppendEmpty()
+	ilm.Scope().SetName("discovery")
 
 	metric := ilm.Metrics().AppendEmpty()
 	metric.SetName("alive")
-	metric.SetDataType(pdata.MetricDataTypeSum)
-	metric.Sum().SetAggregationTemporality(pdata.MetricAggregationTemporalityCumulative)
+	metric.SetDataType(pmetric.MetricDataTypeSum)
+	metric.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
 	metric.Sum().SetIsMonotonic(false)
 	dp := metric.Sum().DataPoints().AppendEmpty()
-	dp.SetTimestamp(pdata.Timestamp(payload.GetTimestamp() * 1e6))
-	dp.SetStartTimestamp(pdata.Timestamp(node.BirthTime.UnixNano()))
+	dp.SetTimestamp(pcommon.Timestamp(payload.GetTimestamp() * 1e6))
+	dp.SetStartTimestamp(pcommon.Timestamp(node.BirthTime.UnixNano()))
 
 	if topic.MessageType == sparkplug.NDEATH {
-		dp.SetFlags(pdata.MetricDataPointFlags(pdata.MetricDataPointFlagNoRecordedValue))
+		dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
 	} else {
 		dp.SetIntVal(1)
 	}
@@ -243,8 +244,8 @@ func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload 
 	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
 }
 
-func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.EdgeNodeState) pdata.Metrics {
-	m := pdata.NewMetrics()
+func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.EdgeNodeState) pmetric.Metrics {
+	m := pmetric.NewMetrics()
 	rm := m.ResourceMetrics().AppendEmpty()
 
 	rm.Resource().Attributes().InsertString(
@@ -289,32 +290,32 @@ func metricName(name string) string {
 	return strings.Replace(strings.ToLower(name), "/", "_", -1)
 }
 
-func anyValue(value interface{}) pdata.AttributeValue {
+func anyValue(value interface{}) pcommon.Value {
 	switch t := value.(type) {
 	case *bproto.Payload_Metric_IntValue:
-		return pdata.NewAttributeValueInt(int64(t.IntValue))
+		return pcommon.NewValueInt(int64(t.IntValue))
 	case *bproto.Payload_Metric_LongValue:
-		return pdata.NewAttributeValueInt(int64(t.LongValue))
+		return pcommon.NewValueInt(int64(t.LongValue))
 	case *bproto.Payload_Metric_FloatValue:
-		return pdata.NewAttributeValueDouble(float64(t.FloatValue))
+		return pcommon.NewValueDouble(float64(t.FloatValue))
 	case *bproto.Payload_Metric_DoubleValue:
-		return pdata.NewAttributeValueDouble(t.DoubleValue)
+		return pcommon.NewValueDouble(t.DoubleValue)
 	case *bproto.Payload_Metric_BooleanValue:
-		return pdata.NewAttributeValueBool(t.BooleanValue)
+		return pcommon.NewValueBool(t.BooleanValue)
 	case *bproto.Payload_Metric_StringValue:
-		return pdata.NewAttributeValueString(t.StringValue)
+		return pcommon.NewValueString(t.StringValue)
 	case *bproto.Payload_Metric_BytesValue:
-		return pdata.NewAttributeValueString(string(t.BytesValue))
+		return pcommon.NewValueString(string(t.BytesValue))
 
 	case *bproto.Payload_Metric_DatasetValue,
 		*bproto.Payload_Metric_TemplateValue,
 		*bproto.Payload_Metric_ExtensionValue:
 		break
 	}
-	return pdata.NewAttributeValueString(fmt.Sprintf("unsupported attribute type: %T", value))
+	return pcommon.NewValueString(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
-func (r *sparkplugReceiver) setNumberValue(point pdata.NumberDataPoint, value interface{}) {
+func (r *sparkplugReceiver) setNumberValue(point pmetric.NumberDataPoint, value interface{}) {
 	switch t := value.(type) {
 	case *bproto.Payload_Metric_IntValue:
 		point.SetIntVal(int64(t.IntValue))
@@ -347,10 +348,10 @@ func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payloa
 		string(topic.DeviceID),
 	)
 
-	ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
+	ilm := rm.ScopeMetrics().AppendEmpty()
 
 	// Hacky hard-coded library name
-	ilm.InstrumentationLibrary().SetName(libraryName)
+	ilm.Scope().SetName(libraryName)
 
 	for _, metric := range device.Store.NameMap {
 
@@ -382,14 +383,14 @@ func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payloa
 
 		output := ilm.Metrics().AppendEmpty()
 		output.SetName(metricName(name))
-		output.SetDataType(pdata.MetricDataTypeGauge)
+		output.SetDataType(pmetric.MetricDataTypeGauge)
 
 		dp := output.Gauge().DataPoints().AppendEmpty()
-		dp.SetTimestamp(pdata.Timestamp(metric.Timestamp * 1e6))
-		dp.SetStartTimestamp(pdata.Timestamp(device.BirthTime.UnixNano()))
+		dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
+		dp.SetStartTimestamp(pcommon.Timestamp(device.BirthTime.UnixNano()))
 
 		if topic.MessageType == sparkplug.DDEATH {
-			dp.SetFlags(pdata.MetricDataPointFlags(pdata.MetricDataPointFlagNoRecordedValue))
+			dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
 		} else {
 			r.setNumberValue(dp, metric.Value)
 		}

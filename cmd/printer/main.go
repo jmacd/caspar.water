@@ -12,7 +12,7 @@ import (
 )
 
 type state struct {
-	otlp.DeviceMap
+	otlp.SparkplugState
 }
 
 func (s *state) messageReceived(client sparkplugclient.Client, msg sparkplugclient.Message) {
@@ -31,26 +31,13 @@ func (s *state) messageReceived(client sparkplugclient.Client, msg sparkplugclie
 		return
 	}
 
-	for _, m := range payload.Metrics {
-		id := otlp.SparkplugID{
-			GroupID:    topic.GroupID,
-			EdgeNodeID: topic.EdgeNodeID,
-			DeviceID:   topic.DeviceID,
-		}
-
-		var o *otlp.Metric
-		if m.GetName() != "" {
-			o = s.Define(id, m.GetName(), m.GetAlias(), m.GetTimestamp(), m.GetMetadata().GetDescription())
-		} else if m.Alias != nil {
-			o = s.Lookup(id, m.GetAlias())
-		} else {
-			// ERROR! We need a rebirth.
-			// @@@
-		}
-		o.Timestamp = m.GetTimestamp()
-
-		fmt.Println("Metric", o.Name, "=", m.Value)
+	node := s.Get(topic.GroupID).Get(topic.EdgeNodeID)
+	device := node.Get(topic.DeviceID)
+	if err := device.Visit(topic, payload); err != nil {
+		fmt.Println("ERROR", topic, ":", err)
 	}
+
+	fmt.Println("Device", device)
 }
 
 func stateReceived(client sparkplugclient.Client, msg sparkplugclient.Message) {
@@ -63,7 +50,8 @@ func main() {
 
 	sparkTopic := sparkplug.NewTopic("#", "", "", "")
 
-	state := state{otlp.DeviceMap{}}
+	state := state{}
+	state.SparkplugState = state.SparkplugState.Init()
 
 	opts := sparkplugclient.NewOptions()
 	opts.AddBroker(*server).SetClientID("printer").SetCleanSession(true)

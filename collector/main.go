@@ -1,46 +1,58 @@
 package main
 
 import (
-	"context"
 	"log"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter/loggingexporter"
+	"go.opentelemetry.io/collector/exporter/otlpexporter"
 	"go.opentelemetry.io/collector/service"
-	"go.opentelemetry.io/collector/service/defaultcomponents"
 
 	"github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver"
 )
 
 func main() {
-	factories, err := defaultcomponents.Components()
+	var err error
+	factories := component.Factories{}
+
+	factories.Exporters, err = component.MakeExporterFactoryMap(
+		loggingexporter.NewFactory(),
+		otlpexporter.NewFactory(),
+	)
 	if err != nil {
-		log.Fatalf("failed to build components: %v", err)
+		log.Fatal("could not register exporters", err)
 	}
 
-	spr := sparkplugreceiver.NewFactory()
-	factories.Receivers[spr.Type()] = spr
+	factories.Receivers, err = component.MakeReceiverFactoryMap(
+		sparkplugreceiver.NewFactory(),
+	)
+	if err != nil {
+		log.Fatal("could not register receivers", err)
+	}
 
 	info := component.BuildInfo{
 		Command:     "caspar-water-collector",
 		Description: "Caspar Water OpenTelemetry Collector distribution",
-		Version:     "0.0.1",
+		Version:     "0.1.0",
 	}
 
-	app, err := service.New(service.CollectorSettings{
+	// cfgp, err := service.NewConfigProvider(
+	// 	service.ConfigProviderSettings{
+	// 		Locations: []string{"config.yaml"},
+	// 	},
+	// )
+	// if err != nil {
+	// 	log.Fatal("failed to construct config provider", err)
+	// }
+
+	settings := service.CollectorSettings{
 		BuildInfo: info,
 		Factories: factories,
-		ConfigProvider: service.MustNewDefaultConfigProvider(
-			[]string{"config.yaml"},
-			nil,
-		),
-	})
-	if err != nil {
-		log.Fatalf("failed to construct the application: %v", err)
 	}
 
-	ctx := context.Background()
-	err = app.Run(ctx)
+	app := service.NewCommand(settings)
+	err = app.Execute()
 	if err != nil {
-		log.Fatalf("application run finished with error: %v", err)
+		log.Fatal("application run finished with error", err)
 	}
 }
