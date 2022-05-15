@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/collector/service"
 
 	"github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver"
+	"github.com/jmacd/caspar.water/storage/fileexporter"
 )
 
 func main() {
@@ -18,6 +19,7 @@ func main() {
 	factories.Exporters, err = component.MakeExporterFactoryMap(
 		loggingexporter.NewFactory(),
 		otlpexporter.NewFactory(),
+		fileexporter.NewFactory(),
 	)
 	if err != nil {
 		log.Fatal("could not register exporters", err)
@@ -35,15 +37,6 @@ func main() {
 		Description: "Caspar Water OpenTelemetry Collector distribution",
 		Version:     "0.1.0",
 	}
-
-	// cfgp, err := service.NewConfigProvider(
-	// 	service.ConfigProviderSettings{
-	// 		Locations: []string{"config.yaml"},
-	// 	},
-	// )
-	// if err != nil {
-	// 	log.Fatal("failed to construct config provider", err)
-	// }
 
 	settings := service.CollectorSettings{
 		BuildInfo: info,
