@@ -33,12 +33,12 @@ type (
 	}
 
 	Store struct {
-		NameMap  NameMap
-		AliasMap AliasMap
+		NameMap   NameMap
+		AliasMap  AliasMap
 		BirthTime time.Time
 	}
 
-	NameMap map[string]*Metric
+	NameMap  map[string]*Metric
 	AliasMap map[uint64]*Metric
 
 	Metric struct {
@@ -47,7 +47,6 @@ type (
 		Timestamp      uint64
 		Description    string
 		Value          interface{}
-		Changed        bool
 	}
 )
 
@@ -143,8 +142,8 @@ func (st Store) Visit(topic sparkplug.Topic, payload *bproto.Payload) error {
 func (m *Metric) Update(ts uint64, value interface{}, seq uint64) {
 	m.Timestamp = ts
 
-	if m.Value != value {
-		m.Value = value
-		m.Changed = true
-	}
+	// if m.Value != value {
+	m.Value = value
+	// 	m.Changed = true
+	// }
 }

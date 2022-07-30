@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmacd/caspar.water/otlp"
@@ -42,13 +43,13 @@ var (
 )
 
 type sparkplugReceiver struct {
+	lock         sync.Mutex
 	settings     component.ReceiverCreateSettings
 	config       Config
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
 	brokerDone   chan error
 	state        otlp.SparkplugState
-	startTime    time.Time
 }
 
 var (
@@ -137,6 +138,15 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 		r.brokerDone <- r.broker.Serve()
 	}()
 
+	go func() {
+		for {
+			time.Sleep(time.Second * 30)
+			if err := r.flush(); err != nil {
+				panic("error in flush")
+			}
+		}
+	}()
+
 	r.broker.Events.OnConnect = func(cl events.Client, pk events.Packet) {
 		r.settings.Logger.Info(
 			"client connected",
@@ -203,6 +213,8 @@ func (r *sparkplugReceiver) onMessage(cl events.Client, pk events.Packet) (event
 }
 
 func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bproto.Payload) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 
 	switch topic.MessageType {
 	case sparkplug.NDATA, sparkplug.NBIRTH, sparkplug.NDEATH:
@@ -217,44 +229,20 @@ func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bpr
 
 func (r *sparkplugReceiver) sparkplugNodePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
-	if err := node.Visit(topic, payload); err != nil {
-		return err
-	}
-	metrics := r.nodeToResource(topic, node)
-	rm := metrics.ResourceMetrics().At(0)
-
-	ilm := rm.ScopeMetrics().AppendEmpty()
-	ilm.Scope().SetName("discovery")
-
-	metric := ilm.Metrics().AppendEmpty()
-	metric.SetName("alive")
-	metric.SetDataType(pmetric.MetricDataTypeSum)
-	metric.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
-	metric.Sum().SetIsMonotonic(false)
-	dp := metric.Sum().DataPoints().AppendEmpty()
-	dp.SetTimestamp(pcommon.Timestamp(payload.GetTimestamp() * 1e6))
-	dp.SetStartTimestamp(pcommon.Timestamp(node.BirthTime.UnixNano()))
-
-	if topic.MessageType == sparkplug.NDEATH {
-		dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
-	} else {
-		dp.SetIntVal(1)
-	}
-
-	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
+	return node.Visit(topic, payload)
 }
 
-func (r *sparkplugReceiver) nodeToResource(topic sparkplug.Topic, node otlp.EdgeNodeState) pmetric.Metrics {
+func (r *sparkplugReceiver) nodeToResource(groupID sparkplug.GroupID, edgeNodeID sparkplug.EdgeNodeID, node otlp.EdgeNodeState) pmetric.Metrics {
 	m := pmetric.NewMetrics()
 	rm := m.ResourceMetrics().AppendEmpty()
 
 	rm.Resource().Attributes().InsertString(
 		"group_id",
-		string(topic.GroupID),
+		string(groupID),
 	)
 	rm.Resource().Attributes().InsertString(
 		"edgenode_id",
-		string(topic.EdgeNodeID),
+		string(edgeNodeID),
 	)
 
 	for _, metric := range node.Store.NameMap {
@@ -337,64 +325,92 @@ func (r *sparkplugReceiver) setNumberValue(point pmetric.NumberDataPoint, value 
 func (r *sparkplugReceiver) sparkplugDevicePayload(topic sparkplug.Topic, payload *bproto.Payload) error {
 	node := r.state.Get(topic.GroupID).Get(topic.EdgeNodeID)
 	device := node.Get(topic.DeviceID)
-	if err := device.Visit(topic, payload); err != nil {
-		return err
+	return device.Visit(topic, payload)
+}
+
+func (r *sparkplugReceiver) flush() error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	for groupID, groupState := range r.state.Items {
+		for edgeNodeID, edgeNode := range groupState.Items {
+			for deviceID, deviceNode := range edgeNode.Items {
+
+				metrics := r.nodeToResource(groupID, edgeNodeID, edgeNode)
+				rm := metrics.ResourceMetrics().At(0)
+
+				ilm := rm.ScopeMetrics().AppendEmpty()
+				ilm.Scope().SetName("sparkplug")
+
+				// alive metric
+
+				// metric := ilm.Metrics().AppendEmpty()
+				// metric.SetName("alive")
+				// metric.SetDataType(pmetric.MetricDataTypeSum)
+				// metric.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
+				// metric.Sum().SetIsMonotonic(false)
+				// dp := metric.Sum().DataPoints().AppendEmpty()
+				// dp.SetTimestamp(pcommon.Timestamp(payload.GetTimestamp() * 1e6))
+				// dp.SetStartTimestamp(pcommon.Timestamp(node.BirthTime.UnixNano()))
+
+				// if topic.MessageType == sparkplug.NDEATH {
+				// 	dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
+				// } else {
+				// 	dp.SetIntVal(1)
+				// }
+
+				rm.Resource().Attributes().InsertString(
+					"device_id",
+					string(deviceID),
+				)
+
+				// Hacky hard-coded library name
+				ilm.Scope().SetName(libraryName)
+
+				for _, metric := range deviceNode.Store.NameMap {
+
+					if denyNames[metric.Name] {
+						continue
+					}
+
+					if strings.HasPrefix(metric.Name, deviceControlPrefix) {
+						continue
+					}
+
+					if strings.HasPrefix(metric.Name, devicePropertiesPrefix) {
+						rm.Resource().Attributes().Insert(
+							resourceName(metric.Name[len(devicePropertiesPrefix):]),
+							anyValue(metric.Value),
+						)
+						continue
+					}
+
+					name := metric.Name
+					if strings.HasPrefix(name, libraryName) {
+						name = name[len(libraryName)+1:]
+					}
+
+					output := ilm.Metrics().AppendEmpty()
+					output.SetName(metricName(name))
+					output.SetDataType(pmetric.MetricDataTypeGauge)
+
+					dp := output.Gauge().DataPoints().AppendEmpty()
+					dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
+					dp.SetStartTimestamp(pcommon.Timestamp(deviceNode.BirthTime.UnixNano()))
+
+					// if topic.MessageType == sparkplug.DDEATH {
+					// 	dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
+					// } else {
+					r.setNumberValue(dp, metric.Value)
+					// }
+				}
+
+				if err := r.nextConsumer.ConsumeMetrics(context.Background(), metrics); err != nil {
+
+					return err
+				}
+			}
+		}
 	}
-	metrics := r.nodeToResource(topic, node)
-	rm := metrics.ResourceMetrics().At(0)
-
-	rm.Resource().Attributes().InsertString(
-		"device_id",
-		string(topic.DeviceID),
-	)
-
-	ilm := rm.ScopeMetrics().AppendEmpty()
-
-	// Hacky hard-coded library name
-	ilm.Scope().SetName(libraryName)
-
-	for _, metric := range device.Store.NameMap {
-
-		if denyNames[metric.Name] {
-			continue
-		}
-
-		if strings.HasPrefix(metric.Name, deviceControlPrefix) {
-			continue
-		}
-
-		if strings.HasPrefix(metric.Name, devicePropertiesPrefix) {
-			rm.Resource().Attributes().Insert(
-				resourceName(metric.Name[len(devicePropertiesPrefix):]),
-				anyValue(metric.Value),
-			)
-			continue
-		}
-
-		if topic.MessageType == sparkplug.DDATA && !metric.Changed {
-			continue
-		}
-		metric.Changed = false
-
-		name := metric.Name
-		if strings.HasPrefix(name, libraryName) {
-			name = name[len(libraryName)+1:]
-		}
-
-		output := ilm.Metrics().AppendEmpty()
-		output.SetName(metricName(name))
-		output.SetDataType(pmetric.MetricDataTypeGauge)
-
-		dp := output.Gauge().DataPoints().AppendEmpty()
-		dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
-		dp.SetStartTimestamp(pcommon.Timestamp(device.BirthTime.UnixNano()))
-
-		if topic.MessageType == sparkplug.DDEATH {
-			dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
-		} else {
-			r.setNumberValue(dp, metric.Value)
-		}
-	}
-
-	return r.nextConsumer.ConsumeMetrics(context.Background(), metrics)
+	return nil
 }
