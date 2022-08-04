@@ -39,6 +39,7 @@ var (
 	denyNames = map[string]bool{
 		"Device Properties/Tag Access Time Ms": true,
 		"Device Properties/Write Queue Depth":  true,
+		"Device Properties/Max Scan Time Ms":   true,
 	}
 )
 
@@ -367,6 +368,8 @@ func (r *sparkplugReceiver) flush() error {
 				// Hacky hard-coded library name
 				ilm.Scope().SetName(libraryName)
 
+				fmt.Println("LISTING METRICS TO EXPORT", len(deviceNode.Store.NameMap))
+
 				for _, metric := range deviceNode.Store.NameMap {
 
 					if denyNames[metric.Name] {
@@ -406,7 +409,6 @@ func (r *sparkplugReceiver) flush() error {
 				}
 
 				if err := r.nextConsumer.ConsumeMetrics(context.Background(), metrics); err != nil {
-
 					return err
 				}
 			}
