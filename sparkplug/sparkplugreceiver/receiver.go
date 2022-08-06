@@ -333,6 +333,8 @@ func (r *sparkplugReceiver) flush() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
+	now := pcommon.NewTimestampFromTime(time.Now())
+
 	for groupID, groupState := range r.state.Items {
 		for edgeNodeID, edgeNode := range groupState.Items {
 			for deviceID, deviceNode := range edgeNode.Items {
@@ -398,7 +400,8 @@ func (r *sparkplugReceiver) flush() error {
 					output.SetDataType(pmetric.MetricDataTypeGauge)
 
 					dp := output.Gauge().DataPoints().AppendEmpty()
-					dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
+					// dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
+					dp.SetTimestamp(now)
 					dp.SetStartTimestamp(pcommon.Timestamp(deviceNode.BirthTime.UnixNano()))
 
 					// if topic.MessageType == sparkplug.DDEATH {
