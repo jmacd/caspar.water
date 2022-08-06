@@ -33,12 +33,12 @@ type (
 	}
 
 	Store struct {
-		NameMap  NameMap
-		AliasMap AliasMap
-		BirthTime time.Time
+		NameMap   NameMap
+		AliasMap  AliasMap
+		BirthTime *time.Time
 	}
 
-	NameMap map[string]*Metric
+	NameMap  map[string]*Metric
 	AliasMap map[uint64]*Metric
 
 	Metric struct {
@@ -47,7 +47,6 @@ type (
 		Timestamp      uint64
 		Description    string
 		Value          interface{}
-		Changed        bool
 	}
 )
 
@@ -85,8 +84,9 @@ func (DeviceState) Init() DeviceState {
 
 func (Store) Init() Store {
 	return Store{
-		AliasMap: AliasMap{},
-		NameMap:  NameMap{},
+		AliasMap:  AliasMap{},
+		NameMap:   NameMap{},
+		BirthTime: new(time.Time),
 	}
 }
 
@@ -127,7 +127,7 @@ func (st Store) Define(name string, alias, ts uint64, desc string) *Metric {
 
 func (st Store) Visit(topic sparkplug.Topic, payload *bproto.Payload) error {
 	if topic.MessageType.IsBirth() && payload.GetTimestamp() != 0 {
-		st.BirthTime = time.UnixMilli(int64(payload.GetTimestamp()))
+		*st.BirthTime = time.UnixMilli(int64(payload.GetTimestamp()))
 	}
 
 	for _, m := range payload.Metrics {
@@ -143,8 +143,8 @@ func (st Store) Visit(topic sparkplug.Topic, payload *bproto.Payload) error {
 func (m *Metric) Update(ts uint64, value interface{}, seq uint64) {
 	m.Timestamp = ts
 
-	if m.Value != value {
-		m.Value = value
-		m.Changed = true
-	}
+	// if m.Value != value {
+	m.Value = value
+	// 	m.Changed = true
+	// }
 }
