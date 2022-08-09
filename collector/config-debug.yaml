@@ -1,0 +1,22 @@
+
+receivers:
+  sparkplug:
+    broker:
+      host_id: waterco
+      self_hosted: true
+      endpoint: :1883
+
+processors:
+
+exporters:
+  logging:
+    loglevel: debug
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+        - sparkplug
+      processors: []
+      exporters:
+        - logging
