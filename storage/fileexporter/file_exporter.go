@@ -17,12 +17,12 @@ package fileexporter
 import (
 	"context"
 	"io"
-	"os"
 	"sync"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Marshaler configuration used for marhsaling Protobuf to JSON.
@@ -31,9 +31,8 @@ var metricsMarshaler = pmetric.NewJSONMarshaler()
 // fileExporter is the implementation of file exporter that writes telemetry data to a file
 // in Protobuf-JSON format.
 type fileExporter struct {
-	path  string
-	file  io.WriteCloser
-	mutex sync.Mutex
+	mutex  sync.Mutex
+	logger *lumberjack.Logger
 }
 
 func (e *fileExporter) Capabilities() consumer.Capabilities {
@@ -52,22 +51,20 @@ func exportMessageAsLine(e *fileExporter, buf []byte) error {
 	// Ensure only one write operation happens at a time.
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	if _, err := e.file.Write(buf); err != nil {
+	if _, err := e.logger.Write(buf); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(e.file, "\n"); err != nil {
+	if _, err := io.WriteString(e.logger, "\n"); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (e *fileExporter) Start(context.Context, component.Host) error {
-	var err error
-	e.file, err = os.OpenFile(e.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	return err
+	return nil
 }
 
 // Shutdown stops the exporter and is invoked during shutdown.
 func (e *fileExporter) Shutdown(context.Context) error {
-	return e.file.Close()
+	return e.logger.Close()
 }

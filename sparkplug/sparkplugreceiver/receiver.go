@@ -370,8 +370,6 @@ func (r *sparkplugReceiver) flush() error {
 				// Hacky hard-coded library name
 				ilm.Scope().SetName(libraryName)
 
-				fmt.Println("LISTING METRICS TO EXPORT", len(deviceNode.Store.NameMap))
-
 				for _, metric := range deviceNode.Store.NameMap {
 
 					if denyNames[metric.Name] {

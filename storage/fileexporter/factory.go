@@ -20,11 +20,12 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
 	// The value of "type" key in configuration.
-	typeStr = "casparfile"
+	typeStr = "jsonfile"
 )
 
 // NewFactory creates a factory for OTLP exporter.
@@ -47,7 +48,11 @@ func createMetricsExporter(
 	set component.ExporterCreateSettings,
 	cfg config.Exporter,
 ) (component.MetricsExporter, error) {
-	fe := &fileExporter{path: cfg.(*Config).Path}
+	fe := &fileExporter{
+		logger: &lumberjack.Logger{
+			Filename: cfg.(*Config).Path,
+		},
+	}
 	return exporterhelper.NewMetricsExporter(
 		cfg,
 		set,

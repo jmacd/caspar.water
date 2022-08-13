@@ -15,8 +15,8 @@ exporters:
     endpoint: ingest.lightstep.com:443
     headers:
     - lightstep-access-token: 4IY1I9adf9FeOUUFgHiOaWIp4hRs1NDlwQfyzV02oRA+/3PBGchUJ0MoQkHKuxQcHC/+AYLM5k7iVboj5A6NP12eVjICe9+yQOT9bNsv
-  casparfile:
-    path: "parqspar"
+  jsonfile:
+    path: "/home/data/casparwater.json"
 
 service:
   pipelines:
@@ -25,6 +25,5 @@ service:
         - sparkplug
       processors: []
       exporters:
-        - logging
         - otlp
-        - casparfile
+        - jsonfile

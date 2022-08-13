@@ -11,6 +11,7 @@ require (
 	go.opentelemetry.io/collector/pdata v0.51.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/protobuf v1.28.0
+	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 
 require (
