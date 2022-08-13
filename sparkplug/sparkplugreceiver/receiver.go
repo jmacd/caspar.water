@@ -315,10 +315,11 @@ func (r *sparkplugReceiver) setNumberValue(point pmetric.NumberDataPoint, value 
 	case *bproto.Payload_Metric_DoubleValue:
 		point.SetDoubleVal(t.DoubleValue)
 	default:
-		r.settings.Logger.Info("non-numeric value",
-			zap.String("value", fmt.Sprint(value)),
-			zap.String("type", fmt.Sprintf("%T", value)),
-		)
+		// TODO: This is happening frequently for boolean values, investigate.
+		// r.settings.Logger.Info("non-numeric value",
+		// 	zap.String("value", fmt.Sprint(value)),
+		// 	zap.String("type", fmt.Sprintf("%T", value)),
+		// )
 		point.SetDoubleVal(math.NaN())
 	}
 }

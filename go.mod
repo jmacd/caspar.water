@@ -9,6 +9,7 @@ require (
 	github.com/stretchr/testify v1.7.1
 	go.opentelemetry.io/collector v0.51.0
 	go.opentelemetry.io/collector/pdata v0.51.0
+	go.opentelemetry.io/proto/otlp v0.18.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/protobuf v1.28.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -31,6 +32,8 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.15.3 // indirect
