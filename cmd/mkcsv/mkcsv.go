@@ -25,9 +25,15 @@ usage: %v < input.json > output.csv`, os.Args[0])
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		var msg otlpsvc.ExportMetricsServiceRequest
-		err := protojson.Unmarshal([]byte(scanner.Text()), &msg)
+		text := scanner.Text()
+		err := protojson.Unmarshal([]byte(text), &msg)
 		if err != nil {
-			log.Fatal("error in unmarshal:", err)
+			if len(text) > 0 && text[0] == 0 {
+				log.Printf("Skipping corrupt line: %q\n", text)
+				continue
+			}
+
+			log.Fatalf("error in unmarshal: %q: %v", text, err)
 		}
 		for _, rm := range msg.ResourceMetrics {
 			for _, sm := range rm.ScopeMetrics {
