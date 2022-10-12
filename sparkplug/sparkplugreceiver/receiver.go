@@ -16,7 +16,6 @@ import (
 	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/mochi-co/mqtt/server/listeners/auth"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -67,7 +66,7 @@ func New(
 	nextConsumer consumer.Metrics,
 ) (component.MetricsReceiver, error) {
 	if nextConsumer == nil {
-		return nil, componenterror.ErrNilNextConsumer
+		return nil, component.ErrNilNextConsumer
 	}
 
 	if config.Broker.NetAddr.Endpoint == "" {
@@ -237,11 +236,11 @@ func (r *sparkplugReceiver) nodeToResource(groupID sparkplug.GroupID, edgeNodeID
 	m := pmetric.NewMetrics()
 	rm := m.ResourceMetrics().AppendEmpty()
 
-	rm.Resource().Attributes().InsertString(
+	rm.Resource().Attributes().PutString(
 		"group_id",
 		string(groupID),
 	)
-	rm.Resource().Attributes().InsertString(
+	rm.Resource().Attributes().PutString(
 		"edgenode_id",
 		string(edgeNodeID),
 	)
@@ -256,9 +255,10 @@ func (r *sparkplugReceiver) nodeToResource(groupID sparkplug.GroupID, edgeNodeID
 			continue
 
 		case strings.HasPrefix(metric.Name, nodePropertiesPrefix):
-			rm.Resource().Attributes().Insert(
-				resourceName(metric.Name[len(nodePropertiesPrefix):]),
-				anyValue(metric.Value),
+			anyValue(metric.Value).CopyTo(
+				rm.Resource().Attributes().PutEmpty(
+					resourceName(metric.Name[len(nodePropertiesPrefix):]),
+				),
 			)
 			continue
 		}
@@ -363,7 +363,7 @@ func (r *sparkplugReceiver) flush() error {
 				// 	dp.SetIntVal(1)
 				// }
 
-				rm.Resource().Attributes().InsertString(
+				rm.Resource().Attributes().PutString(
 					"device_id",
 					string(deviceID),
 				)
@@ -382,9 +382,10 @@ func (r *sparkplugReceiver) flush() error {
 					}
 
 					if strings.HasPrefix(metric.Name, devicePropertiesPrefix) {
-						rm.Resource().Attributes().Insert(
-							resourceName(metric.Name[len(devicePropertiesPrefix):]),
-							anyValue(metric.Value),
+						anyValue(metric.Value).CopyTo(
+							rm.Resource().Attributes().PutEmpty(
+								resourceName(metric.Name[len(devicePropertiesPrefix):]),
+							),
 						)
 						continue
 					}
@@ -396,7 +397,7 @@ func (r *sparkplugReceiver) flush() error {
 
 					output := ilm.Metrics().AppendEmpty()
 					output.SetName(metricName(name))
-					output.SetDataType(pmetric.MetricDataTypeGauge)
+					output.SetEmptyGauge()
 
 					dp := output.Gauge().DataPoints().AppendEmpty()
 					// dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
