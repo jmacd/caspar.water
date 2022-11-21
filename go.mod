@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.3.5
+	github.com/johnfercher/maroto v0.39.0
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mochi-co/mqtt v1.2.3
 	github.com/stretchr/testify v1.8.0
@@ -11,6 +12,7 @@ require (
 	go.opentelemetry.io/collector/pdata v0.61.0
 	go.opentelemetry.io/proto/otlp v0.18.0
 	go.uber.org/zap v1.23.0
+	google.golang.org/appengine v1.6.6
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
@@ -35,7 +37,6 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/johnfercher/maroto v0.39.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/klauspost/compress v1.15.10 // indirect

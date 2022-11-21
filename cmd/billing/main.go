@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/csv"
+	"encoding/json"
+	"flag"
 	"fmt"
+	"log"
 	"os"
-	"time"
 
 	"github.com/johnfercher/maroto/pkg/color"
 	"github.com/johnfercher/maroto/pkg/consts"
@@ -11,17 +14,68 @@ import (
 	"github.com/johnfercher/maroto/pkg/props"
 )
 
-func main() {
-	begin := time.Now()
+var (
+	usersFile = flag.String("users", "", "users file csv AcctName,User Name,Address,...")
 
-	cwcColor := getBlueColor()
+	cwcColor = getBlueColor()
+
 	// darkGrayColor := getDarkGrayColor()
 	// grayColor := getGrayColor()
 	// whiteColor := color.NewWhite()
 	// redColor := getRedColor()
 	// header := getHeader()
 	// contents := getContents()
+)
 
+type (
+	User struct {
+		AccountName  string   `json:"field0"`
+		UserName     string   `json:"field1"`
+		AddressLine1 []string `json:"field2"`
+		AddressLine2 []string `json:"field3"`
+	}
+)
+
+func main() {
+	err := Main()
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func Main() error {
+	f, err := os.Open(*usersFile)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", *usersFile, err)
+	}
+	users, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return fmt.Errorf("read csv %s: %w", *usersFile, err)
+	}
+
+	for _, row := range users {
+		xing := map[string]string{}
+		for i, v := range row {
+			xing[fmt.Sprint("field", i)] = v
+		}
+		var user User
+		data, err := json.Marshal(xing)
+		if err != nil {
+			return fmt.Errorf("to json %w", err)
+
+		}
+		if err := json.Unmarshal(data, &user); err != nil {
+			return fmt.Errorf("from json %w", err)
+		}
+
+		if err := writePDF(user); err != nil {
+			return fmt.Errorf("write pdf %w", err)
+		}
+	}
+	return nil
+}
+
+func writePDF(user User) error {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(10, 15, 10)
 
@@ -182,14 +236,7 @@ func main() {
 		m.ColSpace(9)
 	})
 
-	err := m.OutputFileAndClose("billing.pdf")
-	if err != nil {
-		fmt.Println("Could not save PDF:", err)
-		os.Exit(1)
-	}
-
-	end := time.Now()
-	fmt.Println(end.Sub(begin))
+	return m.OutputFileAndClose("billing.pdf")
 }
 
 func getDarkGrayColor() color.Color {
