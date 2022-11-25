@@ -16,7 +16,8 @@ import (
 )
 
 var (
-	usersFile = flag.String("users", "", "users file csv AcctName,User Name,Address,...")
+	usersFile    = flag.String("users", "", "users file csv AcctName,User Name,Address,...")
+	metadataFile = flag.String("metadata", "", "file csv")
 
 	cwcColor = getBlueColor()
 
@@ -29,6 +30,12 @@ var (
 )
 
 type (
+	Metadata struct {
+		Name    string `json:"field0"`
+		Address string `json:"field1"`
+		Contact string `json:"field2"`
+	}
+
 	User struct {
 		AccountName    string `json:"field0"`
 		UserName       string `json:"field1"`
@@ -52,93 +59,130 @@ func main() {
 	}
 }
 
+func csvToStruct(row []string, out interface{}) error {
+	xing := map[string]string{}
+	for i, v := range row {
+		xing[fmt.Sprint("field", i)] = v
+	}
+	data, err := json.Marshal(xing)
+	if err != nil {
+		return fmt.Errorf("to json %w", err)
+
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("from json %w", err)
+	}
+	return nil
+}
+
+func readAll(name string) ([][]string, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", name, err)
+	}
+	ret, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read csv %s: %w", name, err)
+	}
+	return ret, nil
+}
+
 func Main() error {
 	flag.Parse()
 
-	f, err := os.Open(*usersFile)
+	users, err := readAll(*usersFile)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", *usersFile, err)
+		return err
 	}
-	users, err := csv.NewReader(f).ReadAll()
-	if err != nil {
-		return fmt.Errorf("read csv %s: %w", *usersFile, err)
+
+	rawMeta, err := readAll(*metadataFile)
+	if len(rawMeta) != 2 {
+		return fmt.Errorf("metadata file should have two lines: %d", len(rawMeta))
+	}
+	var meta Metadata
+	if err := csvToStruct(rawMeta[1], &meta); err != nil {
+		return err
 	}
 
 	for _, row := range users[1:] {
-		xing := map[string]string{}
-		for i, v := range row {
-			xing[fmt.Sprint("field", i)] = v
-		}
 		var user User
-		data, err := json.Marshal(xing)
-		if err != nil {
-			return fmt.Errorf("to json %w", err)
-
-		}
-		if err := json.Unmarshal(data, &user); err != nil {
-			return fmt.Errorf("from json %w", err)
+		if err := csvToStruct(row, &user); err != nil {
+			return err
 		}
 
 		fmt.Println("Account", user.AccountName)
 
-		if err := writePDF(user); err != nil {
+		if err := writePDF(meta, user); err != nil {
 			return fmt.Errorf("write pdf %w", err)
 		}
 	}
 	return nil
 }
 
-func writePDF(user User) error {
-	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
-	m.SetPageMargins(40, 50, 40)
+type lineStyle struct {
+	sz    float64
+	ht    float64
+	top   float64
+	txt   consts.Style
+	align consts.Align
+	color color.Color
+}
 
+func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
+	for _, line := range lines {
+		m.Row(style.ht, func() {
+			m.Col(0, func() {
+				m.Text(line, props.Text{
+					Size:  style.sz,
+					Top:   style.top,
+					Style: style.txt,
+					Align: style.align,
+					Color: style.color,
+				})
+			})
+		})
+	}
+}
+
+func writePDF(meta Metadata, user User) error {
+	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
+	m.SetPageMargins(50, 50, 50)
+
+	const bigLine = 5
 	const smallLine = 4
 	const sepLine = 2
+
+	toStyle := lineStyle{
+		sz:    10,
+		ht:    bigLine,
+		top:   3,
+		txt:   consts.Bold,
+		align: consts.Left,
+		color: color.NewBlack(),
+	}
+
+	fromStyle := lineStyle{
+		sz:    8,
+		ht:    smallLine,
+		top:   3,
+		txt:   consts.Normal,
+		align: consts.Right,
+		color: cwcColor,
+	}
 
 	m.RegisterHeader(func() {
 		m.Row(30, func() {
 			m.Col(0, func() {
 				_ = m.FileImage("assets/img/logo.jpg", props.Rect{
 					Percent: 100,
+					Center:  true,
 				})
 			})
 		})
-		m.Row(smallLine, func() {
-			m.Col(0, func() {
-				m.Text("45100 Caspar Frontage Road West #145", props.Text{
-					Size:  8,
-					Align: consts.Right,
-					Color: cwcColor,
-				})
-			})
-		})
-		m.Row(smallLine, func() {
-			m.Col(0, func() {
-				m.Text("Caspar, CA 95420", props.Text{
-					Size:  8,
-					Align: consts.Right,
-					Color: cwcColor,
-				})
-			})
-		})
-		// m.Row(smallLine, func() {
-		// 	m.Col(0, func() {
-		// 		m.Text("Tel: (415) 309-196", props.Text{
-		// 			Size:  8,
-		// 			Align: consts.Left,
-		// 			Color: cwcColor,
-		// 		})
-		// 	})
-		// })
-		m.Row(smallLine, func() {
-			m.Col(0, func() {
-				m.Text("E-mail: caspar.water@gmail.com", props.Text{
-					Size:  8,
-					Align: consts.Right,
-					Color: cwcColor,
-				})
-			})
-		})
+		fromStyle.multiLine(m,
+			append([]string{meta.Name},
+				append(parseAddress(meta.Address),
+					parseAddress(meta.Contact)...)...))
 	})
 
 	// m.RegisterFooter(func() {
@@ -167,17 +211,7 @@ func writePDF(user User) error {
 
 	m.Row(sepLine, func() {})
 
-	for _, aline := range append([]string{"To:", user.UserName}, parseAddress(user.BillingAddress)...) {
-		m.Row(5, func() {
-			m.Col(10, func() {
-				m.Text(aline, props.Text{
-					Top:   3,
-					Style: consts.Bold,
-					Align: consts.Left,
-				})
-			})
-		})
-	}
+	toStyle.multiLine(m, append([]string{"To:", user.UserName}, parseAddress(user.BillingAddress)...))
 
 	m.Row(10, func() {})
 
@@ -188,7 +222,6 @@ func writePDF(user User) error {
 				Size:  9,
 				Style: consts.Bold,
 				Align: consts.Left,
-				// Color: color.NewWhite(),
 			})
 		})
 		m.ColSpace(9)
@@ -227,7 +260,6 @@ func writePDF(user User) error {
 				Size:  9,
 				Style: consts.Bold,
 				Align: consts.Center,
-				// Color: color.NewWhite(),
 			})
 		})
 		m.ColSpace(9)
