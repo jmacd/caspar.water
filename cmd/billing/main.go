@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/johnfercher/maroto/pkg/color"
 	"github.com/johnfercher/maroto/pkg/consts"
@@ -18,29 +20,36 @@ import (
 var (
 	usersFile    = flag.String("users", "", "users file csv AcctName,User Name,Address,...")
 	metadataFile = flag.String("metadata", "", "file csv")
+	accountsFile = flag.String("accounts", "", "file csv")
 
-	cwcColor = getBlueColor()
-
-	// darkGrayColor := getDarkGrayColor()
-	// grayColor := getGrayColor()
-	// whiteColor := color.NewWhite()
-	// redColor := getRedColor()
-	// header := getHeader()
-	// contents := getContents()
+	cwcColor = color.Color{
+		Red:   10,
+		Green: 10,
+		Blue:  150,
+	}
 )
 
 type (
 	Metadata struct {
-		Name    string `json:"field0"`
-		Address string `json:"field1"`
-		Contact string `json:"field2"`
+		Name    string
+		Address string
+		Contact string
 	}
 
 	User struct {
-		AccountName    string `json:"field0"`
-		UserName       string `json:"field1"`
-		ServiceAddress string `json:"field2"`
-		BillingAddress string `json:"field3"`
+		AccountName    string
+		UserName       string
+		ServiceAddress string
+		BillingAddress string
+	}
+
+	Accounts struct {
+		PeriodEnd   string
+		Maintenance float64
+		Operations  float64
+		Utilities   float64
+		Insurance   float64
+		Taxes       float64
 	}
 )
 
@@ -59,30 +68,45 @@ func main() {
 	}
 }
 
-func csvToStruct(row []string, out interface{}) error {
-	xing := map[string]string{}
-	for i, v := range row {
-		xing[fmt.Sprint("field", i)] = v
-	}
-	data, err := json.Marshal(xing)
-	if err != nil {
-		return fmt.Errorf("to json %w", err)
-
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("from json %w", err)
-	}
-	return nil
-}
-
-func readAll(name string) ([][]string, error) {
+func readAll[T any](name string) ([]T, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
-	ret, err := csv.NewReader(f).ReadAll()
+	read, err := csv.NewReader(f).ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("read csv %s: %w", name, err)
+	}
+	if len(read) < 2 {
+		return nil, fmt.Errorf("not enough rows: %s", name)
+	}
+	legend := read[0]
+	for i := range legend {
+		legend[i] = strings.ReplaceAll(legend[i], " ", "")
+	}
+	rows := read[1:]
+	var ret []T
+	for _, row := range rows {
+		xing := map[string]interface{}{}
+		for i, v := range row {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				xing[legend[i]] = v
+			} else {
+				xing[legend[i]] = f
+			}
+		}
+		data, err := json.Marshal(xing)
+		if err != nil {
+			return nil, fmt.Errorf("to json %w", err)
+
+		}
+		var out T
+		if err := json.Unmarshal(data, &out); err != nil {
+			return nil, fmt.Errorf("from json %w", err)
+		}
+		ret = append(ret, out)
+
 	}
 	return ret, nil
 }
@@ -90,29 +114,38 @@ func readAll(name string) ([][]string, error) {
 func Main() error {
 	flag.Parse()
 
-	users, err := readAll(*usersFile)
+	// Users
+	users, err := readAll[User](*usersFile)
 	if err != nil {
 		return err
 	}
+	numUsers := float64(len(users))
 
-	rawMeta, err := readAll(*metadataFile)
-	if len(rawMeta) != 2 {
-		return fmt.Errorf("metadata file should have two lines: %d", len(rawMeta))
-	}
-	var meta Metadata
-	if err := csvToStruct(rawMeta[1], &meta); err != nil {
+	// Metadata
+	meta, err := readAll[Metadata](*metadataFile)
+	if err != nil {
 		return err
 	}
+	if len(meta) != 1 {
+		return fmt.Errorf("metadata file should have one row: %d", len(meta))
+	}
 
-	for _, row := range users[1:] {
-		var user User
-		if err := csvToStruct(row, &user); err != nil {
-			return err
-		}
+	// Accounts
+	accounts, err := readAll[Accounts](*accountsFile)
+	if err != nil {
+		return err
+	}
+	acct := accounts[len(accounts)-1]
+	acct.Maintenance /= numUsers
+	acct.Operations /= numUsers
+	acct.Utilities /= numUsers
+	acct.Taxes /= numUsers
+	acct.Insurance /= numUsers
 
+	for _, user := range users {
 		fmt.Println("Account", user.AccountName)
 
-		if err := writePDF(meta, user); err != nil {
+		if err := writePDF(meta[0], acct, user); err != nil {
 			return fmt.Errorf("write pdf %w", err)
 		}
 	}
@@ -144,9 +177,21 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func writePDF(meta Metadata, user User) error {
+func fmtMoney(f float64) string {
+	return fmt.Sprintf("$%.2f", f)
+}
+
+func writePDF(meta Metadata, accounts Accounts, user User) error {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(50, 50, 50)
+
+	const layout = "1/2/2006"
+	periodEnd, err := time.Parse(layout, accounts.PeriodEnd)
+	if err != nil {
+		return err
+	}
+	periodEnd = periodEnd.Add(24 * time.Hour)
+	periodName := fmt.Sprint(periodEnd.Month().String()[:3], "-", periodEnd.Year())
 
 	const bigLine = 5
 	const smallLine = 4
@@ -170,6 +215,12 @@ func writePDF(meta Metadata, user User) error {
 		color: cwcColor,
 	}
 
+	normText := props.Text{
+		Top:   3,
+		Style: consts.Bold,
+		Align: consts.Left,
+	}
+
 	m.RegisterHeader(func() {
 		m.Row(30, func() {
 			m.Col(0, func() {
@@ -179,34 +230,10 @@ func writePDF(meta Metadata, user User) error {
 				})
 			})
 		})
-		fromStyle.multiLine(m,
-			append([]string{meta.Name},
-				append(parseAddress(meta.Address),
-					parseAddress(meta.Contact)...)...))
-	})
-
-	// m.RegisterFooter(func() {
-	// 	m.Row(smallLine, func() {
-	// 		m.Col(0, func() {
-	// 			m.Text("E-mail: caspar.water@gmail.com", props.Text{
-	// 				Size:  8,
-	// 				Align: consts.Left,
-	// 				Color: cwcColor,
-	// 			})
-	// 		})
-	// 	})
-	// })
-
-	// m.Row(10, func() {})
-
-	m.Row(10, func() {
-		m.Col(12, func() {
-			m.Text("Invoice Oct-2022", props.Text{
-				Top:   3,
-				Style: consts.Bold,
-				Align: consts.Left,
-			})
-		})
+		lines := []string{meta.Name}
+		lines = append(lines, parseAddress(meta.Address)...)
+		lines = append(lines, parseAddress(meta.Contact)...)
+		fromStyle.multiLine(m, lines)
 	})
 
 	m.Row(sepLine, func() {})
@@ -215,87 +242,50 @@ func writePDF(meta Metadata, user User) error {
 
 	m.Row(10, func() {})
 
-	m.Row(7, func() {
-		m.Col(3, func() {
-			m.Text("Pay all the money", props.Text{
-				Top:   1.5,
-				Size:  9,
-				Style: consts.Bold,
-				Align: consts.Left,
-			})
+	m.Row(10, func() {
+		m.Col(12, func() {
+			m.Text("Invoice "+periodName, normText)
 		})
-		m.ColSpace(9)
 	})
+
+	sum := accounts.Maintenance + accounts.Operations + accounts.Utilities + accounts.Insurance + accounts.Taxes
 
 	m.Row(7, func() {
 		m.Col(3, func() {
 			m.TableList([]string{
-				"WHAT",
-				"HOWMUCH",
+				"",
+				"",
 			}, [][]string{
 				{
 					"Maintenance",
-					"300.0",
+					fmtMoney(accounts.Maintenance),
 				},
 				{
 					"Operations",
-					"0.0",
+					fmtMoney(accounts.Operations),
 				},
 				{
 					"Utilities",
-					"0.0",
+					fmtMoney(accounts.Utilities),
 				},
 				{
 					"Insurance",
-					"0.0",
+					fmtMoney(accounts.Insurance),
 				},
 				{
 					"Taxes",
-					"0.0",
+					fmtMoney(accounts.Taxes),
 				},
 			})
+		})
+	})
 
-			m.Text("$300.00", props.Text{
-				Top:   1.5,
-				Size:  9,
-				Style: consts.Bold,
-				Align: consts.Center,
-			})
+	m.Row(7, func() {
+		m.Col(3, func() {
+			m.Text(fmt.Sprintf("Total: $%.2f", sum), normText)
 		})
 		m.ColSpace(9)
 	})
 
 	return m.OutputFileAndClose(user.AccountName + ".pdf")
-}
-
-func getDarkGrayColor() color.Color {
-	return color.Color{
-		Red:   55,
-		Green: 55,
-		Blue:  55,
-	}
-}
-
-func getGrayColor() color.Color {
-	return color.Color{
-		Red:   200,
-		Green: 200,
-		Blue:  200,
-	}
-}
-
-func getBlueColor() color.Color {
-	return color.Color{
-		Red:   10,
-		Green: 10,
-		Blue:  150,
-	}
-}
-
-func getRedColor() color.Color {
-	return color.Color{
-		Red:   150,
-		Green: 10,
-		Blue:  10,
-	}
 }
