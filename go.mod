@@ -19,6 +19,7 @@ require (
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
+	github.com/Rhymond/go-money v1.0.9 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
@@ -89,3 +90,5 @@ require (
 //replace github.com/mochi-co/mqtt => ../mochi-co-mqtt-jmacd
 
 // replace github.com/eclipse/paho.mqtt.golang => ../paho.mqtt.golang-jmacd
+
+// replace github.com/Rhymond/go-money => ../go-money
