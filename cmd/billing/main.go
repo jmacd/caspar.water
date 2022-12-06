@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
@@ -11,24 +12,25 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/Rhymond/go-money"
-	"github.com/johnfercher/maroto/pkg/color"
-	"github.com/johnfercher/maroto/pkg/consts"
-	"github.com/johnfercher/maroto/pkg/pdf"
-	"github.com/johnfercher/maroto/pkg/props"
+	"github.com/jmacd/maroto/pkg/color"
+	"github.com/jmacd/maroto/pkg/consts"
+	"github.com/jmacd/maroto/pkg/pdf"
+	"github.com/jmacd/maroto/pkg/props"
 )
 
 var (
 	// These three files contain private data, are not kept in
 	// this repository.
-	usersFile    = flag.String("users", "users.csv", "users file csv AcctName,User Name,Address,...")
-	metadataFile = flag.String("metadata", "metadata.csv", "file csv")
-	accountsFile = flag.String("accounts", "accounts.csv", "file csv")
-	outputDir    = flag.String("output", "output", "output directory")
+	usersFile     = flag.String("users", "users.csv", "users file csv AcctName,User Name,Address,...")
+	metadataFile  = flag.String("metadata", "metadata.csv", "file csv")
+	accountsFile  = flag.String("accounts", "accounts.csv", "file csv")
+	statementsDir = flag.String("statements", "statements", "input directory")
 
-	// Caspar water is blue!
+	// Caspar water == blue.
 	cwcColor = color.Color{
 		Red:   10,
 		Green: 10,
@@ -39,7 +41,9 @@ var (
 )
 
 const (
-	csvLayout = "1/2/2006"
+	csvLayout         = "1/2/2006"
+	invoiceDateLayout = "2006-Jan"
+	fullDateLayout    = "January 2, 2006"
 
 	// maxConnections is how many connections we can reach,
 	// excluding the one that is not viable (so that with that
@@ -121,14 +125,21 @@ type (
 		//   adjustment is applied.
 		Method string
 
+		billDate time.Time
+
 		// endDate is the parsed PeriodEnd.
 		periodEnd time.Time
+
+		invoiceName string
 
 		// periodName is computed from PeriodEnd.
 		periodName string
 
 		// dirPath is the directory where PDFs are written.
 		dirPath string
+
+		// statementTmpl is the body txt of the statement.
+		statementTmpl *template.Template
 	}
 
 	// Billing is the billing state that evolves from one period
@@ -146,6 +157,22 @@ type (
 
 		// adjustments counts the number of adjustments.
 		adjustments int
+	}
+
+	Vars struct {
+		StartDate          string
+		EndDate            string
+		EffectiveUserCount int
+		UserWeight         int
+		Percent            string
+		Fraction           string
+		Margin             string
+		Total              string
+		Pay                string
+		Operations         string
+		Utilities          string
+		Taxes              string
+		Insurance          string
 	}
 )
 
@@ -171,14 +198,23 @@ func (acct *Accounts) parsePeriod() (err error) {
 	if err != nil {
 		return err
 	}
-	billDate := acct.periodEnd.Add(24 * time.Hour)
-	acct.periodName = fmt.Sprint(billDate.Month().String()[:3], "-", billDate.Year())
-
-	acct.dirPath = path.Join(*outputDir, acct.periodName)
+	acct.billDate = acct.periodEnd.Add(24 * time.Hour)
+	acct.invoiceName = acct.billDate.Format(invoiceDateLayout)
+	acct.dirPath = path.Join(*statementsDir, acct.invoiceName)
 	if err := os.MkdirAll(acct.dirPath, 0777); err != nil {
 		return fmt.Errorf("mkdir: %s: %w", acct.dirPath, err)
 	}
 	return nil
+}
+
+func (a *Accounts) prepareStatement() (err error) {
+	base := a.invoiceName + ".txt"
+	a.statementTmpl = template.New(base)
+
+	in := path.Join(*statementsDir, base)
+
+	_, err = a.statementTmpl.ParseFiles(in)
+	return err
 }
 
 // sumMoney computes a money sum.
@@ -345,7 +381,12 @@ func (b *Billing) Main() error {
 				b.savingsRate = 1 + ratio*targetMargin
 			}
 		default:
-			panic(fmt.Sprintf("Unknown accounting method for %s: %s", acct.periodName, acct.Method))
+			panic(fmt.Sprintf("Unknown accounting method for %s: %s", acct.invoiceName, acct.Method))
+		}
+
+		err := acct.prepareStatement()
+		if err != nil {
+			return err
 		}
 
 		expenses := sumMoney(
@@ -357,7 +398,7 @@ func (b *Billing) Main() error {
 
 		total := money.New(int64(float64(expenses.Amount())*b.savingsRate), money.USD)
 
-		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", acct.periodName, expenses.Display(), b.savingsRate)
+		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", acct.invoiceName, expenses.Display(), b.savingsRate)
 
 		payments, err := total.Split(b.effectiveUserCount)
 		if err != nil {
@@ -370,16 +411,43 @@ func (b *Billing) Main() error {
 			payments[i], payments[j] = payments[j], payments[i]
 		})
 
+		marginStr := fmt.Sprintf("%.2f%%", b.savingsRate-1)
+		startDate := acct.billDate.AddDate(-1, +6, 0).Format(fullDateLayout)
+		endDate := acct.periodEnd.Format(fullDateLayout)
+
 		for userNo := range users {
 			user := &users[userNo]
+
+			pdfPath := path.Join(acct.dirPath, user.AccountName+".pdf")
 
 			pay, fraction, weight, reduced := b.getPayment(user.AccountName, payments)
 			payments = reduced
 
-			pdfPath := path.Join(acct.dirPath, user.AccountName+".pdf")
+			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
+			fracStr := fmt.Sprintf("%.4f", fraction)
 
-			if err := b.writePDF(&meta[0], acct, user, fraction, weight, *total, pay, pdfPath); err != nil {
-				return fmt.Errorf("write pdf %w", err)
+			vars := &Vars{
+				StartDate:          startDate,
+				EndDate:            endDate,
+				EffectiveUserCount: b.effectiveUserCount,
+				UserWeight:         weight,
+				Percent:            pctStr,
+				Fraction:           fracStr,
+				Margin:             marginStr,
+				Total:              total.Display(),
+				Pay:                pay.Display(),
+				Operations:         acct.Operations.Display(),
+				Utilities:          acct.Utilities.Display(),
+				Taxes:              acct.Taxes.Display(),
+				Insurance:          acct.Insurance.Display(),
+			}
+
+			bill, err := b.makeBill(&meta[0], acct, user, vars)
+			if err != nil {
+				return err
+			}
+			if err := bill.OutputFileAndClose(pdfPath); err != nil {
+				return err
 			}
 		}
 	}
@@ -411,9 +479,9 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func (b *Billing) writePDF(meta *Metadata, acct *Accounts, user *User, fraction float64, weight int, total, pay money.Money, outputPath string) error {
+func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Vars) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
-	m.SetPageMargins(50, 50, 50)
+	m.SetPageMargins(25, 25, 25)
 
 	const bigLine = 5
 	const smallLine = 4
@@ -428,28 +496,26 @@ func (b *Billing) writePDF(meta *Metadata, acct *Accounts, user *User, fraction 
 		color: color.NewBlack(),
 	}
 
-	fromStyle := lineStyle{
-		sz:    8,
-		ht:    smallLine,
-		top:   3,
-		txt:   consts.Normal,
-		align: consts.Right,
-		color: cwcColor,
-	}
-
 	boldText := props.Text{
-		Top:   3,
-		Style: consts.Bold,
-		Align: consts.Left,
+		Top:    3,
+		Style:  consts.Bold,
+		Align:  consts.Left,
+		Family: consts.Helvetica,
+		Size:   10,
 	}
 
 	normText := props.Text{
-		Top:   3,
-		Align: consts.Left,
+		Align:  consts.Left,
+		Family: consts.Helvetica,
+		Size:   10,
 	}
 
 	tableStyle := props.TableList{
 		Align: consts.Right,
+		ContentProp: props.TableListContent{
+			Family: consts.Helvetica,
+			Size:   10,
+		},
 	}
 
 	m.RegisterHeader(func() {
@@ -461,13 +527,16 @@ func (b *Billing) writePDF(meta *Metadata, acct *Accounts, user *User, fraction 
 				})
 			})
 		})
-		lines := []string{meta.Name}
-		lines = append(lines, parseAddress(meta.Address)...)
-		lines = append(lines, parseAddress(meta.Contact)...)
-		fromStyle.multiLine(m, lines)
 	})
 
-	m.Row(sepLine, func() {})
+	m.RegisterFooter(func() {
+		m.Row(3, func() {
+			m.Col(0, func() {
+				m.Text("Printed "+time.Now().Format(fullDateLayout)+" "+meta.Address+" "+meta.Contact, normText)
+
+			})
+		})
+	})
 
 	toStyle.multiLine(m, append([]string{"To:", user.UserName}, parseAddress(user.BillingAddress)...))
 
@@ -475,41 +544,36 @@ func (b *Billing) writePDF(meta *Metadata, acct *Accounts, user *User, fraction 
 
 	m.Row(10, func() {
 		m.Col(12, func() {
-			m.Text("Invoice "+acct.periodName, boldText)
+			m.Text("Invoice "+acct.invoiceName, boldText)
 		})
 	})
 
-	pctStr := fmt.Sprintf("%.2f%%", fraction*100)
-	fracStr := fmt.Sprintf("%.4f", fraction)
-
-	m.Row(10, func() {
-		m.Text(
-			fmt.Sprintf(
-				"Your bill represents %v of the semi-annual cost of operating the Caspar water system.",
-				pctStr,
-			),
-			normText,
-		)
-	})
-	if b.savingsRate != 1 {
-		m.Row(10, func() {
-			m.Text(
-				fmt.Sprintf(
-					"An additional operating margin of %.0f%% has been applied to cover maintenance costs.",
-					(b.savingsRate-1)*100,
-				),
-				normText,
-			)
-		})
+	var textBuf bytes.Buffer
+	err := acct.statementTmpl.Execute(&textBuf, vars)
+	if err != nil {
+		return nil, err
 	}
 
-	m.Row(10, func() {})
+	for _, para := range strings.Split(textBuf.String(), "\n\n") {
+		para = strings.TrimSpace(para)
+		para = strings.ReplaceAll(para, "\n", " ")
+
+		plines := m.GetLinesHeight(para, normText, 115)
+		m.Row(float64(plines), func() {
+			m.Col(0, func() {
+				m.Text(para, normText)
+			})
+		})
+		m.Row(2, func() {})
+	}
+	m.Row(2, func() {})
+	m.Line(2)
+	m.Row(2, func() {})
 
 	m.Row(7, func() {
 		m.TableList([]string{
 			"Expense",
 			"Cost",
-			"",
 		}, [][]string{
 			{
 				"Operations",
@@ -529,23 +593,27 @@ func (b *Billing) writePDF(meta *Metadata, acct *Accounts, user *User, fraction 
 			},
 			{},
 			{
-				"Subtotal",
-				total.Display(),
+				"Subtotal (Semi-annual)",
+				vars.Total,
 			},
 			{
 				"Fraction",
-				"× " + fracStr,
+				"× " + vars.Fraction,
+			},
+			{
+				"Margin",
+				"+ " + vars.Margin,
 			},
 			{
 				"",
 				"",
 			},
 			{
-				"Your payment",
-				pay.Display(),
+				"Payment",
+				vars.Pay,
 			},
 		}, tableStyle)
 	})
 
-	return m.OutputFileAndClose(outputPath)
+	return m, nil
 }

@@ -3,8 +3,9 @@ module github.com/jmacd/caspar.water
 go 1.18
 
 require (
+	github.com/Rhymond/go-money v1.0.9
 	github.com/eclipse/paho.mqtt.golang v1.3.5
-	github.com/johnfercher/maroto v0.39.0
+	github.com/jmacd/maroto v0.0.0-00010101000000-000000000000
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mochi-co/mqtt v1.2.3
 	github.com/stretchr/testify v1.8.0
@@ -12,14 +13,12 @@ require (
 	go.opentelemetry.io/collector/pdata v0.61.0
 	go.opentelemetry.io/proto/otlp v0.18.0
 	go.uber.org/zap v1.23.0
-	google.golang.org/appengine v1.6.6
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
-	github.com/Rhymond/go-money v1.0.9 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
@@ -92,3 +91,5 @@ require (
 // replace github.com/eclipse/paho.mqtt.golang => ../paho.mqtt.golang-jmacd
 
 // replace github.com/Rhymond/go-money => ../go-money
+
+replace github.com/jmacd/maroto => ../maroto

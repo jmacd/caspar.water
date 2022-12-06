@@ -1,4 +1,0 @@
-Your bill represents {{.Percent}} of the semi-annual cost of operating the Caspar water system.
-
-An additional operating margin of {{.Margin}} has been applied to support maintenance and building our financial reserve.
-
