@@ -1,27 +1,11 @@
 This is a semi-annual statement of the cost of operations for the
 Caspar Water Company.  Listed below are total expenses for serving
-water across four categories from {{.StartDate}} through {{.EndDate}}.
+water from {{.StartDate}} through {{.EndDate}}.
 
-Operations costing {{.Operations}} include expenses associated with
-water treatment, inspection, monitoring, and chemicals.  Utilities
-costing {{.Utilities}} include electricity, primarily for pumping.
-Taxes costing {{ .Taxes }} are half of the yearly property taxes
-assessed to the system.  Insurance fees costing {{ .Insurance }} are
-half of the yearly general liability insurance required to operate the
-company.
+Billing is per connection and not based on metered usage.  Your bill
+represents {{.Percent}} of our semi-annual expenses.  This fraction is
+calculated by dividing your connection's weight ({{.UserWeight }}) by
+the effective number of connections ({{.EffectiveUserCount }}) in the
+system.  Please see the attached notice for an explanation of how your
+bill was computed.
 
-Note that billing is per connection and not based on individual usage.
-Your bill represents {{.Percent}} of our semi-annual expenses.  This
-fraction is calculated by dividing your connection's weight
-({{.UserWeight }}) by the effective number of connections
-({{.EffectiveUserCount }}) in the system.
-
-We are in an introductory phase during which the effective number of
-connections is inflated by new connections that we plan to add over
-the next three years.  The inflated number of connections serves to
-lower each current connection's share of costs as we grow the system.
-
-We are also in an introductory phase during which expenses are passed
-through with no additional operating margin to build our financial
-reserve.  The operating margin is set to rise to 10% of total expenses
-in October 2023 and 20% of total expenses in October 2024 statement.

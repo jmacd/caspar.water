@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -167,12 +168,16 @@ type (
 		Percent            string
 		Fraction           string
 		Margin             string
-		Total              string
-		Pay                string
-		Operations         string
-		Utilities          string
-		Taxes              string
-		Insurance          string
+
+		// All money display strings
+		Total      string
+		Pay        string
+		PastDue    string
+		TotalDue   string
+		Operations string
+		Utilities  string
+		Taxes      string
+		Insurance  string
 	}
 )
 
@@ -207,14 +212,21 @@ func (acct *Accounts) parsePeriod() (err error) {
 	return nil
 }
 
-func (a *Accounts) prepareStatement() (err error) {
+func (a *Accounts) prepareStatement(currentTmplPtr **template.Template) (err error) {
 	base := a.invoiceName + ".txt"
-	a.statementTmpl = template.New(base)
-
+	nt := template.New(base)
 	in := path.Join(*statementsDir, base)
 
-	_, err = a.statementTmpl.ParseFiles(in)
-	return err
+	if _, err = nt.ParseFiles(in); err == nil {
+		a.statementTmpl = nt
+		*currentTmplPtr = nt
+	} else if errors.Is(err, os.ErrNotExist) && *currentTmplPtr != nil {
+		a.statementTmpl = *currentTmplPtr
+	} else {
+		return fmt.Errorf("no statement template found: %w", err)
+	}
+
+	return nil
 }
 
 // sumMoney computes a money sum.
@@ -344,12 +356,19 @@ func (b *Billing) Main() error {
 		accounts[acctNo].Taxes = *yearlyTax[0]
 		accounts[acctNo].Insurance = *yearlyIns[0]
 
+		if accounts[acctNo+1].Taxes.Amount() != 0 ||
+			accounts[acctNo+1].Taxes.Amount() != 0 {
+			return fmt.Errorf("Off-cycle taxes and insurance not handled")
+		}
+
 		// The final period will be missing every other cycle.
 		if acctNo+1 < len(accounts) {
 			accounts[acctNo+1].Taxes = *yearlyTax[1]
 			accounts[acctNo+1].Insurance = *yearlyIns[1]
 		}
 	}
+
+	var currentTmpl *template.Template
 
 	for cycleNo := range accounts {
 		acct := &accounts[cycleNo]
@@ -384,8 +403,9 @@ func (b *Billing) Main() error {
 			panic(fmt.Sprintf("Unknown accounting method for %s: %s", acct.invoiceName, acct.Method))
 		}
 
-		err := acct.prepareStatement()
+		err := acct.prepareStatement(&currentTmpl)
 		if err != nil {
+			fmt.Println("UMM")
 			return err
 		}
 
@@ -412,7 +432,7 @@ func (b *Billing) Main() error {
 		})
 
 		marginStr := fmt.Sprintf("%.2f%%", b.savingsRate-1)
-		startDate := acct.billDate.AddDate(-1, +6, 0).Format(fullDateLayout)
+		startDate := acct.billDate.AddDate(0, -6, 0).Format(fullDateLayout)
 		endDate := acct.periodEnd.Format(fullDateLayout)
 
 		for userNo := range users {
@@ -481,7 +501,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 
 func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Vars) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
-	m.SetPageMargins(25, 25, 25)
+	m.SetPageMargins(35, 30, 35)
 
 	const bigLine = 5
 	const smallLine = 4
@@ -496,6 +516,14 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 		color: color.NewBlack(),
 	}
 
+	paymentStyle := lineStyle{
+		sz:    10,
+		ht:    bigLine,
+		top:   3,
+		align: consts.Left,
+		color: color.NewBlack(),
+	}
+
 	boldText := props.Text{
 		Top:    3,
 		Style:  consts.Bold,
@@ -505,9 +533,24 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 	}
 
 	normText := props.Text{
-		Align:  consts.Left,
-		Family: consts.Helvetica,
-		Size:   10,
+		Align:           consts.Left,
+		Family:          consts.Helvetica,
+		Size:            10,
+		VerticalPadding: 1,
+	}
+
+	centerText := props.Text{
+		Align:           consts.Center,
+		Family:          consts.Helvetica,
+		Size:            10,
+		VerticalPadding: 1,
+	}
+
+	rightText := props.Text{
+		Align:           consts.Right,
+		Family:          consts.Helvetica,
+		Size:            10,
+		VerticalPadding: 1,
 	}
 
 	tableStyle := props.TableList{
@@ -532,18 +575,28 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 	m.RegisterFooter(func() {
 		m.Row(3, func() {
 			m.Col(0, func() {
-				m.Text("Printed "+time.Now().Format(fullDateLayout)+" "+meta.Address+" "+meta.Contact, normText)
+				m.Text(meta.Contact, centerText)
 
 			})
 		})
 	})
 
-	toStyle.multiLine(m, append([]string{"To:", user.UserName}, parseAddress(user.BillingAddress)...))
+	m.Row(4, func() {})
+	m.Row(6, func() {
+		m.Col(4, func() {
+			m.Text("To:", normText)
+		})
+		m.ColSpace(4)
+		m.Col(4, func() {
+			m.Text(time.Now().Format(fullDateLayout), rightText)
+		})
+	})
 
-	m.Row(10, func() {})
+	toStyle.multiLine(m, append([]string{user.UserName}, parseAddress(user.BillingAddress)...))
 
-	m.Row(10, func() {
-		m.Col(12, func() {
+	m.Row(4, func() {})
+	m.Row(12, func() {
+		m.Col(4, func() {
 			m.Text("Invoice "+acct.invoiceName, boldText)
 		})
 	})
@@ -566,8 +619,6 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 		})
 		m.Row(2, func() {})
 	}
-	m.Row(2, func() {})
-	m.Line(2)
 	m.Row(2, func() {})
 
 	m.Row(7, func() {
@@ -597,7 +648,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 				vars.Total,
 			},
 			{
-				"Fraction",
+				"Share",
 				"× " + vars.Fraction,
 			},
 			{
@@ -609,11 +660,28 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 				"",
 			},
 			{
-				"Payment",
+				"New balance",
 				vars.Pay,
+			},
+			{
+				"Past due",
+				vars.PastDue,
+			},
+			{
+				"Amount due",
+				vars.TotalDue,
 			},
 		}, tableStyle)
 	})
+
+	m.Row(4, func() {})
+	m.Row(12, func() {
+		m.Col(4, func() {
+			m.Text("Please send payment to:", normText)
+		})
+	})
+
+	paymentStyle.multiLine(m, append([]string{meta.Name}, parseAddress(meta.Address)...))
 
 	return m, nil
 }

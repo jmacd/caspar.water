@@ -1,1 +1,0 @@
-Your bill represents {{.Percent}} of the semi-annual cost of operating the Caspar water system.
