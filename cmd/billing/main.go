@@ -24,11 +24,13 @@ import (
 )
 
 var (
-	// These three files contain private data, are not kept in
+	// These files contain private data, are not kept in
 	// this repository.
-	usersFile     = flag.String("users", "users.csv", "users file csv AcctName,User Name,Address,...")
-	metadataFile  = flag.String("metadata", "metadata.csv", "file csv")
-	accountsFile  = flag.String("accounts", "accounts.csv", "file csv")
+	usersFile    = flag.String("users", "users.csv", "users file csv AcctName,User Name,Address,...")
+	metadataFile = flag.String("metadata", "metadata.csv", "file csv")
+	accountsFile = flag.String("accounts", "accounts.csv", "file csv")
+	ledgerFile   = flag.String("ledger", "ledger.csv", "file csv")
+
 	statementsDir = flag.String("statements", "statements", "input directory")
 
 	// Caspar water == blue.
@@ -61,8 +63,8 @@ const (
 	communityCenterAdjustment = (communityCenterAdjustedUserCount - 1)
 
 	// communityCenterAccount is the account name for the
-	// community center used to carry out the adjustment.
-	communityCenterAccount = "CommCtr"
+	// community center used to carry out its adjustment.
+	communityCenterAccount = "Comm_Ctr"
 
 	initialMargin       = 0.0
 	targetMargin        = 0.2
@@ -99,6 +101,11 @@ type (
 
 		// BillingAddress is where the user receives mail.
 		BillingAddress string
+
+		// These are calculated from the payments ledger.
+		lastPaymentDate time.Time
+		lastPayment     money.Money
+		accountBalance  money.Money
 	}
 
 	// Accounts describes the cost of doing business.
@@ -160,20 +167,36 @@ type (
 		adjustments int
 	}
 
+	// Payment records a single user's payment.
+	Payment struct {
+		Date        string
+		AccountName string
+		Amount      money.Money
+	}
+
 	Vars struct {
-		StartDate          string
-		EndDate            string
+		// Timestamps
+		StartDate           string
+		EndDate             string
+		LastPaymentReceived string
+
+		// How the fraction/percent are computed.
 		EffectiveUserCount int
 		UserWeight         int
-		Percent            string
-		Fraction           string
-		Margin             string
 
-		// All money display strings
-		Total      string
-		Pay        string
-		PastDue    string
-		TotalDue   string
+		// Display strings
+		Percent  string
+		Fraction string
+		Margin   string
+
+		// Money top shelf
+		Total       string // Semi-annual period
+		Pay         string // Share of period total
+		PastDue     string // Unpaid balance
+		TotalDue    string // Pay + PastDue
+		LastPayment string // Amount of last payment
+
+		// Money breakdown
 		Operations string
 		Utilities  string
 		Taxes      string
@@ -323,6 +346,37 @@ func (b *Billing) getPayment(name string, payments []*money.Money) (money.Money,
 	return pay, fraction, weight, payments
 }
 
+func parsePayments(payments []Payment, users []User) error {
+	um := map[string]*User{}
+
+	for i := range users {
+		u := &users[i]
+		um[u.AccountName] = u
+		u.accountBalance = *money.New(0, money.USD)
+		u.lastPayment = *money.New(0, money.USD)
+	}
+
+	for _, pay := range payments {
+		u, ok := um[pay.AccountName]
+		if !ok {
+			return fmt.Errorf("payment user not found: %v", pay.AccountName)
+		}
+
+		when, err := time.Parse(csvLayout, pay.Date)
+		if err != nil {
+			return err
+		}
+
+		u.lastPaymentDate = when
+		u.lastPayment = pay.Amount
+
+		newBal, _ := u.accountBalance.Subtract(&pay.Amount)
+		u.accountBalance = *newBal
+	}
+
+	return nil
+}
+
 func (b *Billing) Main() error {
 	flag.Parse()
 
@@ -366,6 +420,16 @@ func (b *Billing) Main() error {
 			accounts[acctNo+1].Taxes = *yearlyTax[1]
 			accounts[acctNo+1].Insurance = *yearlyIns[1]
 		}
+	}
+
+	// Payments ledger
+	payments, err := readAll[Payment](*ledgerFile)
+	if err != nil {
+		return err
+	}
+
+	if err := parsePayments(payments, users); err != nil {
+		return err
 	}
 
 	var currentTmpl *template.Template
@@ -446,20 +510,41 @@ func (b *Billing) Main() error {
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
 			fracStr := fmt.Sprintf("%.4f", fraction)
 
+			totalDue, _ := user.accountBalance.Add(&pay)
+
+			var lastPay string
+			var lastPayDate string
+			if user.lastPayment.Amount() != 0 {
+				lastPay = user.lastPayment.Display()
+				lastPayDate = user.lastPaymentDate.Format(fullDateLayout)
+			}
+
 			vars := &Vars{
-				StartDate:          startDate,
-				EndDate:            endDate,
+				StartDate:           startDate,
+				EndDate:             endDate,
+				LastPaymentReceived: lastPayDate,
+
+				// Share
 				EffectiveUserCount: b.effectiveUserCount,
 				UserWeight:         weight,
-				Percent:            pctStr,
-				Fraction:           fracStr,
-				Margin:             marginStr,
-				Total:              total.Display(),
-				Pay:                pay.Display(),
-				Operations:         acct.Operations.Display(),
-				Utilities:          acct.Utilities.Display(),
-				Taxes:              acct.Taxes.Display(),
-				Insurance:          acct.Insurance.Display(),
+
+				// Fractions
+				Percent:  pctStr,
+				Fraction: fracStr,
+				Margin:   marginStr,
+
+				// Top shelf
+				Total:       total.Display(),
+				Pay:         pay.Display(),
+				TotalDue:    totalDue.Display(),
+				PastDue:     user.accountBalance.Display(),
+				LastPayment: lastPay,
+
+				// Breakdown
+				Operations: acct.Operations.Display(),
+				Utilities:  acct.Utilities.Display(),
+				Taxes:      acct.Taxes.Display(),
+				Insurance:  acct.Insurance.Display(),
 			}
 
 			bill, err := b.makeBill(&meta[0], acct, user, vars)
@@ -469,6 +554,10 @@ func (b *Billing) Main() error {
 			if err := bill.OutputFileAndClose(pdfPath); err != nil {
 				return err
 			}
+
+			// update the account balance
+			newBal, _ := user.accountBalance.Add(&pay)
+			user.accountBalance = *newBal
 		}
 	}
 	return nil
@@ -501,7 +590,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 
 func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Vars) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
-	m.SetPageMargins(35, 30, 35)
+	m.SetPageMargins(30, 25, 30)
 
 	const bigLine = 5
 	const smallLine = 4
@@ -510,7 +599,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 	toStyle := lineStyle{
 		sz:    10,
 		ht:    bigLine,
-		top:   3,
+		top:   4,
 		txt:   consts.Bold,
 		align: consts.Left,
 		color: color.NewBlack(),
@@ -519,7 +608,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 	paymentStyle := lineStyle{
 		sz:    10,
 		ht:    bigLine,
-		top:   3,
+		top:   4,
 		align: consts.Left,
 		color: color.NewBlack(),
 	}
@@ -557,7 +646,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 		Align: consts.Right,
 		ContentProp: props.TableListContent{
 			Family: consts.Helvetica,
-			Size:   10,
+			Size:   9,
 		},
 	}
 
@@ -617,14 +706,15 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 				m.Text(para, normText)
 			})
 		})
-		m.Row(2, func() {})
+		m.Row(1, func() {})
 	}
-	m.Row(2, func() {})
+	m.Row(1, func() {})
 
-	m.Row(7, func() {
+	m.Row(2, func() {
 		m.TableList([]string{
 			"Expense",
 			"Cost",
+			"",
 		}, [][]string{
 			{
 				"Operations",
@@ -655,10 +745,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 				"Margin",
 				"+ " + vars.Margin,
 			},
-			{
-				"",
-				"",
-			},
+			{},
 			{
 				"New balance",
 				vars.Pay,
@@ -674,8 +761,8 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 		}, tableStyle)
 	})
 
-	m.Row(4, func() {})
-	m.Row(12, func() {
+	m.Row(2, func() {})
+	m.Row(4, func() {
 		m.Col(4, func() {
 			m.Text("Please send payment to:", normText)
 		})
@@ -683,5 +770,11 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 
 	paymentStyle.multiLine(m, append([]string{meta.Name}, parseAddress(meta.Address)...))
 
+	m.Row(10, func() {})
+	m.Row(4, func() {
+		m.Col(4, func() {
+			m.Text("Thank you!", normText)
+		})
+	})
 	return m, nil
 }
