@@ -1,0 +1,10 @@
+This is a semi-annual statement of the cost of operations for the
+Caspar Water Company.  Listed below are total expenses for serving
+water from {{.StartDate}} through {{.EndDate}}.
+
+Your bill represents {{.Percent}} of our semi-annual expenses.  This
+fraction is calculated by dividing your connection's weight
+({{.UserWeight }}) by the effective number of connections
+({{.EffectiveUserCount }}) in the system.  Please see the attached
+notice for an explanation of how your bill was computed.
+

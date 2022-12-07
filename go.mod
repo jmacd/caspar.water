@@ -3,7 +3,9 @@ module github.com/jmacd/caspar.water
 go 1.18
 
 require (
+	github.com/Rhymond/go-money v1.0.9
 	github.com/eclipse/paho.mqtt.golang v1.3.5
+	github.com/jmacd/maroto v0.0.0-00010101000000-000000000000
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mochi-co/mqtt v1.2.3
 	github.com/stretchr/testify v1.8.0
@@ -18,6 +20,7 @@ require (
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -35,6 +38,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/klauspost/compress v1.15.10 // indirect
 	github.com/knadh/koanf v1.4.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -54,6 +58,7 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
 	github.com/rs/xid v1.4.0 // indirect
+	github.com/ruudk/golang-pdf417 v0.0.0-20201230142125-a7e3863a1245 // indirect
 	github.com/shirou/gopsutil/v3 v3.22.8 // indirect
 	github.com/spf13/cobra v1.5.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
@@ -84,3 +89,7 @@ require (
 //replace github.com/mochi-co/mqtt => ../mochi-co-mqtt-jmacd
 
 // replace github.com/eclipse/paho.mqtt.golang => ../paho.mqtt.golang-jmacd
+
+// replace github.com/Rhymond/go-money => ../go-money
+
+replace github.com/jmacd/maroto => ../maroto
