@@ -2,17 +2,33 @@
 package matrixfruit
 
 import (
+	"context"
+	"fmt"
 	"os"
 
-	"log"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-func Main() {
-	f, err := os.OpenFile("/dev/ttyACM0", os.O_RDWR, 0)
+type matrixfruitExporter struct {
+	display *os.File
+}
+
+func newMatrixfruitExporter(cfg *Config) (*matrixfruitExporter, error) {
+	f, err := os.OpenFile(cfg.Device, os.O_RDWR, 0)
 	if err != nil {
-		log.Println("open", err)
+		return nil, fmt.Errorf("open device")
 	}
-	_, err = f.Write([]byte{
+	return &matrixfruitExporter{
+		display: f,
+	}, err
+}
+
+func (m *matrixfruitExporter) pushMetrics(_ context.Context, md pmetric.Metrics) error {
+	return m.export()
+}
+
+func (m *matrixfruitExporter) export() error {
+	_, err := m.display.Write([]byte{
 		// For a 2x16
 		0xFE,
 		0xD1,
@@ -81,8 +97,5 @@ func Main() {
 		'3',
 		'4',
 	})
-	if err != nil {
-		log.Println("write", err)
-	}
-
+	return err
 }
