@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/receiver"
 )
 
 const (
@@ -24,9 +24,8 @@ func NewFactory() component.ReceiverFactory {
 	)
 }
 
-func createDefaultConfig() config.Receiver {
+func createDefaultConfig() receiver.CreateSettings {
 	return &Config{
-		ReceiverSettings: config.NewReceiverSettings(config.NewComponentID(typeStr)),
 		Broker: BrokerConfig{
 			NetAddr: confignet.NetAddr{
 				Endpoint:  defaultBindEndpoint,
@@ -39,7 +38,7 @@ func createDefaultConfig() config.Receiver {
 func createMetricsReceiver(
 	_ context.Context,
 	params component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	cfg receiver.CreateSettings,
 	consumer consumer.Metrics,
 ) (component.MetricsReceiver, error) {
 	c := cfg.(*Config)

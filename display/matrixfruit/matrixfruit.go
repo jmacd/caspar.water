@@ -1,5 +1,5 @@
 // https://learn.adafruit.com/usb-plus-serial-backpack/command-reference
-package main
+package matrixfruit
 
 import (
 	"os"
@@ -7,8 +7,8 @@ import (
 	"log"
 )
 
-func main() {
-	f, err := os.OpenFile("/dev/ttyACM1", os.O_RDWR, 0)
+func Main() {
+	f, err := os.OpenFile("/dev/ttyACM0", os.O_RDWR, 0)
 	if err != nil {
 		log.Println("open", err)
 	}

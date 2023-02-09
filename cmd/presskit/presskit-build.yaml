@@ -1,0 +1,21 @@
+dist:
+  name: presskit
+  description: Pressure monitoring test kit collector
+  output_path: build
+  otelcol_version: 0.71.0
+
+exporters:
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/storage/fileexporter
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/display/matrixfruit
+
+receivers:
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/measure/currentloop
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.71.0
+
+replaces:
+  - github.com/jmacd/caspar.water => ../../../

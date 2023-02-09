@@ -1,5 +1,7 @@
 package main
 
+// TODO Show the service address, otherwise we get 4 near-identical statements.
+
 import (
 	"bytes"
 	"encoding/csv"
