@@ -1,0 +1,21 @@
+
+receivers:
+  currentloop:
+    device: /sys/bus/iio/devices/iio:device0/in_voltage0_raw
+    name: water_pressure
+    interval: 1s
+    unit: psi
+    min: 0.0
+    max: 100.0
+
+exporters:
+  logging:
+    loglevel: debug
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+        - currentloop
+      exporters:
+        - logging

@@ -2,6 +2,7 @@ package currentloop
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -23,7 +24,12 @@ func NewFactory() receiver.Factory {
 
 // createDefaultConfig creates the default configuration for receiver.
 func createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{
+		Interval: time.Second,
+		Multiply: 1.8,
+		Divide:   4095,
+		Ohms:     75,
+	}
 }
 
 // createMetrics creates a metrics receiver based on provided config.
@@ -34,5 +40,5 @@ func createMetrics(
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	oCfg := cfg.(*Config)
-	return newLoopReceiver(oCfg, set)
+	return newLoopReceiver(oCfg, set, consumer)
 }

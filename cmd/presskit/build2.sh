@@ -12,4 +12,4 @@ cleanup()
 
 echo "Running..."
 
-$HOME/go/bin/go run .
+./build/presskit --config config.yaml

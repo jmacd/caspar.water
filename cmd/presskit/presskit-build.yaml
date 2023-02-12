@@ -9,6 +9,7 @@ exporters:
     import: github.com/jmacd/caspar.water/storage/fileexporter
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/display/matrixfruit
+  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.71.0
 
 receivers:
   - gomod: github.com/jmacd/caspar.water v0.0.0
