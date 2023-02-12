@@ -10,6 +10,10 @@ require (
 	github.com/mochi-co/mqtt v1.2.3
 	github.com/stretchr/testify v1.8.1
 	go.opentelemetry.io/collector v0.71.0
+	go.opentelemetry.io/collector/component v0.71.0
+	go.opentelemetry.io/collector/consumer v0.71.0
+	go.opentelemetry.io/collector/exporter/loggingexporter v0.71.0
+	go.opentelemetry.io/collector/exporter/otlpexporter v0.71.0
 	go.opentelemetry.io/collector/pdata v1.0.0-rc5
 	go.opentelemetry.io/proto/otlp v0.18.0
 	go.uber.org/zap v1.24.0
@@ -36,13 +40,11 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
-	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/klauspost/compress v1.15.15 // indirect
 	github.com/knadh/koanf v1.5.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -60,12 +62,12 @@ require (
 	github.com/rs/xid v1.4.0 // indirect
 	github.com/ruudk/golang-pdf417 v0.0.0-20201230142125-a7e3863a1245 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.1 // indirect
-	github.com/spf13/cobra v1.6.1 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	go.opentelemetry.io/collector/confmap v0.71.0 // indirect
+	go.opentelemetry.io/collector/featuregate v0.71.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.71.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.39.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.14.0 // indirect
@@ -80,6 +82,7 @@ require (
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
+	gonum.org/v1/gonum v0.12.0 // indirect
 	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
 	google.golang.org/grpc v1.52.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
