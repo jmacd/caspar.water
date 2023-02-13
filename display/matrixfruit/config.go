@@ -20,8 +20,15 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+type MetricConfig struct {
+	Name string `mapstructure:"name"`
+}
+
 type Config struct {
+	// E.g., /dev/ttyACM0
 	Device string `mapstructure:"device"`
+
+	Metrics []MetricConfig `mapstructure:"metrics"`
 }
 
 var _ component.Config = (*Config)(nil)

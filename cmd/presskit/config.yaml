@@ -9,8 +9,10 @@ receivers:
     max: 100.0
 
 exporters:
-  logging:
-    loglevel: debug
+  matrixfruit:
+    device: /dev/ttyACM0
+    metrics:
+    - name: water_pressure
 
 service:
   pipelines:
@@ -18,4 +20,4 @@ service:
       receivers:
         - currentloop
       exporters:
-        - logging
+        - matrixfruit
