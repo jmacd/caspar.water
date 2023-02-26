@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -44,7 +45,7 @@ var (
 
 type sparkplugReceiver struct {
 	lock         sync.Mutex
-	settings     component.ReceiverCreateSettings
+	settings     receiver.CreateSettings
 	config       Config
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
@@ -61,10 +62,10 @@ var (
 
 // New creates the Sparkplug receiver with the given parameters.
 func New(
-	set component.ReceiverCreateSettings,
+	set receiver.CreateSettings,
 	config Config,
 	nextConsumer consumer.Metrics,
-) (component.MetricsReceiver, error) {
+) (receiver.Metrics, error) {
 	if nextConsumer == nil {
 		return nil, component.ErrNilNextConsumer
 	}
@@ -236,11 +237,11 @@ func (r *sparkplugReceiver) nodeToResource(groupID sparkplug.GroupID, edgeNodeID
 	m := pmetric.NewMetrics()
 	rm := m.ResourceMetrics().AppendEmpty()
 
-	rm.Resource().Attributes().PutString(
+	rm.Resource().Attributes().PutStr(
 		"group_id",
 		string(groupID),
 	)
-	rm.Resource().Attributes().PutString(
+	rm.Resource().Attributes().PutStr(
 		"edgenode_id",
 		string(edgeNodeID),
 	)
@@ -292,35 +293,35 @@ func anyValue(value interface{}) pcommon.Value {
 	case *bproto.Payload_Metric_BooleanValue:
 		return pcommon.NewValueBool(t.BooleanValue)
 	case *bproto.Payload_Metric_StringValue:
-		return pcommon.NewValueString(t.StringValue)
+		return pcommon.NewValueStr(t.StringValue)
 	case *bproto.Payload_Metric_BytesValue:
-		return pcommon.NewValueString(string(t.BytesValue))
+		return pcommon.NewValueStr(string(t.BytesValue))
 
 	case *bproto.Payload_Metric_DatasetValue,
 		*bproto.Payload_Metric_TemplateValue,
 		*bproto.Payload_Metric_ExtensionValue:
 		break
 	}
-	return pcommon.NewValueString(fmt.Sprintf("unsupported attribute type: %T", value))
+	return pcommon.NewValueStr(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
 func (r *sparkplugReceiver) setNumberValue(point pmetric.NumberDataPoint, value interface{}) {
 	switch t := value.(type) {
 	case *bproto.Payload_Metric_IntValue:
-		point.SetIntVal(int64(t.IntValue))
+		point.SetIntValue(int64(t.IntValue))
 	case *bproto.Payload_Metric_LongValue:
-		point.SetIntVal(int64(t.LongValue))
+		point.SetIntValue(int64(t.LongValue))
 	case *bproto.Payload_Metric_FloatValue:
-		point.SetDoubleVal(float64(t.FloatValue))
+		point.SetDoubleValue(float64(t.FloatValue))
 	case *bproto.Payload_Metric_DoubleValue:
-		point.SetDoubleVal(t.DoubleValue)
+		point.SetDoubleValue(t.DoubleValue)
 	default:
 		// TODO: This is happening frequently for boolean values, investigate.
 		// r.settings.Logger.Info("non-numeric value",
 		// 	zap.String("value", fmt.Sprint(value)),
 		// 	zap.String("type", fmt.Sprintf("%T", value)),
 		// )
-		point.SetDoubleVal(math.NaN())
+		point.SetDoubleValue(math.NaN())
 	}
 }
 
@@ -363,7 +364,7 @@ func (r *sparkplugReceiver) flush() error {
 				// 	dp.SetIntVal(1)
 				// }
 
-				rm.Resource().Attributes().PutString(
+				rm.Resource().Attributes().PutStr(
 					"device_id",
 					string(deviceID),
 				)

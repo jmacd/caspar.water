@@ -13,6 +13,8 @@ exporters:
     device: /dev/ttyACM0
     metrics:
     - name: water_pressure
+  jsonfile:
+    path: presskit.json
 
 service:
   pipelines:
@@ -21,3 +23,4 @@ service:
         - currentloop
       exporters:
         - matrixfruit
+        - jsonfile

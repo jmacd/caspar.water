@@ -16,15 +16,15 @@ const (
 )
 
 // NewFactory creates a factory for the sparkplug receiver.
-func NewFactory() component.ReceiverFactory {
-	return component.NewReceiverFactory(
+func NewFactory() receiver.Factory {
+	return receiver.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithMetricsReceiver(createMetricsReceiver, component.StabilityLevelAlpha),
+		receiver.WithMetrics(createMetricsReceiver, component.StabilityLevelAlpha),
 	)
 }
 
-func createDefaultConfig() receiver.CreateSettings {
+func createDefaultConfig() component.Config {
 	return &Config{
 		Broker: BrokerConfig{
 			NetAddr: confignet.NetAddr{
@@ -37,10 +37,10 @@ func createDefaultConfig() receiver.CreateSettings {
 
 func createMetricsReceiver(
 	_ context.Context,
-	params component.ReceiverCreateSettings,
-	cfg receiver.CreateSettings,
+	params receiver.CreateSettings,
+	cfg component.Config,
 	consumer consumer.Metrics,
-) (component.MetricsReceiver, error) {
+) (receiver.Metrics, error) {
 	c := cfg.(*Config)
 	err := c.validate()
 	if err != nil {

@@ -85,9 +85,9 @@ func (mfe *matrixfruitExporter) line(n int) string {
 		case pmetric.NumberDataPoint:
 			switch t.ValueType() {
 			case pmetric.NumberDataPointValueTypeDouble:
-				vstr = fmt.Sprint(t.DoubleValue())
+				vstr = fmt.Sprintf("%f", t.DoubleValue())
 			case pmetric.NumberDataPointValueTypeInt:
-				vstr = fmt.Sprint(t.DoubleValue())
+				vstr = fmt.Sprint(t.IntValue())
 			case pmetric.NumberDataPointValueTypeEmpty:
 			}
 		default:
