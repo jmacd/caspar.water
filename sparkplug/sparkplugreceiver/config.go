@@ -8,7 +8,8 @@ import (
 
 // Config defines configuration for OTel MQTT Sparkplug receiver.
 type Config struct {
-	Broker BrokerConfig `mapstructure:"broker"`
+	Broker  BrokerConfig `mapstructure:"broker"`
+	Metrics []string     `mapstructure:"metrics"`
 }
 
 type BrokerConfig struct {

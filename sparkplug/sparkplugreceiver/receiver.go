@@ -47,6 +47,7 @@ type sparkplugReceiver struct {
 	lock         sync.Mutex
 	settings     receiver.CreateSettings
 	config       Config
+	allowMetrics map[string]bool
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
 	brokerDone   chan error
@@ -81,6 +82,13 @@ func New(
 		nextConsumer: nextConsumer,
 		state:        otlp.SparkplugState{}.Init(),
 	}
+	if len(config.Metrics) != 0 {
+		r.allowMetrics = map[string]bool{}
+		for _, allow := range config.Metrics {
+			r.allowMetrics[allow] = true
+		}
+	}
+
 	return r, nil
 }
 
@@ -395,9 +403,13 @@ func (r *sparkplugReceiver) flush() error {
 					if strings.HasPrefix(name, libraryName) {
 						name = name[len(libraryName)+1:]
 					}
+					name = metricName(name)
+					if r.allowMetrics != nil && !r.allowMetrics[name] {
+						continue
+					}
 
 					output := ilm.Metrics().AppendEmpty()
-					output.SetName(metricName(name))
+					output.SetName(name)
 					output.SetEmptyGauge()
 
 					dp := output.Gauge().DataPoints().AppendEmpty()

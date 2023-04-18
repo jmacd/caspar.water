@@ -6,18 +6,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottldatapoint"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.uber.org/multierr"
 )
 
 type matrixfruitExporter struct {
-	display  *os.File
-	config   *Config
-	parsed   []Ty.ottldatapoint
+	display *os.File
+	config  *Config
+	// parsed   []Ty.ottldatapoint
 	defs     []pmetric.Metric
 	current  []interface{} // a point type
 	name2idx map[string]int
@@ -41,47 +37,47 @@ type matrixfruitExporter struct {
 // 	errors = multierr.Append(errors, err)
 // }
 
-func statementsToExpr[K any](statements []*ottl.Statement[K]) expr.BoolExpr[K] {
-	var rets []expr.BoolExpr[K]
-	for _, statement := range statements {
-		rets = append(rets, statementExpr[K]{statement: statement})
-	}
-	return expr.Or(rets...)
-}
+// func statementsToExpr[K any](statements []*ottl.Statement[K]) expr.BoolExpr[K] {
+// 	var rets []expr.BoolExpr[K]
+// 	for _, statement := range statements {
+// 		rets = append(rets, statementExpr[K]{statement: statement})
+// 	}
+// 	return expr.Or(rets...)
+// }
 
-func functions[K any]() map[string]interface{} {
-	return map[string]interface{}{
-		"TraceID":     ottlfuncs.TraceID[K],
-		"SpanID":      ottlfuncs.SpanID[K],
-		"IsMatch":     ottlfuncs.IsMatch[K],
-		"Concat":      ottlfuncs.Concat[K],
-		"Split":       ottlfuncs.Split[K],
-		"Int":         ottlfuncs.Int[K],
-		"ConvertCase": ottlfuncs.ConvertCase[K],
-		"drop": func() (ottl.ExprFunc[K], error) {
-			return func(context.Context, K) (interface{}, error) {
-				return true, nil
-			}, nil
-		},
-	}
-}
+// func functions[K any]() map[string]interface{} {
+// 	return map[string]interface{}{
+// 		"TraceID":     ottlfuncs.TraceID[K],
+// 		"SpanID":      ottlfuncs.SpanID[K],
+// 		"IsMatch":     ottlfuncs.IsMatch[K],
+// 		"Concat":      ottlfuncs.Concat[K],
+// 		"Split":       ottlfuncs.Split[K],
+// 		"Int":         ottlfuncs.Int[K],
+// 		"ConvertCase": ottlfuncs.ConvertCase[K],
+// 		"drop": func() (ottl.ExprFunc[K], error) {
+// 			return func(context.Context, K) (interface{}, error) {
+// 				return true, nil
+// 			}, nil
+// 		},
+// 	}
+// }
 
-func conditionsToStatements(conditions []string) []string {
-	statements := make([]string, len(conditions))
-	for i, condition := range conditions {
-		statements[i] = "drop() where " + condition
-	}
-	return statements
-}
+// func conditionsToStatements(conditions []string) []string {
+// 	statements := make([]string, len(conditions))
+// 	for i, condition := range conditions {
+// 		statements[i] = "drop() where " + condition
+// 	}
+// 	return statements
+// }
 
-type statementExpr[K any] struct {
-	statement *ottl.Statement[K]
-}
+// type statementExpr[K any] struct {
+// 	statement *ottl.Statement[K]
+// }
 
-func (se statementExpr[K]) Eval(ctx context.Context, tCtx K) (bool, error) {
-	_, ret, err := se.statement.Execute(ctx, tCtx)
-	return ret, err
-}
+// func (se statementExpr[K]) Eval(ctx context.Context, tCtx K) (bool, error) {
+// 	_, ret, err := se.statement.Execute(ctx, tCtx)
+// 	return ret, err
+// }
 
 func newMatrixfruitExporter(cfg *Config, set exporter.CreateSettings) (*matrixfruitExporter, error) {
 
@@ -97,10 +93,10 @@ func newMatrixfruitExporter(cfg *Config, set exporter.CreateSettings) (*matrixfr
 		defs[idx] = pmetric.NewMetric()
 	}
 
-	for _, cl := range cfg.Backgrounds {
-		exp, perr := ottldatapoint.ParseDataPoint(cl.Expression, set.TelemetrySettings)
-		err = multierr.Append(err, perr)
-	}
+	// for _, cl := range cfg.Backgrounds {
+	// 	exp, perr := ottldatapoint.ParseDataPoint(cl.Expression, set.TelemetrySettings)
+	// 	err = multierr.Append(err, perr)
+	// }
 
 	return &matrixfruitExporter{
 		display:  f,
@@ -178,9 +174,8 @@ func (mfe *matrixfruitExporter) line(n int) string {
 
 func (mfe *matrixfruitExporter) export() error {
 
-	for _, cl := range mfe.config.Backgrounds {
-		cl
-	}
+	// for _, cl := range mfe.config.Backgrounds {
+	// }
 
 	var send = []byte{
 		// For a 2x16
