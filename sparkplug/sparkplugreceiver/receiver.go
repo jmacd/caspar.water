@@ -52,6 +52,7 @@ type sparkplugReceiver struct {
 	broker       *mqtt.Server
 	brokerDone   chan error
 	state        otlp.SparkplugState
+	lastUpdate   time.Time
 }
 
 var (
@@ -225,6 +226,8 @@ func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bpr
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
+	r.lastUpdate = time.Now()
+
 	switch topic.MessageType {
 	case sparkplug.NDATA, sparkplug.NBIRTH, sparkplug.NDEATH:
 		return r.sparkplugNodePayload(topic, payload)
@@ -343,34 +346,16 @@ func (r *sparkplugReceiver) flush() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	now := pcommon.NewTimestampFromTime(time.Now())
+	now := time.Now()
+	nowTS := pcommon.NewTimestampFromTime(now)
 
 	for groupID, groupState := range r.state.Items {
 		for edgeNodeID, edgeNode := range groupState.Items {
 			for deviceID, deviceNode := range edgeNode.Items {
-
 				metrics := r.nodeToResource(groupID, edgeNodeID, edgeNode)
 				rm := metrics.ResourceMetrics().At(0)
 
 				ilm := rm.ScopeMetrics().AppendEmpty()
-				ilm.Scope().SetName("sparkplug")
-
-				// alive metric
-
-				// metric := ilm.Metrics().AppendEmpty()
-				// metric.SetName("alive")
-				// metric.SetDataType(pmetric.MetricDataTypeSum)
-				// metric.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
-				// metric.Sum().SetIsMonotonic(false)
-				// dp := metric.Sum().DataPoints().AppendEmpty()
-				// dp.SetTimestamp(pcommon.Timestamp(payload.GetTimestamp() * 1e6))
-				// dp.SetStartTimestamp(pcommon.Timestamp(node.BirthTime.UnixNano()))
-
-				// if topic.MessageType == sparkplug.NDEATH {
-				// 	dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
-				// } else {
-				// 	dp.SetIntVal(1)
-				// }
 
 				rm.Resource().Attributes().PutStr(
 					"device_id",
@@ -379,6 +364,14 @@ func (r *sparkplugReceiver) flush() error {
 
 				// Hacky hard-coded library name
 				ilm.Scope().SetName(libraryName)
+
+				metric := ilm.Metrics().AppendEmpty()
+				metric.SetName("staleness")
+				metric.SetUnit("s")
+				metric.SetEmptyGauge()
+				dp := metric.Gauge().DataPoints().AppendEmpty()
+				dp.SetTimestamp(nowTS)
+				dp.SetDoubleValue(now.Sub(*deviceNode.LastTime).Seconds())
 
 				for _, metric := range deviceNode.Store.NameMap {
 
@@ -414,7 +407,7 @@ func (r *sparkplugReceiver) flush() error {
 
 					dp := output.Gauge().DataPoints().AppendEmpty()
 					// dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
-					dp.SetTimestamp(now)
+					dp.SetTimestamp(nowTS)
 					dp.SetStartTimestamp(pcommon.Timestamp(deviceNode.BirthTime.UnixNano()))
 
 					// if topic.MessageType == sparkplug.DDEATH {
