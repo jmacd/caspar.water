@@ -20,15 +20,21 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
-type MetricConfig struct {
-	Name string `mapstructure:"name"`
+type Clause struct {
+	// is OTTL boolean expr
+	Expression string `mapstructure:"expression"`
+
+	// is a color name
+	Color string `mapstructure:"color"`
 }
 
 type Config struct {
 	// E.g., /dev/ttyACM0
 	Device string `mapstructure:"device"`
 
-	Metrics []MetricConfig `mapstructure:"metrics"`
+	Metrics []string `mapstructure:"metrics"`
+
+	Backgrounds []Clause `mapstructure:"backgrounds"`
 }
 
 var _ component.Config = (*Config)(nil)

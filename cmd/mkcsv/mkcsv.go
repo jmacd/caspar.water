@@ -69,6 +69,7 @@ usage: %v < input.json > output.csv`, os.Args[0])
 }
 
 func output(points [][]*otlp.NumberDataPoint) {
+	fmt.Println("OUT", points)
 	for idx := range points[0] {
 		var line string
 		line += fmt.Sprintf("%.3f, ", float64(points[0][idx].TimeUnixNano)/1e9)
@@ -89,5 +90,4 @@ func output(points [][]*otlp.NumberDataPoint) {
 
 		fmt.Println(line)
 	}
-
 }

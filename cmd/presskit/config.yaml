@@ -1,7 +1,8 @@
 
 receivers:
   currentloop:
-    device: /sys/bus/iio/devices/iio:device0/in_voltage0_raw
+    #device: /sys/bus/iio/devices/iio:device0/in_voltage0_raw
+    device: test_input
     name: water_pressure
     interval: 1s
     unit: psi
@@ -10,13 +11,21 @@ receivers:
 
 exporters:
   matrixfruit:
-    device: /dev/ttyACM0
+    #device: /dev/ttyACM0
+    device: test_output
+    backgrounds:
+    - color: red
+      expression: water_pressure < 25
+    - color: blue
     metrics:
-    - name: water_pressure
+    - water_pressure
   jsonfile:
     path: presskit.json
 
 service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8889
   pipelines:
     metrics:
       receivers:

@@ -41,7 +41,7 @@ func createDefaultConfig() component.Config {
 
 func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, config component.Config) (exporter.Metrics, error) {
 	cfg := config.(*Config)
-	s, err := newMatrixfruitExporter(cfg)
+	s, err := newMatrixfruitExporter(cfg, set)
 	if err != nil {
 		return nil, err
 	}
