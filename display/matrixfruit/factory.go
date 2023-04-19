@@ -12,53 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package fileexporter
+package matrixfruit
 
 import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
-	// The value of "type" key in configuration.
-	typeStr = "jsonfile"
+	typeStr = "matrixfruit"
 )
 
-// NewFactory creates a factory for OTLP exporter.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelAlpha),
+		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelDevelopment),
 	)
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{
-		Path: "",
-	}
+	return &Config{}
 }
 
-func createMetricsExporter(
-	ctx context.Context,
-	set exporter.CreateSettings,
-	cfg component.Config,
-) (exporter.Metrics, error) {
-	fe := &fileExporter{
-		logger: &lumberjack.Logger{
-			Filename: cfg.(*Config).Path,
-		},
+func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, config component.Config) (exporter.Metrics, error) {
+	cfg := config.(*Config)
+	s, err := newMatrixfruitExporter(cfg, set)
+	if err != nil {
+		return nil, err
 	}
-	return exporterhelper.NewMetricsExporter(
-		ctx,
-		set,
-		cfg,
-		fe.ConsumeMetrics,
-		exporterhelper.WithStart(fe.Start),
-		exporterhelper.WithShutdown(fe.Shutdown),
+	return exporterhelper.NewMetricsExporter(ctx, set, cfg,
+		s.pushMetrics,
+		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
+		exporterhelper.WithRetry(exporterhelper.RetrySettings{Enabled: false}),
+		exporterhelper.WithQueue(exporterhelper.QueueSettings{Enabled: false}),
 	)
 }

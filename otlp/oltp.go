@@ -36,6 +36,7 @@ type (
 		NameMap   NameMap
 		AliasMap  AliasMap
 		BirthTime *time.Time
+		LastTime  *time.Time
 	}
 
 	NameMap  map[string]*Metric
@@ -87,6 +88,7 @@ func (Store) Init() Store {
 		AliasMap:  AliasMap{},
 		NameMap:   NameMap{},
 		BirthTime: new(time.Time),
+		LastTime:  new(time.Time),
 	}
 }
 
@@ -126,6 +128,8 @@ func (st Store) Define(name string, alias, ts uint64, desc string) *Metric {
 }
 
 func (st Store) Visit(topic sparkplug.Topic, payload *bproto.Payload) error {
+	*st.LastTime = time.Now()
+
 	if topic.MessageType.IsBirth() && payload.GetTimestamp() != 0 {
 		*st.BirthTime = time.UnixMilli(int64(payload.GetTimestamp()))
 	}

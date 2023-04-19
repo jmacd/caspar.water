@@ -10,7 +10,6 @@ cleanup()
   exit 1
 }
 
-/home/jmacd/go/bin/go build .
+echo "Running..."
 
-echo "Ready to run..."
-sleep 3600
+./build/presskit --config config.yaml

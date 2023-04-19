@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -44,12 +45,14 @@ var (
 
 type sparkplugReceiver struct {
 	lock         sync.Mutex
-	settings     component.ReceiverCreateSettings
+	settings     receiver.CreateSettings
 	config       Config
+	allowMetrics map[string]bool
 	nextConsumer consumer.Metrics
 	broker       *mqtt.Server
 	brokerDone   chan error
 	state        otlp.SparkplugState
+	lastUpdate   time.Time
 }
 
 var (
@@ -61,10 +64,10 @@ var (
 
 // New creates the Sparkplug receiver with the given parameters.
 func New(
-	set component.ReceiverCreateSettings,
+	set receiver.CreateSettings,
 	config Config,
 	nextConsumer consumer.Metrics,
-) (component.MetricsReceiver, error) {
+) (receiver.Metrics, error) {
 	if nextConsumer == nil {
 		return nil, component.ErrNilNextConsumer
 	}
@@ -80,6 +83,13 @@ func New(
 		nextConsumer: nextConsumer,
 		state:        otlp.SparkplugState{}.Init(),
 	}
+	if len(config.Metrics) != 0 {
+		r.allowMetrics = map[string]bool{}
+		for _, allow := range config.Metrics {
+			r.allowMetrics[allow] = true
+		}
+	}
+
 	return r, nil
 }
 
@@ -216,6 +226,8 @@ func (r *sparkplugReceiver) sparkplugPayload(topic sparkplug.Topic, payload *bpr
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
+	r.lastUpdate = time.Now()
+
 	switch topic.MessageType {
 	case sparkplug.NDATA, sparkplug.NBIRTH, sparkplug.NDEATH:
 		return r.sparkplugNodePayload(topic, payload)
@@ -236,11 +248,11 @@ func (r *sparkplugReceiver) nodeToResource(groupID sparkplug.GroupID, edgeNodeID
 	m := pmetric.NewMetrics()
 	rm := m.ResourceMetrics().AppendEmpty()
 
-	rm.Resource().Attributes().PutString(
+	rm.Resource().Attributes().PutStr(
 		"group_id",
 		string(groupID),
 	)
-	rm.Resource().Attributes().PutString(
+	rm.Resource().Attributes().PutStr(
 		"edgenode_id",
 		string(edgeNodeID),
 	)
@@ -292,35 +304,35 @@ func anyValue(value interface{}) pcommon.Value {
 	case *bproto.Payload_Metric_BooleanValue:
 		return pcommon.NewValueBool(t.BooleanValue)
 	case *bproto.Payload_Metric_StringValue:
-		return pcommon.NewValueString(t.StringValue)
+		return pcommon.NewValueStr(t.StringValue)
 	case *bproto.Payload_Metric_BytesValue:
-		return pcommon.NewValueString(string(t.BytesValue))
+		return pcommon.NewValueStr(string(t.BytesValue))
 
 	case *bproto.Payload_Metric_DatasetValue,
 		*bproto.Payload_Metric_TemplateValue,
 		*bproto.Payload_Metric_ExtensionValue:
 		break
 	}
-	return pcommon.NewValueString(fmt.Sprintf("unsupported attribute type: %T", value))
+	return pcommon.NewValueStr(fmt.Sprintf("unsupported attribute type: %T", value))
 }
 
 func (r *sparkplugReceiver) setNumberValue(point pmetric.NumberDataPoint, value interface{}) {
 	switch t := value.(type) {
 	case *bproto.Payload_Metric_IntValue:
-		point.SetIntVal(int64(t.IntValue))
+		point.SetIntValue(int64(t.IntValue))
 	case *bproto.Payload_Metric_LongValue:
-		point.SetIntVal(int64(t.LongValue))
+		point.SetIntValue(int64(t.LongValue))
 	case *bproto.Payload_Metric_FloatValue:
-		point.SetDoubleVal(float64(t.FloatValue))
+		point.SetDoubleValue(float64(t.FloatValue))
 	case *bproto.Payload_Metric_DoubleValue:
-		point.SetDoubleVal(t.DoubleValue)
+		point.SetDoubleValue(t.DoubleValue)
 	default:
 		// TODO: This is happening frequently for boolean values, investigate.
 		// r.settings.Logger.Info("non-numeric value",
 		// 	zap.String("value", fmt.Sprint(value)),
 		// 	zap.String("type", fmt.Sprintf("%T", value)),
 		// )
-		point.SetDoubleVal(math.NaN())
+		point.SetDoubleValue(math.NaN())
 	}
 }
 
@@ -334,42 +346,32 @@ func (r *sparkplugReceiver) flush() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	now := pcommon.NewTimestampFromTime(time.Now())
+	now := time.Now()
+	nowTS := pcommon.NewTimestampFromTime(now)
 
 	for groupID, groupState := range r.state.Items {
 		for edgeNodeID, edgeNode := range groupState.Items {
 			for deviceID, deviceNode := range edgeNode.Items {
-
 				metrics := r.nodeToResource(groupID, edgeNodeID, edgeNode)
 				rm := metrics.ResourceMetrics().At(0)
 
 				ilm := rm.ScopeMetrics().AppendEmpty()
-				ilm.Scope().SetName("sparkplug")
 
-				// alive metric
-
-				// metric := ilm.Metrics().AppendEmpty()
-				// metric.SetName("alive")
-				// metric.SetDataType(pmetric.MetricDataTypeSum)
-				// metric.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
-				// metric.Sum().SetIsMonotonic(false)
-				// dp := metric.Sum().DataPoints().AppendEmpty()
-				// dp.SetTimestamp(pcommon.Timestamp(payload.GetTimestamp() * 1e6))
-				// dp.SetStartTimestamp(pcommon.Timestamp(node.BirthTime.UnixNano()))
-
-				// if topic.MessageType == sparkplug.NDEATH {
-				// 	dp.SetFlags(pmetric.MetricDataPointFlags(pmetric.MetricDataPointFlagNoRecordedValue))
-				// } else {
-				// 	dp.SetIntVal(1)
-				// }
-
-				rm.Resource().Attributes().PutString(
+				rm.Resource().Attributes().PutStr(
 					"device_id",
 					string(deviceID),
 				)
 
 				// Hacky hard-coded library name
 				ilm.Scope().SetName(libraryName)
+
+				metric := ilm.Metrics().AppendEmpty()
+				metric.SetName("staleness")
+				metric.SetUnit("s")
+				metric.SetEmptyGauge()
+				dp := metric.Gauge().DataPoints().AppendEmpty()
+				dp.SetTimestamp(nowTS)
+				dp.SetDoubleValue(now.Sub(*deviceNode.LastTime).Seconds())
 
 				for _, metric := range deviceNode.Store.NameMap {
 
@@ -394,14 +396,18 @@ func (r *sparkplugReceiver) flush() error {
 					if strings.HasPrefix(name, libraryName) {
 						name = name[len(libraryName)+1:]
 					}
+					name = metricName(name)
+					if r.allowMetrics != nil && !r.allowMetrics[name] {
+						continue
+					}
 
 					output := ilm.Metrics().AppendEmpty()
-					output.SetName(metricName(name))
+					output.SetName(name)
 					output.SetEmptyGauge()
 
 					dp := output.Gauge().DataPoints().AppendEmpty()
 					// dp.SetTimestamp(pcommon.Timestamp(metric.Timestamp * 1e6))
-					dp.SetTimestamp(now)
+					dp.SetTimestamp(nowTS)
 					dp.SetStartTimestamp(pcommon.Timestamp(deviceNode.BirthTime.UnixNano()))
 
 					// if topic.MessageType == sparkplug.DDEATH {

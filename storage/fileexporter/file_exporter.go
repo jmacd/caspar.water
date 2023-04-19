@@ -26,7 +26,7 @@ import (
 )
 
 // Marshaler configuration used for marhsaling Protobuf to JSON.
-var metricsMarshaler = pmetric.NewJSONMarshaler()
+var metricsMarshaler = pmetric.JSONMarshaler{}
 
 // fileExporter is the implementation of file exporter that writes telemetry data to a file
 // in Protobuf-JSON format.

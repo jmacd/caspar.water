@@ -12,23 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package fileexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
+package matrixfruit
 
 import (
-	"errors"
+	"fmt"
+
+	"go.opentelemetry.io/collector/component"
 )
 
-// Config defines configuration for file exporter.
-type Config struct {
-	// Path of the file to write to. Path is relative to current directory.
-	Path string `mapstructure:"path"`
+type Clause struct {
+	// is OTTL boolean expr
+	Expression string `mapstructure:"expression"`
+
+	// is a color name
+	Color string `mapstructure:"color"`
 }
 
-// Validate checks if the exporter configuration is valid
-func (cfg *Config) Validate() error {
-	if cfg.Path == "" {
-		return errors.New("path must be non-empty")
-	}
+type Config struct {
+	// E.g., /dev/ttyACM0
+	Device string `mapstructure:"device"`
 
+	Metrics []string `mapstructure:"metrics"`
+
+	Backgrounds []Clause `mapstructure:"backgrounds"`
+}
+
+var _ component.Config = (*Config)(nil)
+
+func (cfg *Config) Validate() error {
+	if cfg.Device == "" {
+		return fmt.Errorf("empty device name")
+	}
 	return nil
 }

@@ -3,15 +3,13 @@ package sparkplugreceiver
 import (
 	"fmt"
 
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confignet"
 )
 
 // Config defines configuration for OTel MQTT Sparkplug receiver.
 type Config struct {
-	config.ReceiverSettings `mapstructure:",squash"`
-
-	Broker BrokerConfig `mapstructure:"broker"`
+	Broker  BrokerConfig `mapstructure:"broker"`
+	Metrics []string     `mapstructure:"metrics"`
 }
 
 type BrokerConfig struct {

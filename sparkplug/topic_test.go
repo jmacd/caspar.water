@@ -11,7 +11,7 @@ var testTopics = []struct {
 	Topic  Topic
 }{
 	{
-		"spBv1.0/grp/NBIRTH/node/",
+		"spBv1.0/grp/NBIRTH/node",
 		Topic{
 			GroupID:     "grp",
 			MessageType: NBIRTH,
