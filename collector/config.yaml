@@ -10,6 +10,13 @@ receivers:
       - well_depth_value
       - tank_level_value
       - chlorine_level_value
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'upperwell'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['192.168.0.80:8888']
 
 processors:
 
@@ -27,8 +34,13 @@ service:
   pipelines:
     metrics:
       receivers:
-        - sparkplug
+      - sparkplug
+      - prometheus
       processors: []
       exporters:
-        - otlp
-        - jsonfile
+      - otlp
+      - jsonfile
+  telemetry:
+    logs:
+      level:
+        debug

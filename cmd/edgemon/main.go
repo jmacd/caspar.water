@@ -98,7 +98,7 @@ func main() {
 
 		_, _ = w.Write(
 			[]byte(fmt.Sprintf(
-				`# TYPE uptime gauge 
+				`# TYPE uptime gauge
 uptime %f
 
 # TYPE %s gauge
