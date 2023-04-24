@@ -1,0 +1,19 @@
+{
+    "name": "edgemon",
+    "uid": "shell",
+    "script": "sudo",
+    "cwd": "/usr/share/nxtio/services/edgemon", 
+    "args": "-u shell /home/shell/edgemon",
+    "interpreter": "none",
+    "watch": false,
+    "instances": 1,
+    "exec_mode": "fork",
+    "merge_logs": true,
+    "error_file": "/var/log/nxtio/edgemon.log",
+    "out_file": "/var/log/nxtio/edgemon.log",
+    "pid_file": "/var/run/edgemon.pid",
+    "min_uptime": "15s",
+    "restart_delay": 10000,
+    "autorestart": true,
+    "vizion": false
+}
