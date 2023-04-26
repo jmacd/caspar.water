@@ -4,21 +4,22 @@ package main
 
 import (
 	"bytes"
-	"encoding/csv"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
 	"path"
-	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
-	"github.com/Rhymond/go-money"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/expense"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/metadata"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/payment"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/user"
 	"github.com/jmacd/maroto/pkg/color"
 	"github.com/jmacd/maroto/pkg/consts"
 	"github.com/jmacd/maroto/pkg/pdf"
@@ -28,10 +29,10 @@ import (
 var (
 	// These files contain private data, are not kept in
 	// this repository.
-	usersFile    = flag.String("users", "users.csv", "users file csv AcctName,User Name,Address,...")
-	metadataFile = flag.String("metadata", "metadata.csv", "file csv")
-	accountsFile = flag.String("accounts", "accounts.csv", "file csv")
-	ledgerFile   = flag.String("ledger", "ledger.csv", "file csv")
+	usersFile    = flag.String("users", "users.csv", "csv")
+	metadataFile = flag.String("metadata", "metadata.csv", "csv")
+	expensesFile = flag.String("expenses", "expenses.csv", "csv")
+	paymentsFile = flag.String("payments", "paymets.csv", "csv")
 
 	statementsDir = flag.String("statements", "statements", "input directory")
 
@@ -41,141 +42,9 @@ var (
 		Green: 10,
 		Blue:  150,
 	}
-
-	dollarsAndCentsRe = regexp.MustCompile(`\$(\d+(?:,\d\d\d)*)\.(\d\d)`)
-)
-
-const (
-	csvLayout         = "1/2/2006"
-	invoiceDateLayout = "2006-Jan"
-	fullDateLayout    = "January 2, 2006"
-
-	// maxConnections is how many connections we can reach,
-	// excluding the one that is not viable (so that with that
-	// connection maxConnections would be 14).  Limit is 14.
-	maxConnections = 13
-
-	// communityCenterAdjustedUserCount is the target effective
-	// user count for the CC used for billing after the initial
-	// adjustment, which gives the CC double weight.
-	communityCenterAdjustedUserCount = 2
-
-	// communityCenterAdjustment is how many effective
-	// users will be added after the CC adjustment is applied.
-	communityCenterAdjustment = (communityCenterAdjustedUserCount - 1)
-
-	// communityCenterAccount is the account name for the
-	// community center used to carry out its adjustment.
-	communityCenterAccount = "Comm_Ctr"
-
-	initialMargin       = 0.0
-	targetMargin        = 0.2
-	marginIncreaseYears = 2
-	statementsPerYear   = 2
 )
 
 type (
-	// Metadata describes the billing entity and other static
-	// information.
-	Metadata struct {
-		// Name is how to make the payment.
-		Name string
-
-		// Address is where to send the payment.
-		Address string
-
-		// Contact is how and with whom to discuss the payment.
-		Contact string
-	}
-
-	// User describes one account for payment.
-	User struct {
-		// AccountName is an internal identifier, descriptive
-		// for the company but does not meaningful on the
-		// bill.
-		AccountName string
-
-		// UserName is the responsible party's name.
-		UserName string
-
-		// ServiceAddress is the location of water service.
-		ServiceAddress string
-
-		// BillingAddress is where the user receives mail.
-		BillingAddress string
-
-		// These are calculated from the payments ledger.
-		lastPaymentDate time.Time
-		lastPayment     money.Money
-		accountBalance  money.Money
-	}
-
-	// Accounts describes the cost of doing business.
-	Accounts struct {
-		// PeriodEnd is the end of the billing cycle.
-		PeriodEnd string
-
-		// Operations includes treatment, chemicals, and lab analysis.
-		Operations money.Money
-
-		// Utilities includes electricity.
-		Utilities money.Money
-
-		// Insurance is general liability for the water company.
-		Insurance money.Money
-
-		// Taxes are property taxes, business licensing, and
-		// certification costs.
-		Taxes money.Money
-
-		// Method describes the billing method, values include:
-		// - Baseline: the initial condition has no reserve.
-		// - FirstAdjustment: a billing cycle where the CommCtr
-		//   doubles in weight and the first cost-of-living
-		//   adjustment is applied.
-		Method string
-
-		billDate time.Time
-
-		// endDate is the parsed PeriodEnd.
-		periodEnd time.Time
-
-		invoiceName string
-
-		// periodName is computed from PeriodEnd.
-		periodName string
-
-		// dirPath is the directory where PDFs are written.
-		dirPath string
-
-		// statementTmpl is the body txt of the statement.
-		statementTmpl *template.Template
-	}
-
-	// Billing is the billing state that evolves from one period
-	// to the next, including cumulative cost-of-living adjustments
-	// and introductory reweighting.
-	Billing struct {
-		// effectiveUserCount is maxConnections at the baseline.
-		effectiveUserCount int
-
-		// communityCenterCount is 1 at the baseline.
-		communityCenterCount int
-
-		// savingsRate is 1 + margin.
-		savingsRate float64
-
-		// adjustments counts the number of adjustments.
-		adjustments int
-	}
-
-	// Payment records a single user's payment.
-	Payment struct {
-		Date        string
-		AccountName string
-		Amount      money.Money
-	}
-
 	Vars struct {
 		// Timestamps
 		StartDate           string
@@ -192,11 +61,11 @@ type (
 		Margin   string
 
 		// Money top shelf
-		Total       string // Semi-annual period
-		Pay         string // Share of period total
-		PastDue     string // Unpaid balance
-		TotalDue    string // Pay + PastDue
-		LastPayment string // Amount of last payment
+		Total        string // Semi-annual period
+		Pay          string // Share of period total
+		PriorBalance string // Unpaid balance
+		TotalDue     string // Pay + PriorBalance
+		LastPayment  string // Amount of last payment
 
 		// Money breakdown
 		Operations string
@@ -206,190 +75,101 @@ type (
 	}
 )
 
-func newBilling() *Billing {
-	return &Billing{
-		effectiveUserCount:   maxConnections,
-		communityCenterCount: 1,
-		savingsRate:          1 + initialMargin,
-	}
-}
+// func parseDate(date string) (time.Time, error) {
+// 	return time.Parse(constant.CsvLayout, date)
+// }
 
-// parseAddress splits a semicolon-delimited multiline address.
-func parseAddress(in string) []string {
-	out := strings.Split(in, ";")
-	for i := range out {
-		out[i] = strings.TrimSpace(out[i])
-	}
-	return out
-}
+// func (acct *Accounts) advanceBillingPeriod() (err error) {
+// 	acct.invoiceName = acct.PeriodStart.Billing().Format(invoiceDateLayout)
+// 	acct.dirPath = path.Join(*statementsDir, acct.invoiceName)
+// 	if err := os.MkdirAll(acct.dirPath, 0777); err != nil {
+// 		return fmt.Errorf("mkdir: %s: %w", acct.dirPath, err)
+// 	}
+// 	return nil
+// }
 
-func (acct *Accounts) parsePeriod() (err error) {
-	acct.periodEnd, err = time.Parse(csvLayout, acct.PeriodEnd)
-	if err != nil {
-		return err
-	}
-	acct.billDate = acct.periodEnd.Add(24 * time.Hour)
-	acct.invoiceName = acct.billDate.Format(invoiceDateLayout)
-	acct.dirPath = path.Join(*statementsDir, acct.invoiceName)
-	if err := os.MkdirAll(acct.dirPath, 0777); err != nil {
-		return fmt.Errorf("mkdir: %s: %w", acct.dirPath, err)
-	}
-	return nil
-}
+// func (a *Accounts) prepareStatement(currentTmplPtr **template.Template) (err error) {
+// 	base := a.invoiceName + ".txt"
+// 	nt := template.New(base)
+// 	in := path.Join(*statementsDir, base)
 
-func (a *Accounts) prepareStatement(currentTmplPtr **template.Template) (err error) {
-	base := a.invoiceName + ".txt"
-	nt := template.New(base)
-	in := path.Join(*statementsDir, base)
+// 	if _, err = nt.ParseFiles(in); err == nil {
+// 		a.statementTmpl = nt
+// 		*currentTmplPtr = nt
+// 	} else if errors.Is(err, os.ErrNotExist) && *currentTmplPtr != nil {
+// 		a.statementTmpl = *currentTmplPtr
+// 	} else {
+// 		return fmt.Errorf("no statement template found: %w", err)
+// 	}
 
-	if _, err = nt.ParseFiles(in); err == nil {
-		a.statementTmpl = nt
-		*currentTmplPtr = nt
-	} else if errors.Is(err, os.ErrNotExist) && *currentTmplPtr != nil {
-		a.statementTmpl = *currentTmplPtr
-	} else {
-		return fmt.Errorf("no statement template found: %w", err)
-	}
-
-	return nil
-}
-
-// sumMoney computes a money sum.
-func sumMoney(inputs ...money.Money) money.Money {
-	total := money.New(0, money.USD)
-	for i := range inputs {
-		total, _ = total.Add(&inputs[i])
-	}
-	return *total
-}
+// 	return nil
+// }
 
 func main() {
-	b := newBilling()
-	err := b.Main()
-	if err != nil {
+	flag.Parse()
+
+	if err := Main(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-// readAll converts a CSV file into a list of T structs (all defined
-// above), where the first CSV row matches field names.  This is done
-// via an intermediate JSON representation.  All fields are either
-// strings or $Dollars.Cents.
-func readAll[T any](name string) ([]T, error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", name, err)
-	}
-	read, err := csv.NewReader(f).ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("read csv %s: %w", name, err)
-	}
-	if len(read) < 2 {
-		return nil, fmt.Errorf("not enough rows: %s", name)
-	}
-	legend := read[0]
-	for i := range legend {
-		legend[i] = strings.ReplaceAll(legend[i], " ", "")
-	}
-	rows := read[1:]
-	var ret []T
-	for _, row := range rows {
-		xing := map[string]interface{}{}
-		for i, v := range row {
-			// Note: go-money parses money fields, we
-			// format the generic JSON struct they expect.
-			parts := dollarsAndCentsRe.FindStringSubmatch(v)
-			var value interface{}
-			if parts == nil {
-				value = v
-			} else {
-				dollars, err := strconv.Atoi(strings.ReplaceAll(parts[1], ",", ""))
-				if err != nil {
-					return nil, err
-				}
-				cents, err := strconv.Atoi(parts[2])
-				if err != nil {
-					return nil, err
-				}
-				// go-money expects two fields, one float64, one string.
-				value = map[string]interface{}{
-					"amount":   float64(dollars*100 + cents),
-					"currency": "USD",
-				}
-			}
-			xing[legend[i]] = value
-		}
-		data, err := json.Marshal(xing)
-		if err != nil {
-			return nil, fmt.Errorf("to json %w", err)
+// func (b *Billing) getPayment(user user.User, payments []currency.Amount) (currency.Amount, float64, int, []currency.Amount) {
+// 	if !user.Active {
+// 		return currency.Amount{}, 0, 0, payments
+// 	}
 
-		}
-		var out T
-		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("from json %w", err)
-		}
-		ret = append(ret, out)
+// 	pay := payments[0]
+// 	payments = payments[1:]
+// 	weight := 1
 
-	}
-	return ret, nil
-}
+// 	if user.AccountName == communityCenterAccount {
+// 		weight = b.communityCenterCount
 
-func (b *Billing) getPayment(name string, payments []*money.Money) (money.Money, float64, int, []*money.Money) {
-	pay := *payments[0]
-	payments = payments[1:]
-	weight := 1
+// 		pay = currency.Sum(pay, payments[0])
+// 		payments = payments[1:]
+// 	}
 
-	if name == communityCenterAccount {
-		weight = b.communityCenterCount
-	}
+// 	fraction := float64(weight) / float64(b.effectiveUserCount)
+// 	return pay, fraction, weight, payments
+// }
 
-	fraction := float64(weight) / float64(b.effectiveUserCount)
-	return pay, fraction, weight, payments
-}
+// func parsePayments(payments []payment.Payment, users []user.User) (*account.Accounts, error) {
+// 	ac := account.NewAccounts()
 
-func parsePayments(payments []Payment, users []User) error {
-	um := map[string]*User{}
+// 	for _, u := range users {
+// 		ac.Register(u.AccountName)
+// 	}
 
-	for i := range users {
-		u := &users[i]
-		um[u.AccountName] = u
-		u.accountBalance = *money.New(0, money.USD)
-		u.lastPayment = *money.New(0, money.USD)
-	}
+// 	for _, pay := range payments {
+// 		ac := ac.Lookup(pay.AccountName)
 
-	for _, pay := range payments {
-		u, ok := um[pay.AccountName]
-		if !ok {
-			return fmt.Errorf("payment user not found: %v", pay.AccountName)
-		}
+// 		if ac == nil {
+// 			return nil, fmt.Errorf("payment user not found: %v", pay.AccountName)
+// 		}
 
-		when, err := time.Parse(csvLayout, pay.Date)
-		if err != nil {
-			return err
-		}
+// 		when, err := time.Parse(csvLayout, pay.Date)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		u.lastPaymentDate = when
-		u.lastPayment = pay.Amount
+// 		ac.EnterPayment(when, pay.Amount)
+// 	}
 
-		newBal, _ := u.accountBalance.Subtract(&pay.Amount)
-		u.accountBalance = *newBal
-	}
+// 	return ac, nil
+// }
 
-	return nil
-}
-
-func (b *Billing) Main() error {
-	flag.Parse()
+func Main() error {
+	bill := billing.New()
 
 	// Users
-	users, err := readAll[User](*usersFile)
+	users, err := csv.ReadAll[user.User](*usersFile)
 	if err != nil {
 		return err
 	}
 
 	// Metadata
-	meta, err := readAll[Metadata](*metadataFile)
+	meta, err := csv.ReadAll[metadata.Metadata](*metadataFile)
 	if err != nil {
 		return err
 	}
@@ -397,48 +177,32 @@ func (b *Billing) Main() error {
 		return fmt.Errorf("metadata file should have one row: %d", len(meta))
 	}
 
-	// Accounts
-	accounts, err := readAll[Accounts](*accountsFile)
+	// Expenses
+	expenses, err := csv.ReadAll[expense.Expenses](*expensesFile)
 	if err != nil {
 		return err
 	}
 
-	// Every other period we split the taxes and insurance, which
-	// are yearly expenses paid during the October-March period.
-	for acctNo := 0; acctNo < len(accounts); acctNo += 2 {
-		yearlyTax, _ := accounts[acctNo].Taxes.Split(2)
-		yearlyIns, _ := accounts[acctNo].Insurance.Split(2)
-
-		accounts[acctNo].Taxes = *yearlyTax[0]
-		accounts[acctNo].Insurance = *yearlyIns[0]
-
-		if accounts[acctNo+1].Taxes.Amount() != 0 ||
-			accounts[acctNo+1].Taxes.Amount() != 0 {
-			return fmt.Errorf("Off-cycle taxes and insurance not handled")
-		}
-
-		// The final period will be missing every other cycle.
-		if acctNo+1 < len(accounts) {
-			accounts[acctNo+1].Taxes = *yearlyTax[1]
-			accounts[acctNo+1].Insurance = *yearlyIns[1]
-		}
+	if err := expense.SplitAnnual(expenses); err != nil {
+		return err
 	}
 
 	// Payments ledger
-	payments, err := readAll[Payment](*ledgerFile)
+	payments, err := csv.ReadAll[payment.Payment](*paymentsFile)
 	if err != nil {
 		return err
 	}
 
-	if err := parsePayments(payments, users); err != nil {
-		return err
-	}
+	// err := parsePayments(payments, users)
+	// if err != nil {
+	// 	return err
+	// }
 
 	var currentTmpl *template.Template
 
 	for cycleNo := range accounts {
 		acct := &accounts[cycleNo]
-		if err := acct.parsePeriod(); err != nil {
+		if err := acct.advanceBillingPeriod(); err != nil {
 			return err
 		}
 
@@ -446,12 +210,12 @@ func (b *Billing) Main() error {
 		case "Baseline":
 			// No adjustments
 
-		case "InitialAdjustment":
+		case "FirstAdjustment":
 			b.communityCenterCount = communityCenterAdjustedUserCount
 			b.effectiveUserCount += communityCenterAdjustment
 			// In a different universe, this fallthrough
 			// might matter.  It doesn't in our universe
-			// because Caspar's InitialAdjustment happens
+			// because Caspar's FirstAdjustment happens
 			// in an odd cycle.
 			fallthrough
 
@@ -475,38 +239,38 @@ func (b *Billing) Main() error {
 			return err
 		}
 
-		expenses := sumMoney(
+		expenses := currency.Sum(
 			acct.Operations,
 			acct.Utilities,
 			acct.Taxes,
 			acct.Insurance,
 		)
 
-		total := money.New(int64(float64(expenses.Amount())*b.savingsRate), money.USD)
+		total := expenses.Scale(b.savingsRate)
 
 		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", acct.invoiceName, expenses.Display(), b.savingsRate)
 
-		payments, err := total.Split(b.effectiveUserCount)
-		if err != nil {
-			return err
-		}
+		payments := total.Split(b.effectiveUserCount)
 
 		// Deterministically shuffle the $0.01 rounding
 		// differences so they are shared by different users.
-		rand.New(rand.NewSource(acct.periodEnd.UnixNano())).Shuffle(len(payments), func(i, j int) {
+		rand.New(rand.NewSource(acct.PeriodStart.Ending().UnixNano())).Shuffle(len(payments), func(i, j int) {
 			payments[i], payments[j] = payments[j], payments[i]
 		})
 
 		marginStr := fmt.Sprintf("%.2f%%", b.savingsRate-1)
-		startDate := acct.billDate.AddDate(0, -6, 0).Format(fullDateLayout)
-		endDate := acct.periodEnd.Format(fullDateLayout)
+		startDate := acct.PeriodStart.Starting().Format(fullDateLayout)
+		endDate := acct.PeriodStart.Ending().Format(fullDateLayout)
 
 		for userNo := range users {
 			user := &users[userNo]
+			if !user.Active {
+				continue
+			}
 
 			pdfPath := path.Join(acct.dirPath, user.AccountName+".pdf")
 
-			pay, fraction, weight, reduced := b.getPayment(user.AccountName, payments)
+			pay, fraction, weight, reduced := b.getPayment(*user, payments)
 			payments = reduced
 
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
@@ -536,11 +300,11 @@ func (b *Billing) Main() error {
 				Margin:   marginStr,
 
 				// Top shelf
-				Total:       total.Display(),
-				Pay:         pay.Display(),
-				TotalDue:    totalDue.Display(),
-				PastDue:     user.accountBalance.Display(),
-				LastPayment: lastPay,
+				Total:        total.Display(),
+				Pay:          pay.Display(),
+				TotalDue:     totalDue.Display(),
+				PriorBalance: user.accountBalance.Display(),
+				LastPayment:  lastPay,
 
 				// Breakdown
 				Operations: acct.Operations.Display(),
@@ -590,7 +354,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Vars) (pdf.Maroto, error) {
+func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *user.User, vars *Vars) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(30, 25, 30)
 
@@ -753,8 +517,8 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *User, vars *Var
 				vars.Pay,
 			},
 			{
-				"Past due",
-				vars.PastDue,
+				"Prior balance",
+				vars.PriorBalance,
 			},
 			{
 				"Amount due",
