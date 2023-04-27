@@ -8,19 +8,19 @@ import (
 	"strings"
 
 	"github.com/Rhymond/go-money"
+	"github.com/jmacd/caspar.water/cmd/billing/internal"
 )
 
 var dollarsAndCentsRe = regexp.MustCompile(`\$(\d+(?:,\d\d\d)*)\.(\d\d)`)
 
-func must[T any](t T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
 type Amount struct {
 	units int64
+}
+
+func Units(units int64) Amount {
+	return Amount{
+		units: units,
+	}
 }
 
 func (a Amount) money() *money.Money {
@@ -29,7 +29,7 @@ func (a Amount) money() *money.Money {
 
 func (a Amount) Split(n int) []Amount {
 	var r []Amount
-	for _, in := range must(a.money().Split(n)) {
+	for _, in := range internal.Must(a.money().Split(n)) {
 		r = append(r, Amount{
 			units: in.Amount(),
 		})
@@ -51,13 +51,23 @@ func (a Amount) Display() string {
 	return a.money().Display()
 }
 
+func (a Amount) Units() int64 {
+	return a.units
+}
+
 func Sum(inputs ...Amount) Amount {
-	total := money.New(0, money.USD)
+	var units int64
 	for _, in := range inputs {
-		total = must(total.Add(in.money()))
+		units += in.units
 	}
 	return Amount{
-		units: total.Amount(),
+		units: units,
+	}
+}
+
+func Difference(a, b Amount) Amount {
+	return Amount{
+		units: a.units - b.units,
 	}
 }
 

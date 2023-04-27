@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmacd/caspar.water/cmd/billing/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/constant"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/expense"
@@ -32,7 +33,7 @@ var (
 	usersFile    = flag.String("users", "users.csv", "csv")
 	metadataFile = flag.String("metadata", "metadata.csv", "csv")
 	expensesFile = flag.String("expenses", "expenses.csv", "csv")
-	paymentsFile = flag.String("payments", "paymets.csv", "csv")
+	paymentsFile = flag.String("payments", "payments.csv", "csv")
 
 	statementsDir = flag.String("statements", "statements", "input directory")
 
@@ -50,6 +51,7 @@ type (
 		StartDate           string
 		EndDate             string
 		LastPaymentReceived string
+		InvoiceDate         string
 
 		// How the fraction/percent are computed.
 		EffectiveUserCount int
@@ -75,36 +77,6 @@ type (
 	}
 )
 
-// func parseDate(date string) (time.Time, error) {
-// 	return time.Parse(constant.CsvLayout, date)
-// }
-
-// func (acct *Accounts) advanceBillingPeriod() (err error) {
-// 	acct.invoiceName = acct.PeriodStart.Billing().Format(invoiceDateLayout)
-// 	acct.dirPath = path.Join(*statementsDir, acct.invoiceName)
-// 	if err := os.MkdirAll(acct.dirPath, 0777); err != nil {
-// 		return fmt.Errorf("mkdir: %s: %w", acct.dirPath, err)
-// 	}
-// 	return nil
-// }
-
-// func (a *Accounts) prepareStatement(currentTmplPtr **template.Template) (err error) {
-// 	base := a.invoiceName + ".txt"
-// 	nt := template.New(base)
-// 	in := path.Join(*statementsDir, base)
-
-// 	if _, err = nt.ParseFiles(in); err == nil {
-// 		a.statementTmpl = nt
-// 		*currentTmplPtr = nt
-// 	} else if errors.Is(err, os.ErrNotExist) && *currentTmplPtr != nil {
-// 		a.statementTmpl = *currentTmplPtr
-// 	} else {
-// 		return fmt.Errorf("no statement template found: %w", err)
-// 	}
-
-// 	return nil
-// }
-
 func main() {
 	flag.Parse()
 
@@ -114,62 +86,39 @@ func main() {
 	}
 }
 
-// func (b *Billing) getPayment(user user.User, payments []currency.Amount) (currency.Amount, float64, int, []currency.Amount) {
-// 	if !user.Active {
-// 		return currency.Amount{}, 0, 0, payments
-// 	}
+func getPayment(user user.User, charges []currency.Amount, b *billing.Billing) (currency.Amount, float64, int, []currency.Amount) {
+	if !user.Active {
+		panic("impossible")
+	}
 
-// 	pay := payments[0]
-// 	payments = payments[1:]
-// 	weight := 1
+	pay := charges[0]
+	charges = charges[1:]
+	weight := 1
 
-// 	if user.AccountName == communityCenterAccount {
-// 		weight = b.communityCenterCount
+	if user.AccountName == constant.CommunityCenterAccount {
+		weight = b.CommunityCenterCount()
 
-// 		pay = currency.Sum(pay, payments[0])
-// 		payments = payments[1:]
-// 	}
+		for i := 1; i < b.CommunityCenterCount(); i++ {
+			pay = currency.Sum(pay, charges[0])
+			charges = charges[1:]
+		}
+	}
 
-// 	fraction := float64(weight) / float64(b.effectiveUserCount)
-// 	return pay, fraction, weight, payments
-// }
-
-// func parsePayments(payments []payment.Payment, users []user.User) (*account.Accounts, error) {
-// 	ac := account.NewAccounts()
-
-// 	for _, u := range users {
-// 		ac.Register(u.AccountName)
-// 	}
-
-// 	for _, pay := range payments {
-// 		ac := ac.Lookup(pay.AccountName)
-
-// 		if ac == nil {
-// 			return nil, fmt.Errorf("payment user not found: %v", pay.AccountName)
-// 		}
-
-// 		when, err := time.Parse(csvLayout, pay.Date)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		ac.EnterPayment(when, pay.Amount)
-// 	}
-
-// 	return ac, nil
-// }
+	fraction := float64(weight) / float64(b.EffectiveUserCount())
+	return pay, fraction, weight, charges
+}
 
 func Main() error {
 	bill := billing.New()
 
 	// Users
-	users, err := csv.ReadAll[user.User](*usersFile)
+	users, err := csv.ReadFile[user.User](*usersFile)
 	if err != nil {
 		return err
 	}
 
 	// Metadata
-	meta, err := csv.ReadAll[metadata.Metadata](*metadataFile)
+	meta, err := csv.ReadFile[metadata.Metadata](*metadataFile)
 	if err != nil {
 		return err
 	}
@@ -177,121 +126,108 @@ func Main() error {
 		return fmt.Errorf("metadata file should have one row: %d", len(meta))
 	}
 
-	// Expenses
-	expenses, err := csv.ReadAll[expense.Expenses](*expensesFile)
+	// Expense cycles
+	cycles, err := csv.ReadFile[expense.Cycle](*expensesFile)
 	if err != nil {
 		return err
 	}
 
-	if err := expense.SplitAnnual(expenses); err != nil {
+	if err := expense.SplitAnnual(cycles); err != nil {
 		return err
 	}
 
 	// Payments ledger
-	payments, err := csv.ReadAll[payment.Payment](*paymentsFile)
+	payments, err := csv.ReadFile[payment.Payment](*paymentsFile)
 	if err != nil {
 		return err
 	}
 
-	// err := parsePayments(payments, users)
-	// if err != nil {
-	// 	return err
-	// }
+	if err := bill.EnterUsers(users); err != nil {
+		return err
+	}
+	if err := bill.EnterPayments(payments); err != nil {
+		return err
+	}
 
-	var currentTmpl *template.Template
+	for _, cycle := range cycles {
 
-	for cycleNo := range accounts {
-		acct := &accounts[cycleNo]
-		if err := acct.advanceBillingPeriod(); err != nil {
-			return err
+		billDate := cycle.PeriodStart.Billing().Date().Format(constant.InvoiceDateLayout)
+		billText := billDate + ".txt"
+		billDir := path.Join(*statementsDir, billDate)
+		billTextDir := path.Join(*statementsDir, billText)
+
+		if err := os.MkdirAll(billDir, 0777); err != nil {
+			return fmt.Errorf("mkdir: %s: %w", billDir, err)
 		}
 
-		switch acct.Method {
-		case "Baseline":
-			// No adjustments
+		bill.StartCycle(cycle)
 
-		case "FirstAdjustment":
-			b.communityCenterCount = communityCenterAdjustedUserCount
-			b.effectiveUserCount += communityCenterAdjustment
-			// In a different universe, this fallthrough
-			// might matter.  It doesn't in our universe
-			// because Caspar's FirstAdjustment happens
-			// in an odd cycle.
-			fallthrough
+		newTmpl := template.New(billText)
 
-		case "NormalAdjustment":
-			b.adjustments++
-
-			// The margin updates every other period, up
-			// until the number of statements required to
-			// reach the target margin.
-			if cycleNo%2 == 1 && b.adjustments < marginIncreaseYears*statementsPerYear {
-				ratio := float64(b.adjustments) / (marginIncreaseYears * statementsPerYear)
-				b.savingsRate = 1 + ratio*targetMargin
-			}
-		default:
-			panic(fmt.Sprintf("Unknown accounting method for %s: %s", acct.invoiceName, acct.Method))
-		}
-
-		err := acct.prepareStatement(&currentTmpl)
-		if err != nil {
-			fmt.Println("UMM")
-			return err
+		if _, err = newTmpl.ParseFiles(billTextDir); err != nil {
+			return fmt.Errorf("no statement template found: %w", err)
 		}
 
 		expenses := currency.Sum(
-			acct.Operations,
-			acct.Utilities,
-			acct.Taxes,
-			acct.Insurance,
+			cycle.Operations,
+			cycle.Utilities,
+			cycle.Taxes,
+			cycle.Insurance,
 		)
 
-		total := expenses.Scale(b.savingsRate)
+		total := expenses.Scale(bill.SavingsRate())
 
-		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", acct.invoiceName, expenses.Display(), b.savingsRate)
+		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", billDate, expenses.Display(), bill.SavingsRate())
 
-		payments := total.Split(b.effectiveUserCount)
+		charges := total.Split(bill.EffectiveUserCount())
 
 		// Deterministically shuffle the $0.01 rounding
 		// differences so they are shared by different users.
-		rand.New(rand.NewSource(acct.PeriodStart.Ending().UnixNano())).Shuffle(len(payments), func(i, j int) {
-			payments[i], payments[j] = payments[j], payments[i]
+		rand.New(rand.NewSource(cycle.PeriodStart.Ending().Date().UnixNano())).Shuffle(len(charges), func(i, j int) {
+			charges[i], charges[j] = charges[j], charges[i]
 		})
 
-		marginStr := fmt.Sprintf("%.2f%%", b.savingsRate-1)
-		startDate := acct.PeriodStart.Starting().Format(fullDateLayout)
-		endDate := acct.PeriodStart.Ending().Format(fullDateLayout)
+		marginStr := fmt.Sprintf("%.2f%%", bill.SavingsRate()-1)
+		startDate := cycle.PeriodStart.Starting().Date().Format(constant.FullDateLayout)
+		endDate := cycle.PeriodStart.Ending().Date().Format(constant.FullDateLayout)
 
-		for userNo := range users {
-			user := &users[userNo]
+		for _, user := range users {
 			if !user.Active {
 				continue
 			}
+			// @@@ TODO
+			// Skip the user if their first bill date hasn't happened.
+			// Record the billing date so this can re-run w/o change.
 
-			pdfPath := path.Join(acct.dirPath, user.AccountName+".pdf")
+			pdfPath := path.Join(billDir, user.AccountName+".pdf")
 
-			pay, fraction, weight, reduced := b.getPayment(*user, payments)
-			payments = reduced
+			owes, fraction, weight, reduced := getPayment(user, charges, bill)
+			charges = reduced
 
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
 			fracStr := fmt.Sprintf("%.4f", fraction)
 
-			totalDue, _ := user.accountBalance.Add(&pay)
+			priorBalance := bill.Balance(user, cycle.PeriodStart.Ending())
+
+			bill.EnterAmountDue(user, cycle.PeriodStart.Ending(), owes)
+
+			totalDue := bill.Balance(user, cycle.PeriodStart.Ending())
 
 			var lastPay string
 			var lastPayDate string
-			if user.lastPayment.Amount() != 0 {
-				lastPay = user.lastPayment.Display()
-				lastPayDate = user.lastPaymentDate.Format(fullDateLayout)
+			if lp := bill.LastPayment(user); !lp.Amount.IsZero() {
+				lastPay = lp.Amount.Display()
+				lastPayDate = lp.Date.Date().Format(constant.FullDateLayout)
 			}
 
 			vars := &Vars{
 				StartDate:           startDate,
 				EndDate:             endDate,
 				LastPaymentReceived: lastPayDate,
+				InvoiceDate:         billDate,
 
 				// Share
-				EffectiveUserCount: b.effectiveUserCount,
+				EffectiveUserCount: bill.EffectiveUserCount(),
 				UserWeight:         weight,
 
 				// Fractions
@@ -301,29 +237,25 @@ func Main() error {
 
 				// Top shelf
 				Total:        total.Display(),
-				Pay:          pay.Display(),
+				Pay:          owes.Display(),
 				TotalDue:     totalDue.Display(),
-				PriorBalance: user.accountBalance.Display(),
+				PriorBalance: priorBalance.Display(),
 				LastPayment:  lastPay,
 
 				// Breakdown
-				Operations: acct.Operations.Display(),
-				Utilities:  acct.Utilities.Display(),
-				Taxes:      acct.Taxes.Display(),
-				Insurance:  acct.Insurance.Display(),
+				Operations: cycle.Operations.Display(),
+				Utilities:  cycle.Utilities.Display(),
+				Taxes:      cycle.Taxes.Display(),
+				Insurance:  cycle.Insurance.Display(),
 			}
 
-			bill, err := b.makeBill(&meta[0], acct, user, vars)
+			stmt, err := makeBill(meta[0], cycle, user, vars, newTmpl, bill)
 			if err != nil {
 				return err
 			}
-			if err := bill.OutputFileAndClose(pdfPath); err != nil {
+			if err := stmt.OutputFileAndClose(pdfPath); err != nil {
 				return err
 			}
-
-			// update the account balance
-			newBal, _ := user.accountBalance.Add(&pay)
-			user.accountBalance = *newBal
 		}
 	}
 	return nil
@@ -354,7 +286,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *user.User, vars *Vars) (pdf.Maroto, error) {
+func makeBill(meta metadata.Metadata, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template, b *billing.Billing) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(30, 25, 30)
 
@@ -443,21 +375,21 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *user.User, vars
 		})
 		m.ColSpace(4)
 		m.Col(4, func() {
-			m.Text(time.Now().Format(fullDateLayout), rightText)
+			m.Text(time.Now().Format(constant.FullDateLayout), rightText)
 		})
 	})
 
-	toStyle.multiLine(m, append([]string{user.UserName}, parseAddress(user.BillingAddress)...))
+	toStyle.multiLine(m, append([]string{user.UserName}, user.BillingAddress.Split()...))
 
 	m.Row(4, func() {})
 	m.Row(12, func() {
 		m.Col(4, func() {
-			m.Text("Invoice "+acct.invoiceName, boldText)
+			m.Text("Invoice "+vars.InvoiceDate, boldText)
 		})
 	})
 
 	var textBuf bytes.Buffer
-	err := acct.statementTmpl.Execute(&textBuf, vars)
+	err := tmpl.Execute(&textBuf, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -484,19 +416,19 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *user.User, vars
 		}, [][]string{
 			{
 				"Operations",
-				acct.Operations.Display(),
+				cycle.Operations.Display(),
 			},
 			{
 				"Utilities",
-				acct.Utilities.Display(),
+				cycle.Utilities.Display(),
 			},
 			{
 				"Insurance",
-				acct.Insurance.Display(),
+				cycle.Insurance.Display(),
 			},
 			{
 				"Taxes",
-				acct.Taxes.Display(),
+				cycle.Taxes.Display(),
 			},
 			{},
 			{
@@ -534,7 +466,7 @@ func (b *Billing) makeBill(meta *Metadata, acct *Accounts, user *user.User, vars
 		})
 	})
 
-	paymentStyle.multiLine(m, append([]string{meta.Name}, parseAddress(meta.Address)...))
+	paymentStyle.multiLine(m, append([]string{meta.Name}, meta.Address.Split()...))
 
 	m.Row(10, func() {})
 	m.Row(4, func() {

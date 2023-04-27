@@ -27,4 +27,7 @@ const (
 	TargetMargin        = 0.2
 	MarginIncreaseYears = 2
 	StatementsPerYear   = 2
+
+	FirstCycleMonth  = 4
+	SecondCycleMonth = 10
 )

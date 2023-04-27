@@ -35,6 +35,7 @@ func TestBoolBad(t *testing.T) {
 	} {
 		var b Bool
 
+		// Quoted, at least it's a string.
 		err := json.Unmarshal(quoteBytes(bad), &b)
 		require.Error(t, err)
 	}

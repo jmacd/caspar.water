@@ -4,19 +4,28 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
 
+type Validator interface {
+	Validate() error
+}
+
 // ReadAll converts a CSV file into a list of T structs (all defined
 // above), where the first CSV row matches field names.  This is done
 // via an intermediate JSON representation.
-func ReadAll[T any](name string) ([]T, error) {
+func ReadFile[T Validator](name string) ([]T, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
-	read, err := csv.NewReader(f).ReadAll()
+	return Read[T](name, f)
+}
+
+func Read[T Validator](name string, file io.Reader) ([]T, error) {
+	read, err := csv.NewReader(file).ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("read csv %s: %w", name, err)
 	}
@@ -41,6 +50,9 @@ func ReadAll[T any](name string) ([]T, error) {
 		var out T
 		if err := json.Unmarshal(data, &out); err != nil {
 			return nil, fmt.Errorf("from json %w", err)
+		}
+		if err := out.Validate(); err != nil {
+			return nil, fmt.Errorf("row %s: %w", row, err)
 		}
 		ret = append(ret, out)
 

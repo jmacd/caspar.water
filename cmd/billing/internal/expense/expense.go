@@ -7,8 +7,8 @@ import (
 	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
 )
 
-// Expenses describes the cost of doing business.
-type Expenses struct {
+// Cycle describes the cost of doing business for one billing cycle.
+type Cycle struct {
 	// PeriodStart is the end of the billing cycle.
 	PeriodStart period.Period
 
@@ -33,27 +33,49 @@ type Expenses struct {
 	Method string
 }
 
-func SplitAnnual(periods []Expenses) error {
+func SplitAnnual(cycles []Cycle) error {
 	// Every other period we split the taxes and insurance, which
 	// are yearly expenses paid during the October-March period.
-	for acctNo := 0; acctNo < len(periods); acctNo += 2 {
-		yearlyTax := periods[acctNo].Taxes.Split(2)
-		yearlyIns := periods[acctNo].Insurance.Split(2)
+	for cycleNo := 0; cycleNo < len(cycles); cycleNo += 2 {
+		yearlyTax := cycles[cycleNo].Taxes.Split(2)
+		yearlyIns := cycles[cycleNo].Insurance.Split(2)
 
-		periods[acctNo].Taxes = yearlyTax[0]
-		periods[acctNo].Insurance = yearlyIns[0]
+		cycles[cycleNo].Taxes = yearlyTax[0]
+		cycles[cycleNo].Insurance = yearlyIns[0]
 
-		if len(periods) > (acctNo+1) &&
-			(!periods[acctNo+1].Taxes.IsZero() ||
-				!periods[acctNo+1].Insurance.IsZero()) {
+		if len(cycles) > (cycleNo+1) &&
+			(!cycles[cycleNo+1].Taxes.IsZero() ||
+				!cycles[cycleNo+1].Insurance.IsZero()) {
 			return fmt.Errorf("taxes and insurance October-March not handled")
 		}
 
 		// The final period will be missing every other cycle.
-		if acctNo+1 < len(periods) {
-			periods[acctNo+1].Taxes = yearlyTax[1]
-			periods[acctNo+1].Insurance = yearlyIns[1]
+		if cycleNo+1 < len(cycles) {
+			cycles[cycleNo+1].Taxes = yearlyTax[1]
+			cycles[cycleNo+1].Insurance = yearlyIns[1]
 		}
+	}
+	return nil
+}
+
+func (c Cycle) Validate() error {
+	if err := c.PeriodStart.Validate(); err != nil {
+		return err
+	}
+	if c.Operations.Units() <= 0 {
+		return fmt.Errorf("expenses cannot be negative")
+	}
+	if c.Utilities.Units() <= 0 {
+		return fmt.Errorf("expenses cannot be negative")
+	}
+	if c.Insurance.Units() < 0 {
+		return fmt.Errorf("expenses cannot be negative")
+	}
+	if c.Taxes.Units() < 0 {
+		return fmt.Errorf("expenses cannot be negative")
+	}
+	if c.Method == "" {
+		return fmt.Errorf("expenses method is empty")
 	}
 	return nil
 }

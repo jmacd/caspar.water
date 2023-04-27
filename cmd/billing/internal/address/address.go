@@ -4,9 +4,9 @@ import "strings"
 
 type Address string
 
-// SplitAddress splits a semicolon-delimited multiline address.
-func Split(in Address) []string {
-	out := strings.Split(string(in), ";")
+// Split splits a semicolon-delimited multiline address.
+func (addr Address) Split() []string {
+	out := strings.Split(string(addr), ";")
 	for i := range out {
 		out[i] = strings.TrimSpace(out[i])
 	}

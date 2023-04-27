@@ -1,6 +1,8 @@
 package user
 
 import (
+	"fmt"
+
 	"github.com/jmacd/caspar.water/cmd/billing/internal/address"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/bool"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
@@ -27,4 +29,23 @@ type User struct {
 
 	// FirstPeriodStart is the initial billing cycle.
 	FirstPeriodStart period.Period
+}
+
+func (u User) Validate() error {
+	if u.AccountName == "" {
+		return fmt.Errorf("empty user account name")
+	}
+	if u.UserName == "" {
+		return fmt.Errorf("empty user name")
+	}
+	if u.ServiceAddress == "" {
+		return fmt.Errorf("empty service address")
+	}
+	if u.BillingAddress == "" {
+		return fmt.Errorf("empty service address")
+	}
+	if err := u.FirstPeriodStart.Validate(); err != nil {
+		return err
+	}
+	return nil
 }

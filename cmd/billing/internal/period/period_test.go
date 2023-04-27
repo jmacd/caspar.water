@@ -24,9 +24,9 @@ func TestPeriodJSONGood(t *testing.T) {
 		err := json.Unmarshal(quoteBytes(good[0]), &p)
 		require.NoError(t, err)
 
-		require.Equal(t, good[0], p.Starting().Format(constant.CsvLayout))
-		require.Equal(t, good[1], p.Ending().Format(constant.CsvLayout))
-		require.Equal(t, good[2], p.Billing().Format(constant.CsvLayout))
+		require.Equal(t, good[0], p.Starting().Date().Format(constant.CsvLayout))
+		require.Equal(t, good[1], p.Ending().Date().Format(constant.CsvLayout))
+		require.Equal(t, good[2], p.Billing().Date().Format(constant.CsvLayout))
 	}
 }
 
@@ -38,6 +38,9 @@ func TestPeriodJSONBad(t *testing.T) {
 	} {
 		var p Period
 		err := json.Unmarshal(quoteBytes(bad), &p)
-		require.Error(t, err)
+		// These parse correctly, but do not validate.
+		require.NoError(t, err)
+
+		require.Error(t, p.Validate())
 	}
 }
