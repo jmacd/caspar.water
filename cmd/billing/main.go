@@ -11,14 +11,13 @@ import (
 	"path"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/jmacd/caspar.water/cmd/billing/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/business"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/constant"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/expense"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/metadata"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/payment"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/user"
 	"github.com/jmacd/maroto/pkg/color"
@@ -31,8 +30,8 @@ var (
 	// These files contain private data, are not kept in
 	// this repository.
 	usersFile    = flag.String("users", "users.csv", "csv")
-	metadataFile = flag.String("metadata", "metadata.csv", "csv")
-	expensesFile = flag.String("expenses", "expenses.csv", "csv")
+	businessFile = flag.String("business", "business.csv", "csv")
+	cyclesFile   = flag.String("cycles", "cycles.csv", "csv")
 	paymentsFile = flag.String("payments", "payments.csv", "csv")
 
 	statementsDir = flag.String("statements", "statements", "input directory")
@@ -48,10 +47,12 @@ var (
 type (
 	Vars struct {
 		// Timestamps
-		StartDate           string
-		EndDate             string
+		StartFullDate       string
+		StartMonthDate      string
+		CloseFullDate       string
+		CloseMonthDate      string
+		IssueFullDate       string
 		LastPaymentReceived string
-		InvoiceDate         string
 
 		// How the fraction/percent are computed.
 		EffectiveUserCount int
@@ -117,17 +118,17 @@ func Main() error {
 		return err
 	}
 
-	// Metadata
-	meta, err := csv.ReadFile[metadata.Metadata](*metadataFile)
+	// Business
+	meta, err := csv.ReadFile[business.Business](*businessFile)
 	if err != nil {
 		return err
 	}
 	if len(meta) != 1 {
-		return fmt.Errorf("metadata file should have one row: %d", len(meta))
+		return fmt.Errorf("business file should have one row: %d", len(meta))
 	}
 
 	// Expense cycles
-	cycles, err := csv.ReadFile[expense.Cycle](*expensesFile)
+	cycles, err := csv.ReadFile[expense.Cycle](*cyclesFile)
 	if err != nil {
 		return err
 	}
@@ -151,55 +152,57 @@ func Main() error {
 
 	for _, cycle := range cycles {
 
-		billDate := cycle.PeriodStart.Billing().Date().Format(constant.InvoiceDateLayout)
-		billText := billDate + ".txt"
-		billDir := path.Join(*statementsDir, billDate)
-		billTextDir := path.Join(*statementsDir, billText)
+		startFullDate := cycle.PeriodStart.Starting().Date().Format(constant.FullDateLayout)
+		closeFullDate := cycle.PeriodStart.Closing().Date().Format(constant.FullDateLayout)
+		startMonthDate := cycle.PeriodStart.Starting().Date().Format(constant.InvoiceDateLayout)
+		closeMonthDate := cycle.PeriodStart.Closing().Date().Format(constant.InvoiceDateLayout)
+		issueFullDate := cycle.BillDate.Date().Format(constant.FullDateLayout)
+		inputText := closeMonthDate + ".txt"
+		outputPath := path.Join(*statementsDir, closeMonthDate)
+		inputTextPath := path.Join(*statementsDir, inputText)
 
-		if err := os.MkdirAll(billDir, 0777); err != nil {
-			return fmt.Errorf("mkdir: %s: %w", billDir, err)
+		if err := os.MkdirAll(outputPath, 0777); err != nil {
+			return fmt.Errorf("mkdir: %s: %w", outputPath, err)
 		}
 
 		bill.StartCycle(cycle)
 
-		newTmpl := template.New(billText)
+		newTmpl := template.New(inputText)
 
-		if _, err = newTmpl.ParseFiles(billTextDir); err != nil {
+		if _, err = newTmpl.ParseFiles(inputTextPath); err != nil {
 			return fmt.Errorf("no statement template found: %w", err)
 		}
 
-		expenses := currency.Sum(
+		sumExpenses := currency.Sum(
 			cycle.Operations,
 			cycle.Utilities,
 			cycle.Taxes,
 			cycle.Insurance,
 		)
 
-		total := expenses.Scale(bill.SavingsRate())
+		total := sumExpenses.Scale(bill.SavingsRate())
 
-		fmt.Printf("Billing cycle %v expenses %v savingsRate %.3f\n", billDate, expenses.Display(), bill.SavingsRate())
+		fmt.Printf("Billing cycle %v..%v cycles %v savingsRate %.3f\n", startMonthDate, closeMonthDate, sumExpenses.Display(), bill.SavingsRate())
 
 		charges := total.Split(bill.EffectiveUserCount())
 
 		// Deterministically shuffle the $0.01 rounding
 		// differences so they are shared by different users.
-		rand.New(rand.NewSource(cycle.PeriodStart.Ending().Date().UnixNano())).Shuffle(len(charges), func(i, j int) {
+		rand.New(rand.NewSource(cycle.PeriodStart.Closing().Date().UnixNano())).Shuffle(len(charges), func(i, j int) {
 			charges[i], charges[j] = charges[j], charges[i]
 		})
 
 		marginStr := fmt.Sprintf("%.2f%%", bill.SavingsRate()-1)
-		startDate := cycle.PeriodStart.Starting().Date().Format(constant.FullDateLayout)
-		endDate := cycle.PeriodStart.Ending().Date().Format(constant.FullDateLayout)
 
 		for _, user := range users {
 			if !user.Active {
 				continue
 			}
-			// @@@ TODO
-			// Skip the user if their first bill date hasn't happened.
-			// Record the billing date so this can re-run w/o change.
+			if user.FirstPeriodStart.Starting().Date().After(cycle.PeriodStart.Starting().Date()) {
+				continue
+			}
 
-			pdfPath := path.Join(billDir, user.AccountName+".pdf")
+			pdfPath := path.Join(outputPath, user.AccountName+".pdf")
 
 			owes, fraction, weight, reduced := getPayment(user, charges, bill)
 			charges = reduced
@@ -207,11 +210,11 @@ func Main() error {
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
 			fracStr := fmt.Sprintf("%.4f", fraction)
 
-			priorBalance := bill.Balance(user, cycle.PeriodStart.Ending())
+			priorBalance := bill.Balance(user, cycle.BillDate)
 
-			bill.EnterAmountDue(user, cycle.PeriodStart.Ending(), owes)
+			bill.EnterAmountDue(user, cycle.PeriodStart.Closing(), owes)
 
-			totalDue := bill.Balance(user, cycle.PeriodStart.Ending())
+			totalDue := bill.Balance(user, cycle.BillDate)
 
 			var lastPay string
 			var lastPayDate string
@@ -221,10 +224,11 @@ func Main() error {
 			}
 
 			vars := &Vars{
-				StartDate:           startDate,
-				EndDate:             endDate,
+				StartFullDate:       startFullDate,
+				CloseFullDate:       closeFullDate,
+				CloseMonthDate:      closeMonthDate,
+				IssueFullDate:       issueFullDate,
 				LastPaymentReceived: lastPayDate,
-				InvoiceDate:         billDate,
 
 				// Share
 				EffectiveUserCount: bill.EffectiveUserCount(),
@@ -286,7 +290,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func makeBill(meta metadata.Metadata, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template, b *billing.Billing) (pdf.Maroto, error) {
+func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template, b *billing.Billing) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(30, 25, 30)
 
@@ -362,7 +366,7 @@ func makeBill(meta metadata.Metadata, cycle expense.Cycle, user user.User, vars 
 	m.RegisterFooter(func() {
 		m.Row(3, func() {
 			m.Col(0, func() {
-				m.Text(meta.Contact, centerText)
+				m.Text(bus.Contact, centerText)
 
 			})
 		})
@@ -375,18 +379,25 @@ func makeBill(meta metadata.Metadata, cycle expense.Cycle, user user.User, vars 
 		})
 		m.ColSpace(4)
 		m.Col(4, func() {
-			m.Text(time.Now().Format(constant.FullDateLayout), rightText)
+			m.Text(vars.IssueFullDate, rightText)
 		})
 	})
 
 	toStyle.multiLine(m, append([]string{user.UserName}, user.BillingAddress.Split()...))
-
 	m.Row(4, func() {})
-	m.Row(12, func() {
-		m.Col(4, func() {
-			m.Text("Invoice "+vars.InvoiceDate, boldText)
+	m.Row(8, func() {
+		m.Col(8, func() {
+			m.Text("Invoice: "+vars.CloseMonthDate, boldText)
+		})
+		m.Row(4, func() {})
+	})
+
+	m.Row(8, func() {
+		m.Col(12, func() {
+			m.Text("Service address: "+user.ServiceAddress.OneLine(), boldText)
 		})
 	})
+	m.Row(4, func() {})
 
 	var textBuf bytes.Buffer
 	err := tmpl.Execute(&textBuf, vars)
@@ -466,7 +477,7 @@ func makeBill(meta metadata.Metadata, cycle expense.Cycle, user user.User, vars 
 		})
 	})
 
-	paymentStyle.multiLine(m, append([]string{meta.Name}, meta.Address.Split()...))
+	paymentStyle.multiLine(m, append([]string{bus.Name}, bus.Address.Split()...))
 
 	m.Row(10, func() {})
 	m.Row(4, func() {

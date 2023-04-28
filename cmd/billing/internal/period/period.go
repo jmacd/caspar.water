@@ -10,8 +10,7 @@ import (
 // April or October 1st (any year). They are six months.
 type Period struct {
 	start csv.Date
-	end   csv.Date
-	bill  csv.Date
+	close csv.Date
 }
 
 func (p *Period) UnmarshalJSON(data []byte) error {
@@ -20,8 +19,7 @@ func (p *Period) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	p.start = d
-	p.bill = csv.DateFromTime(d.Date().AddDate(0, 6, 0))
-	p.end = csv.DateFromTime(d.Date().AddDate(0, 6, -1))
+	p.close = csv.DateFromTime(d.Date().AddDate(0, 6, -1))
 	return nil
 }
 
@@ -29,12 +27,8 @@ func (p *Period) Starting() csv.Date {
 	return p.start
 }
 
-func (p *Period) Ending() csv.Date {
-	return p.end
-}
-
-func (p *Period) Billing() csv.Date {
-	return p.bill
+func (p *Period) Closing() csv.Date {
+	return p.close
 }
 
 func ParseStart(s string) (Period, error) {

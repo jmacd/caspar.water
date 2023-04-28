@@ -12,3 +12,8 @@ func (addr Address) Split() []string {
 	}
 	return out
 }
+
+// OneLine splits a semicolon-delimited multiline address.
+func (addr Address) OneLine() string {
+	return string(addr)
+}

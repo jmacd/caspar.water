@@ -3,6 +3,7 @@ package expense
 import (
 	"fmt"
 
+	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
 )
@@ -24,6 +25,9 @@ type Cycle struct {
 	// Taxes are property taxes, business licensing, and
 	// certification costs.
 	Taxes currency.Amount
+
+	// BillDate is the date the statement was prepared.
+	BillDate csv.Date
 
 	// Method describes the billing method, values include:
 	// - Baseline: the initial condition has no reserve.

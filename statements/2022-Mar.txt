@@ -1,6 +1,6 @@
 This is a semi-annual statement of the cost of operations for the
 Caspar Water Company.  Listed below are total expenses for serving
-water from {{.StartDate}} through {{.EndDate}}.
+water from {{.StartFullDate}} through {{.CloseFullDate}}.
 
 Your bill represents {{.Percent}} of our semi-annual expenses.  This
 fraction is calculated by dividing your connection's weight

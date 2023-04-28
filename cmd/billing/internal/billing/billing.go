@@ -80,7 +80,7 @@ func (b *Billing) StartCycle(cycle expense.Cycle) {
 	case "Baseline":
 		// No adjustments
 
-	case "InitialAdjustment":
+	case "FirstAdjustment":
 		b.firstAdjustment()
 
 	case "NormalAdjustment":

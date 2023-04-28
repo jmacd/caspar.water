@@ -1,4 +1,4 @@
-package metadata
+package business
 
 import (
 	"fmt"
@@ -6,9 +6,9 @@ import (
 	"github.com/jmacd/caspar.water/cmd/billing/internal/address"
 )
 
-// Metadata describes the billing entity and other static
+// Business describes the billing entity and other static
 // information.
-type Metadata struct {
+type Business struct {
 	// Name is how to make the payment.
 	Name string
 
@@ -19,7 +19,7 @@ type Metadata struct {
 	Contact string
 }
 
-func (m Metadata) Validate() error {
+func (m Business) Validate() error {
 	if m.Name == "" {
 		return fmt.Errorf("business name empty")
 	}
