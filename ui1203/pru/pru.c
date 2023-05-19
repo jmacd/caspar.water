@@ -1,0 +1,317 @@
+// MIT License
+//
+// Copyright (C) Joshua MacDonald
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+#include <pru_rpmsg.h>
+#include <pru_virtio_ids.h>
+#include <rsc_types.h>
+#include <string.h>
+
+#include <am335x/pru_cfg.h>
+#include <am335x/pru_ctrl.h>
+#include <am335x/pru_intc.h>
+
+volatile register uint32_t __R30; // output register for PRU
+volatile register uint32_t __R31; // input/interrupt register for PRU
+
+struct pru_rpmsg_transport rpmsg_transport;
+char rpmsg_payload[RPMSG_BUF_SIZE];
+uint16_t rpmsg_src, rpmsg_dst, rpmsg_len;
+
+// Set in resourceTable.rpmsg_vdev.status when the kernel is ready.
+#define VIRTIO_CONFIG_S_DRIVER_OK ((uint32_t)1 << 2)
+
+// Sizes of the virtqueues (expressed in number of buffers supported,
+// and must be power of 2)
+#define PRU_RPMSG_VQ0_SIZE 16
+#define PRU_RPMSG_VQ1_SIZE 16
+
+// The feature bitmap for virtio rpmsg
+#define VIRTIO_RPMSG_F_NS 0 // name service notifications
+
+// This firmware supports name service notifications as one of its features.
+#define RPMSG_PRU_C0_FEATURES (1 << VIRTIO_RPMSG_F_NS)
+
+// sysevt 16 == pr1_pru_mst_intr[0]_intr_req
+#define SYSEVT_PRU_TO_ARM 16
+
+// sysevt 17 == pr1_pru_mst_intr[1]_intr_req
+#define SYSEVT_ARM_TO_PRU 17
+
+// Chanel 2 is the first (of 8) PRU interrupt output channels.
+#define HOST_INTERRUPT_CHANNEL_PRU_TO_ARM 2
+
+// Channel 0 is the first (of 2) PRU interrupt input channels.
+#define HOST_INTERRUPT_CHANNEL_ARM_TO_PRU 0
+
+// Interrupt inputs set bits 30 and 31 in register R31.
+#define PRU_R31_INTERRUPT_FROM_ARM ((uint32_t)1 << 30) // Fixed, equals channel 0
+
+// (From the internet!)
+#define offsetof(st, m) ((uint32_t) & (((st *)0)->m))
+
+// Definition for unused interrupts
+#define HOST_UNUSED 255
+
+// HI and LO are abbreviations used below.
+#define HI 1
+#define LO 0
+
+// Mapping sysevts to a channel. Each pair contains a sysevt, channel.
+struct ch_map pru_intc_map[] = {
+    // Interrupts to and from the ARM (virtio).
+    {SYSEVT_PRU_TO_ARM, HOST_INTERRUPT_CHANNEL_PRU_TO_ARM},
+    {SYSEVT_ARM_TO_PRU, HOST_INTERRUPT_CHANNEL_ARM_TO_PRU},
+};
+
+// my_resource_table describes the custom hardware settings used by
+// this program.
+struct my_resource_table {
+  struct resource_table base;
+
+  uint32_t offset[2]; // Should match 'num' in actual definition
+
+  struct fw_rsc_vdev rpmsg_vdev;         // Resource 0
+  struct fw_rsc_vdev_vring rpmsg_vring0; // (cont)
+  struct fw_rsc_vdev_vring rpmsg_vring1; // (cont)
+
+  struct fw_rsc_custom pru_ints; // Resource 1
+};
+
+#pragma DATA_SECTION(resourceTable, ".resource_table")
+#pragma RETAIN(resourceTable)
+// my_resource_table is (as I understand it) how the Linux kernel
+// knows what it needs to start the firmware.
+struct my_resource_table resourceTable = {
+    // resource_table base
+    {
+        1,    // Resource table version: only version 1 is supported
+        2,    // Number of entries in the table (equals length of offset field).
+        0, 0, // Reserved zero fields
+    },
+    // Entry offsets
+    {
+        offsetof(struct my_resource_table, rpmsg_vdev),
+        offsetof(struct my_resource_table, pru_ints),
+    },
+    // RPMsg virtual device
+    {
+        (uint32_t)TYPE_VDEV,             // type
+        (uint32_t)VIRTIO_ID_RPMSG,       // id
+        (uint32_t)0,                     // notifyid
+        (uint32_t)RPMSG_PRU_C0_FEATURES, // dfeatures
+        (uint32_t)0,                     // gfeatures
+        (uint32_t)0,                     // config_len
+        (uint8_t)0,                      // status
+        (uint8_t)2,                      // num_of_vrings, only two is supported
+        {(uint8_t)0, (uint8_t)0},        // reserved
+    },
+    // The two vring structs must be packed after the vdev entry.
+    {
+        0,                  // da, will be populated by host, can't pass it in
+        16,                 // align (bytes),
+        PRU_RPMSG_VQ0_SIZE, // num of descriptors
+        0,                  // notifyid, will be populated, can't pass right now
+        0                   // reserved
+    },
+    {
+        0,                  // da, will be populated by host, can't pass it in
+        16,                 // align (bytes),
+        PRU_RPMSG_VQ1_SIZE, // num of descriptors
+        0,                  // notifyid, will be populated, can't pass right now
+        0                   // reserved
+    },
+    // Custom interrupt controller setup
+    {
+        TYPE_CUSTOM,
+        TYPE_PRU_INTS,
+        sizeof(struct fw_rsc_custom_ints),
+        {
+            // PRU_INTS version
+            PRU_INTS_VER0,
+
+            // See TRM 4.4.2.1.  There are 10 interrupt channels being
+            // mapped to hosts here.  The pru_intc_map struct maps
+            // system events to channels, and this struct maps them to
+            // hosts.  ARM and EDMA are the other hosts.
+            //
+            // Input interrupt channels.
+            HOST_INTERRUPT_CHANNEL_ARM_TO_PRU, // 0
+            HOST_UNUSED,                       // 1
+
+            // Output interrupt channels.
+            HOST_INTERRUPT_CHANNEL_PRU_TO_ARM, // 2
+
+            // Unused channels.
+            HOST_UNUSED, // 3
+            HOST_UNUSED, // 4
+            HOST_UNUSED, // 5
+            HOST_UNUSED, // 6
+            HOST_UNUSED, // 7
+            HOST_UNUSED, // 8
+
+            HOST_UNUSED, // 9
+
+            // Number of evts being mapped to channels.
+            (sizeof(pru_intc_map) / sizeof(struct ch_map)),
+
+            // The structure containing mapped events.
+            pru_intc_map,
+        },
+    },
+};
+
+// Set updates modifies a single bit of a GPIO register.
+void set(uint32_t *gpio, int bit, int on) {
+  if (on) {
+    gpio[GPIO_SETDATAOUT] = 1 << bit;
+  } else {
+    gpio[GPIO_CLEARDATAOUT] = 1 << bit;
+  }
+}
+
+// uledN toggles the 4 user-programmable LEDs (although the BBB starts
+// with them bound to other events, you can echo none >
+// /sys/class/leds/$led/trigger to disable triggers and make them
+// available for use.
+void uled1(int val) { set(gpio1, 21, val); }
+void uled2(int val) { set(gpio1, 22, val); }
+void uled3(int val) { set(gpio1, 23, val); }
+void uled4(int val) { set(gpio1, 24, val); }
+
+// reset_hardware_state enables clears PRU-shared memory, starts the
+// cycle counter, clears system events we're going to listen for,
+// resets the GPIO bits, etc.
+void reset_hardware_state() {
+  // Allow OCP master port access by the PRU.
+  CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+
+  // Clear the system event mapped to the two input interrupts.
+  CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_ARM_TO_PRU;
+  CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_PRU_TO_ARM;
+
+  // Reset gpio output.
+  const uint32_t allbits = 0x00000000;
+  gpio0[GPIO_CLEARDATAOUT] = allbits;
+  gpio1[GPIO_CLEARDATAOUT] = allbits;
+  gpio2[GPIO_CLEARDATAOUT] = allbits;
+  gpio3[GPIO_CLEARDATAOUT] = allbits;
+}
+
+// wait_for_virtio_ready waits for Linux drivers to be ready for RPMsg communication.
+void wait_for_virtio_ready() {
+  volatile uint8_t *status = &resourceTable.rpmsg_vdev.status;
+
+  while (!(*status & VIRTIO_CONFIG_S_DRIVER_OK)) {
+    // Wait
+  }
+}
+
+// setup_transport opens the RPMsg channel to the ARM host.
+void setup_transport() {
+  // Using the name 'rpmsg-pru' will probe the rpmsg_pru driver found
+  // at linux/drivers/rpmsg/rpmsg_pru.c
+  char *const channel_name = "rpmsg-pru";
+  char *const channel_desc = "Channel 30";
+  const int channel_port = 30;
+
+  // Initialize two vrings using system events on dedicated channels.
+  pru_rpmsg_init(&rpmsg_transport, &resourceTable.rpmsg_vring0, &resourceTable.rpmsg_vring1, SYSEVT_PRU_TO_ARM,
+                 SYSEVT_ARM_TO_PRU);
+
+  // Create the RPMsg channel between the PRU and the ARM.
+  while (pru_rpmsg_channel(RPMSG_NS_CREATE, &rpmsg_transport, channel_name, channel_desc, channel_port) !=
+         PRU_RPMSG_SUCCESS) {
+  }
+}
+
+// send_to_arm sends the carveout addresses to the ARM.
+void send_to_arm() {
+  if (pru_rpmsg_receive(&rpmsg_transport, &rpmsg_src, &rpmsg_dst, rpmsg_payload, &rpmsg_len) != PRU_RPMSG_SUCCESS) {
+    return;
+  }
+  memcpy(rpmsg_payload, &resourceTable.controls.pa, 4);
+  while (pru_rpmsg_send(&rpmsg_transport, rpmsg_dst, rpmsg_src, rpmsg_payload, 4) != PRU_RPMSG_SUCCESS) {
+  }
+}
+
+uint32_t check_signal() int {
+  if (__R31 & PRU_R31_INTERRUPT_FROM_ARM) {
+    // Clear the interrupt event.  It could be one of two kinds of
+    // error from the EDMA controller or it could be the ARM kicking.
+    if (CT_INTC.SECR1_bit.ENA_STS_63_32 & (1 << (SYSEVT_EDMA_CTRL_ERROR_TO_PRU - 32))) {
+      warn(CBITS_RED);
+      CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_EDMA_CTRL_ERROR_TO_PRU;
+
+    } else if (CT_INTC.SECR1_bit.ENA_STS_63_32 & (1 << (SYSEVT_EDMA_CHAN_ERROR_TO_PRU - 32))) {
+      park(CBITS_BLUE);
+      CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_EDMA_CHAN_ERROR_TO_PRU;
+
+    } else if (CT_INTC.SECR0_bit.ENA_STS_31_0 & (1 << SYSEVT_ARM_TO_PRU)) {
+      // This means the control program restarted, needs to know carveout addresses.
+      CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_ARM_TO_PRU;
+      return 1;
+
+    } else {
+      warn(CBITS_WHITE);
+    }
+  }
+
+  return 0;
+}
+
+void main(void) {
+  reset_hardware_state();
+
+  wait_for_virtio_ready();
+
+  setup_transport();
+
+  while (1) {
+    if (check_signal() == 0) {
+      // 50ms
+      __delay_cycles(10000000);
+      continue;
+    }
+
+    while (1) {
+
+      set_clock(LO);
+      __delay_cycles(50000); // 0.25ms
+      read_bit();
+      __delay_cycles(150000); // 0.25ms
+
+      set_clock(HI);
+      __delay_cycles(50000); // 1ms
+      read_bit();
+      __delay_cycles(150000); // 0.25ms
+    }
+    // wait for an interrupt.
+    // start driving clock
+    // wait until a HI signal is received
+    // begin reading bits
+    // assemble so-many bytes
+    // write them to the ARM
+    // return to top.
+
+    send_to_arm();
+  }
+}
