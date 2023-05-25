@@ -278,7 +278,45 @@ uint32_t check_signal() int {
   return 0;
 }
 
+const int CYCLES_PER_US = 200;
+const int CYCLES_PER_MS = 1000 * CYCLES_PER_US;
+const int PRE_SETTLE_CYCLES = 70 * CYCLES_PER_US;
+const int POST_SETTLE_CYCLES = 430 * CYCLES_PER_US;
+const int HALF_PERIOD_CYCLES = 500 * CYCLES_PER_US;
+const int DATA_ARRAY_SIZE = 256;
+
+struct meter_state {
+  char data[DATA_ARRAY_SIZE]; // Received data buffer
+  int data_index;             // index into received data buffer
+  int bitno;                  // bit position we're currently reading
+  int parity_check;           // parity check bit
+  enum STATE {
+    WAIT_FOR_START,
+    READ_BITS,
+    WAIT_FOR_PARITY,
+    WAIT_FOR_STOP,
+  } state;
+};
+
+int read_bit() {
+  // @@@
+  return 0;
+}
+
+void next_bit(struct_meter *meter) {
+  int input = read_bit();
+
+  switch (p->state) {
+  case WAIT_FOR_START:
+  case READ_BITS:
+  case WAIT_FOR_PARITY:
+  case WAIT_FOR_STOP:
+  }
+}
+
 void main(void) {
+  static struct meter_state meter0;
+
   reset_hardware_state();
 
   wait_for_virtio_ready();
@@ -287,30 +325,22 @@ void main(void) {
 
   while (1) {
     if (check_signal() == 0) {
-      // 50ms
-      __delay_cycles(10000000);
+      __delay_cycles(50 * CYCLES_PER_MS);
       continue;
     }
 
     while (1) {
+      memcpy(&meter0, 0, sizeof(meter0));
 
       set_clock(LO);
-      __delay_cycles(50000); // 0.25ms
-      read_bit();
-      __delay_cycles(150000); // 0.25ms
+      __delay_cycles(SETTLE_CYCLES);
+
+      next_bit(&meter0);
+      __delay_cycles(POST_SETTLE_CYCLES);
 
       set_clock(HI);
-      __delay_cycles(50000); // 1ms
-      read_bit();
-      __delay_cycles(150000); // 0.25ms
+      __delay_cycles(HALF_PERIOD_CYCLES);
     }
-    // wait for an interrupt.
-    // start driving clock
-    // wait until a HI signal is received
-    // begin reading bits
-    // assemble so-many bytes
-    // write them to the ARM
-    // return to top.
 
     send_to_arm();
   }
