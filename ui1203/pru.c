@@ -89,11 +89,11 @@ struct my_resource_table {
 
   uint32_t offset[2]; // Should match 'num' in actual definition
 
-  struct fw_rsc_vdev rpmsg_vdev;         // Resource 0
+  struct fw_rsc_vdev rpmsg_vdev;         // Resource 1
   struct fw_rsc_vdev_vring rpmsg_vring0; // (cont)
   struct fw_rsc_vdev_vring rpmsg_vring1; // (cont)
 
-  struct fw_rsc_custom pru_ints; // Resource 1
+  struct fw_rsc_custom pru_ints; // Resource 2
 };
 
 #pragma DATA_SECTION(resourceTable, ".resource_table")
@@ -179,6 +179,13 @@ struct my_resource_table resourceTable = {
     },
 };
 
+#define WORDSZ sizeof(uint32_t)
+
+// These are word-size offsets from the GPIO register base address.
+#define GPIO_CLEARDATAOUT (0x190 / WORDSZ) // For clearing the GPIO registers
+#define GPIO_SETDATAOUT (0x194 / WORDSZ)   // For setting the GPIO registers
+#define GPIO_DATAOUT (0x13C / WORDSZ)      // For setting the GPIO registers
+
 // Set updates modifies a single bit of a GPIO register.
 void set(uint32_t *gpio, int bit, int on) {
   if (on) {
@@ -187,6 +194,12 @@ void set(uint32_t *gpio, int bit, int on) {
     gpio[GPIO_CLEARDATAOUT] = 1 << bit;
   }
 }
+
+// Set up the pointers to each of the GPIO ports
+uint32_t *const gpio0 = (uint32_t *)0x44e07000; // GPIO Bank 0  See Table 2.2 of TRM
+uint32_t *const gpio1 = (uint32_t *)0x4804c000; // GPIO Bank 1
+uint32_t *const gpio2 = (uint32_t *)0x481ac000; // GPIO Bank 2
+uint32_t *const gpio3 = (uint32_t *)0x481ae000; // GPIO Bank 3
 
 // uledN toggles the 4 user-programmable LEDs (although the BBB starts
 // with them bound to other events, you can echo none >
@@ -248,48 +261,38 @@ void send_to_arm() {
   if (pru_rpmsg_receive(&rpmsg_transport, &rpmsg_src, &rpmsg_dst, rpmsg_payload, &rpmsg_len) != PRU_RPMSG_SUCCESS) {
     return;
   }
-  memcpy(rpmsg_payload, &resourceTable.controls.pa, 4);
+  // TODO: No longer the address of the controls struct
+  // memcpy(rpmsg_payload, &resourceTable.controls.pa, 4);
   while (pru_rpmsg_send(&rpmsg_transport, rpmsg_dst, rpmsg_src, rpmsg_payload, 4) != PRU_RPMSG_SUCCESS) {
   }
 }
 
-uint32_t check_signal() int {
+uint32_t check_signal() {
   if (__R31 & PRU_R31_INTERRUPT_FROM_ARM) {
-    // Clear the interrupt event.  It could be one of two kinds of
-    // error from the EDMA controller or it could be the ARM kicking.
-    if (CT_INTC.SECR1_bit.ENA_STS_63_32 & (1 << (SYSEVT_EDMA_CTRL_ERROR_TO_PRU - 32))) {
-      warn(CBITS_RED);
-      CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_EDMA_CTRL_ERROR_TO_PRU;
 
-    } else if (CT_INTC.SECR1_bit.ENA_STS_63_32 & (1 << (SYSEVT_EDMA_CHAN_ERROR_TO_PRU - 32))) {
-      park(CBITS_BLUE);
-      CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_EDMA_CHAN_ERROR_TO_PRU;
-
-    } else if (CT_INTC.SECR0_bit.ENA_STS_31_0 & (1 << SYSEVT_ARM_TO_PRU)) {
+    if (CT_INTC.SECR0_bit.ENA_STS_31_0 & (1 << SYSEVT_ARM_TO_PRU)) {
       // This means the control program restarted, needs to know carveout addresses.
       CT_INTC.SICR_bit.STS_CLR_IDX = SYSEVT_ARM_TO_PRU;
       return 1;
-
-    } else {
-      warn(CBITS_WHITE);
     }
   }
 
   return 0;
 }
 
-const int CYCLES_PER_US = 200;
-const int CYCLES_PER_MS = 1000 * CYCLES_PER_US;
-const int PRE_SETTLE_CYCLES = 70 * CYCLES_PER_US;
-const int POST_SETTLE_CYCLES = 430 * CYCLES_PER_US;
-const int HALF_PERIOD_CYCLES = 500 * CYCLES_PER_US;
-const int DATA_ARRAY_SIZE = 256;
+#define CYCLES_PER_US 200
+#define CYCLES_PER_MS (1000 * CYCLES_PER_US)
+#define PRE_SETTLE_CYCLES (70 * CYCLES_PER_US)
+#define POST_SETTLE_CYCLES (430 * CYCLES_PER_US)
+#define HALF_PERIOD_CYCLES (500 * CYCLES_PER_US)
+#define DATA_ARRAY_SIZE 256
 
 struct meter_state {
   char data[DATA_ARRAY_SIZE]; // Received data buffer
   int data_index;             // index into received data buffer
   int bitno;                  // bit position we're currently reading
   int parity_check;           // parity check bit
+  int done;
   enum STATE {
     WAIT_FOR_START,
     READ_BITS,
@@ -299,18 +302,24 @@ struct meter_state {
 };
 
 int read_bit() {
-  // @@@
+  // @@@ TODO
   return 0;
 }
 
-void next_bit(struct_meter *meter) {
+void set_clock(int value) {
+  // @@@ TODO
+}
+
+void next_bit(struct meter_state *meter) {
   int input = read_bit();
 
-  switch (p->state) {
+  switch (meter->state) {
   case WAIT_FOR_START:
   case READ_BITS:
   case WAIT_FOR_PARITY:
   case WAIT_FOR_STOP:
+  default:
+    break;
   }
 }
 
@@ -329,11 +338,11 @@ void main(void) {
       continue;
     }
 
-    while (1) {
+    while (!meter0.done) {
       memcpy(&meter0, 0, sizeof(meter0));
 
       set_clock(LO);
-      __delay_cycles(SETTLE_CYCLES);
+      __delay_cycles(PRE_SETTLE_CYCLES);
 
       next_bit(&meter0);
       __delay_cycles(POST_SETTLE_CYCLES);
