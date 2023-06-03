@@ -301,13 +301,25 @@ struct meter_state {
   } state;
 };
 
+// Use P9_27 on PRU0 for input via R31[5] (also available on gpio3[19]).
+#define INPUT_DATA_R31_MASK (1 << 5)
+
 int read_bit() {
-  // @@@ TODO
+  if (__R31 & INPUT_DATA_R31_MASK) {
+    return 1;
+  }
   return 0;
 }
 
+// Output uses P9_25 on PRU0 for output via R30[7] (also available on gpio3[21]).
+#define OUTPUT_DATA_R30_MASK (1 << 7)
+
 void set_clock(int value) {
-  // @@@ TODO
+  if (value) {
+    __R30 |= OUTPUT_DATA_R30_MASK;
+  } else {
+    __R30 &= ~OUTPUT_DATA_R30_MASK;
+  }
 }
 
 void next_bit(struct meter_state *meter) {
