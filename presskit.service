@@ -1,6 +1,6 @@
 [Unit]
 Description=Caspar Water Pressure Kit
-After=network.target
+After=multi-user.target
 
 [Service]
 Type=simple
