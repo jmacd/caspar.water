@@ -18,5 +18,5 @@ func main() {
 		log.Fatal("read: %w", err)
 	}
 
-	log.Println("Temp=", comp.T)
+	log.Println("Temp=", comp.T, "Press=", comp.P, "Humid=", comp.H)
 }

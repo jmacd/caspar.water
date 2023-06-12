@@ -1,8 +1,7 @@
 #!/bin/sh
 
-PLAY=beagleplay.local
-GO=
+PLAY=wellkit.local
 
 scp -q -r -p * debian@${PLAY}:measure
 
-ssh -q debian@${PLAY} '(cd measure && ~/go/bin/go run ./test)'
+ssh -q debian@${PLAY} '(cd measure && $HOME/go/bin/go run ./test)'

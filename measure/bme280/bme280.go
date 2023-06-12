@@ -1,28 +1,7 @@
-//--------------------------------------------------------------------------------------------------
+// There are a lot of bme280 libraries out there, here's another.
 //
-// Copyright (c) 2020 zack Wang
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-// associated documentation files (the "Software"), to deal in the Software without restriction,
-// including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
-// subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all copies or substantial
-// portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
-// BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-//--------------------------------------------------------------------------------------------------
-
-// With credit to Zack Wang for https://github.com/zack-wang/go-bmp280. This code
-// has been entirely rewritten from the bme280 datasheet, but retaining the
-// original copyright notice, because the task was very easy given a working
-// bmp280 example.
+// Reference:
+// https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bme280-ds002.pdf
 
 package bme280
 
@@ -37,19 +16,23 @@ import (
 
 // Memory map
 const (
-	MM_ID_Reg    = 0xD0
-	MM_Reset_Reg = 0xE0
-
+	// Control registers
+	MM_ID_Reg            = 0xD0
 	MM_Ctrl_Humidity_Reg = 0xF2
 	MM_Status_Reg        = 0xF3
 	MM_Ctrl_Measure_Reg  = 0xF4
-	MM_Config_Reg        = 0xF5
 
+	// Unused registers
+	// MM_Reset_Reg = 0xE0
+	// MM_Config_Reg = 0xF5
+
+	// Calibration registers
 	MM_Calib_T1_T3_Regs = 0x88 // T1 - T3
 	MM_Calib_P1_P9_Regs = 0x8E // P1 - P9
 	MM_Calib_H1_Reg     = 0xA1 // H1
 	MM_Calib_H2_H6_Regs = 0xE1 // H2 - H6
 
+	// Data registers
 	MM_Pressure_Data_Reg    = 0xF7
 	MM_Temperature_Data_Reg = 0xFA
 	MM_Humidity_Data_Reg    = 0xFD
