@@ -1,6 +1,6 @@
 #!/bin/sh
 
-BONE=beaglebone.local
+BONE=presskit.local
 
 scp -q -r -p * debian@${BONE}:ui1203
 

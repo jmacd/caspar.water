@@ -293,12 +293,6 @@ struct meter_state {
   int bitno;                  // bit position we're currently reading
   int parity_check;           // parity check bit
   int done;
-  enum STATE {
-    WAIT_FOR_START,
-    READ_BITS,
-    WAIT_FOR_PARITY,
-    WAIT_FOR_STOP,
-  } state;
 };
 
 // Use P9_27 on PRU0 for input via R31[5] (also available on gpio3[19]).
@@ -322,6 +316,7 @@ void set_clock(int value) {
   }
 }
 
+#if 0
 void next_bit(struct meter_state *meter) {
   int input = read_bit();
 
@@ -334,9 +329,10 @@ void next_bit(struct meter_state *meter) {
     break;
   }
 }
+#endif
 
 void main(void) {
-  static struct meter_state meter0;
+  // static struct meter_state meter0;
 
   reset_hardware_state();
 
@@ -344,7 +340,18 @@ void main(void) {
 
   setup_transport();
 
+  set_clock(0);
+
   while (1) {
+    __delay_cycles(100000000);
+    uled1(1);
+    set_clock(1);
+
+    __delay_cycles(100000000);
+    uled1(0);
+    set_clock(0);
+
+#if 0
     if (check_signal() == 0) {
       __delay_cycles(50 * CYCLES_PER_MS);
       continue;
@@ -364,5 +371,6 @@ void main(void) {
     }
 
     send_to_arm();
+#endif
   }
 }

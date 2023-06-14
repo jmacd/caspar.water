@@ -1,226 +1,96 @@
-#
-# Optional definitions
-#
-# TARGET - executable to create (currently supports single .c source)
-#          should have .<proc>(<n>) extension (lower case, check below for valid options)
-#          without TARGET, as of now, we don't have any build targets
-#          TODO: work with a list of targets, rather than a single file
-# PRUN   - TBD
+# PRU_CGT environment variable must point to the TI PRU code gen tools directory.
+# The latest PRU CGT can be found at https://www.ti.com/tool/PRU-CGT or in Code
+# Composer Studio (CCS) App Center.
 
-#
-# Directories (external packages, etc.)
-#
-# COMMON points to where this primary Makefile and shell scripts live.
-# PRU_CGT points to the TI PRU compiler directory.
-# PRU_SUPPORT points to pru-software-support-package.
-# C6X_CGT points to the TI C6X compiler directory.
-# TIDL_API_DIR points to the TIDL API install directory.
-# GEN_DIR points to where to build the binaries.
-# MODEL is the board model (BeagleBoard.org_BeagleBone_AI, TI_AM335x_BeagleBone_Blue, etc.)
-COMMON:=$(abspath $(lastword $(MAKEFILE_LIST)/..))
-PRU_CGT:=/usr/share/ti/cgt-pru
-PRU_SUPPORT:=/usr/lib/ti/pru-software-support-package
-C6X_CGT:=/usr/share/ti/cgt-c6x
-TIDL_API_DIR:=/usr/share/ti/tidl/tidl_api
-GEN_DIR:=output
-MODEL:=$(shell cat /proc/device-tree/model | sed 's/ /_/g' | tr -d '\000')
-#$(warning MODEL=$(MODEL),TARGET=$(TARGET),COMMON=$(COMMON))
+ifndef PRU_CGT
+define ERROR_BODY
 
-#
-# Define PROC and build variables
-#
-# Arguments:
-#   $@ - target name
-#
-# Variables defined:
-#   CHIP - target system-on-chip (am57xx, am335x)
-#   CHIP_REV - target system-on-chip with rev (am572x_2_0, am335x)
-#   PROC - cpu type (arm, pru, c6x, etc.)
-#   PRUN - identifier for target PRU core
-#   PRU_DIR - control directory for the PRU
-#   CC -
-#   LD - 
-#   LDFLAGS - 
-#   CFLAGS -
-#
-# Depends on udev rules: https://github.com/beagleboard/customizations/blob/master/etc/udev/rules.d/86-remoteproc-noroot.rules
-# Check which model
-define target-to-proc =
- ifeq ($(suffix $(basename $(1))),.pru1_0)
-  CHIP=am57xx
-  CHIP_REV=am572x_2_0
-  PRU_DIR=/dev/remoteproc/pruss1-core0
-  PRUN=1_0
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.pru1_1)
-  CHIP=am57xx
-  CHIP_REV=am572x_2_0
-  PRU_DIR=/dev/remoteproc/pruss1-core1
-  PRUN=1_1
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.pru2_0)
-  CHIP=am57xx
-  CHIP_REV=am572x_2_0
-  PRU_DIR=/dev/remoteproc/pruss2-core0
-  PRUN=2_0
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.pru2_1)
-  CHIP=am57xx
-  CHIP_REV=am572x_2_0
-  PRU_DIR=/dev/remoteproc/pruss2-core1
-  PRUN=2_1
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.pru0)
-  CHIP=am335x
-  CHIP_REV=am335x
-  PRU_DIR=/dev/remoteproc/pruss-core0
-  PRUN=0
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.pru1)
-  CHIP=am335x
-  CHIP_REV=am335x
-  PRU_DIR=/dev/remoteproc/pruss-core1
-  PRUN=1
-  PROC=pru
-  EXE=.out
- else ifeq ($(suffix $(basename $(1))),.tidl)
-  CHIP=am57xx
-  PROC=tidl
-  EXE=.so
- else
-  PROC=arm
-  EXE=.out
- endif
+*******************************************************************************
+PRU_CGT environment variable is not set. For example:
+(Desktop Linux) export PRU_CGT=/path/to/pru/code/gen/tools/ti-cgt-pru_2.3.3
+(Windows) set PRU_CGT=C:/path/to/pru/code/gen/tools/ti-cgt-pru_2.3.3
+(ARM Linux*) export PRU_CGT=/usr/share/ti/cgt-pru
+
+*ARM Linux also needs to create a symbolic link to the /usr/bin/ directory in
+order to use the same Makefile
+(ARM Linux) ln -s /usr/bin/ /usr/share/ti/cgt-pru/bin
+
+The latest PRU CGT can be found at https://www.ti.com/tool/PRU-CGT or in Code
+Composer Studio (CCS) App Center.
+*******************************************************************************
+
 endef
-
-#
-# Arguments:
-#   $@ - target name
-# 
-# Variables required:
-#   CHIP - target system-on-chip (am57xx, am335x)
-#   CHIP_REV - target system-on-chip with rev (am572x_2_0, am335x)
-#   PROC - cpu type (arm, pru, c6x, etc.)
-#   PRUN - identifier for target PRU core
-#   PRU_DIR - control directory for the PRU
-define proc-to-build-vars =
- ifeq ($(PROC),pru)
-  LD=lnkpru -o
-  LDFLAGS=--reread_libs --warn_sections --stack_size=0x100 --heap_size=0x100 -m $(basename $(1)).map \
-   -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(COMMON)/$(CHIP)_$(PROC).cmd --library=libc.a \
-   --library=$(PRU_SUPPORT)/lib/rpmsg_lib.lib
-  CC=clpru -fe
-  CFLAGS=--include_path=$(COMMON) --include_path=$(PRU_SUPPORT)/include \
-   --include_path=$(PRU_SUPPORT)/include/$(CHIP_REV) \
-   --include_path=$(PRU_CGT)/include -DCHIP=$(CHIP) -DCHIP_IS_$(CHIP) -DMODEL=$(MODEL) -DPROC=$(PROC) -DPRUN=$(PRUN) \
-   -v3 -O2 --printf_support=minimal --display_error_number --endian=little --hardware_mac=on \
-   --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) --asm_directory=$(GEN_DIR) -ppd -ppa --asm_listing \
-   --c_src_interlist
- else ifeq ($(PROC),tidl)
-  LD=g++ -o
-  LDFLAGS=-lopencv_highgui -lopencv_imgcodecs -lopencv_videoio -lopencv_imgproc -lopencv_core \
-   $(TIDL_API_DIR)/tidl_api.a $(TIDL_API_DIR)/tidl_imgutil.a \
-   -lTIOpenCL -locl_util -lpthread
-  CXX=g++ -c -o
-  CXXFLAGS=-DCHIP=$(CHIP) -DMODEL=$(MODEL) -DPROC=$(PROC) -fPIC -O3 -Wall -Werror -Wno-error=ignored-attributes \
-   -I. -I$(TIDL_API_DIR)/inc -std=c++14 -I/usr/share/ti/opencl 
- else
-  LD=gcc -o
-  LDFLAGS=-lc -lm
-  CC=gcc -c -o
-  CFLAGS=-DCHIP=$(CHIP) -DMODEL=$(MODEL) -DPROC=$(PROC)
- endif
-endef
-
-#
-#
-#
-
-ifneq ($(TARGET),)
-$(eval $(call target-to-proc,$(TARGET).out))
-#$(warning GEN_DIR=$(GEN_DIR),CHIP=$(CHIP),PROC=$(PROC),PRUN=$(PRUN),PRU_DIR=$(PRU_DIR),EXE=$(EXE))
-
-all: stop install start
-	@echo "MODEL   = $(MODEL)"
-	@echo "PROC    = $(PROC)"
-	@echo "PRUN    = $(PRUN)"
-	@echo "PRU_DIR = $(PRU_DIR)"
-
-# TODO: think about what we want to say if stop fails
-stop:
-ifneq ($(PRU_DIR),)
-	@echo "-    Stopping PRU $(PRUN)"
-	@echo stop > $(PRU_DIR)/state || echo Cannot stop $(PRUN)
+$(error $(ERROR_BODY))
 endif
 
-start:
-ifneq ($(PRU_DIR),)
-	@echo write_init_pins.sh
-	@$(COMMON)/write_init_pins.sh /lib/firmware/$(CHIP)-pru$(PRUN)-fw
-	@echo "-    Starting PRU $(PRUN)"
-	@echo start > $(PRU_DIR)/state
-else ifeq ($(PROC),tidl)
-	ti-mct-heap-check -c
-	sudo mjpg_streamer -i "input_opencv.so -r 640x480 -d /dev/$(shell fgrep -v vpe /sys/class/video4linux/video*/name | perl -ne '/\/(video\d+)\/name/ && print $$1') \
-	--filter ./$(TARGET)$(EXE)" -o "output_http.so -p 8090 -w /usr/share/mjpg-streamer/www"
-else
-	./$(TARGET)$(EXE)
-endif
+PROJ_NAME=ui1203
+TOP := /usr/lib/ti/pru-software-support-package-v6.0
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+CURRENT_DIR := $(notdir $(patsubst %/,%,$(dir $(MKFILE_PATH))))
+LINKER_COMMAND_FILE=./AM335x_PRU_intc_rscTbl.cmd
+LIBS=--library=$(TOP)/lib/rpmsg_lib.lib
+INCLUDE=--include_path=$(TOP)/include --include_path=$(TOP)/include/am335x
+STACK_SIZE=0x100
+HEAP_SIZE=0x100
+GEN_DIR=gen
 
-install: $(GEN_DIR)/$(TARGET)$(EXE)
-ifneq ($(PRU_DIR),)
-	@echo '-	copying firmware file $(GEN_DIR)/$(TARGET).out to /lib/firmware/$(CHIP)-pru$(PRUN)-fw'
-	@cp $(GEN_DIR)/$(TARGET)$(EXE) /lib/firmware/$(CHIP)-pru$(PRUN)-fw
-else
-	@cp $(GEN_DIR)/$(TARGET)$(EXE) ./$(TARGET)$(EXE)
-endif
-endif
+#Common compiler and linker flags (Defined in 'PRU Optimizing C/C++ Compiler User's Guide)
+CFLAGS=-v3 -O2 --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) -ppd -ppa
+#Linker flags (Defined in 'PRU Optimizing C/C++ Compiler User's Guide)
+LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE)
 
-%.out: $(GEN_DIR)/%.out
-	@echo 'CP	$^'
-	@cp $^ $@
+TARGET=$(GEN_DIR)/$(PROJ_NAME).out
+MAP=$(GEN_DIR)/$(PROJ_NAME).map
+SOURCES=$(wildcard *.c)
+#Using .object instead of .obj in order to not conflict with the CCS build process
+OBJECTS=$(patsubst %,$(GEN_DIR)/%,$(SOURCES:.c=.object))
 
-%.so: $(GEN_DIR)/%.so
-	@echo 'CP	$^'
-	@cp $^ $@
+all: printStart $(TARGET) printEnd
 
-# TODO: look up how Makefiles typically break down the output file specification
-# $(warning CHIP=$(CHIP),PROC=$(PROC))
-# $(warning CC=$(CC),LD=$(LD),CFLAGS=$(CFLAGS),LDFLAGS=$(LDFLAGS))
-$(GEN_DIR)/%.out: $(GEN_DIR)/%.o
+printStart:
+	@echo ''
+	@echo '************************************************************'
+	@echo 'Building project: $(PROJ_NAME)'
+
+printEnd:
+	@echo ''
+	@echo 'Output files can be found in the "$(GEN_DIR)" directory'
+	@echo ''
+	@echo 'Finished building project: $(PROJ_NAME)'
+	@echo '************************************************************'
+	@echo ''
+
+# Invokes the linker (-z flag) to make the .out file
+$(TARGET): $(OBJECTS) $(LINKER_COMMAND_FILE)
+	@echo ''
+	@echo 'Building target: $@'
+	@echo 'Invoking: PRU Linker'
+	$(PRU_CGT)/bin/clpru $(CFLAGS) -z -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $(TARGET) $(OBJECTS) -m$(MAP) $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS)
+	@echo 'Finished building target: $@'
+
+# Invokes the compiler on all c files in the directory to create the object files
+$(GEN_DIR)/%.object: %.c
 	@mkdir -p $(GEN_DIR)
-	@echo 'LD	$^'
-	$(eval $(call target-to-proc,$@))
-	$(eval $(call proc-to-build-vars,$@))
-	@$(LD) $@ $^ $(LDFLAGS) 
+	@echo ''
+	@echo 'Building file: $<'
+	@echo 'Invoking: PRU Compiler'
+	$(PRU_CGT)/bin/clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -fe $@ $<
 
-$(GEN_DIR)/%.so: $(GEN_DIR)/%.o
-	@mkdir -p $(GEN_DIR)
-	@echo 'LD	$^'
-	$(eval $(call target-to-proc,$@))
-	$(eval $(call proc-to-build-vars,$@))
-	@$(LD) $@ -shared $^ $(LDFLAGS) 
+.PHONY: all clean
 
-$(GEN_DIR)/%.o: %.c
-	@mkdir -p $(GEN_DIR)
-	@echo 'CC	$^'
-	$(eval $(call target-to-proc,$@))
-	$(eval $(call proc-to-build-vars,$@))
-	$(CC) $@ $^ $(CFLAGS)
-
-$(GEN_DIR)/%.o: %.cpp
-	@mkdir -p $(GEN_DIR)
-	@echo 'CXX	$^'
-	$(eval $(call target-to-proc,$@))
-	$(eval $(call proc-to-build-vars,$@))
-	@$(CXX) $@ $^ $(CXXFLAGS)
-
+# Remove the $(GEN_DIR) directory
 clean:
-	@echo 'CLEAN'
+	@echo ''
+	@echo '************************************************************'
+	@echo 'Cleaning project: $(PROJ_NAME)'
+	@echo ''
+	@echo 'Removing files in the "$(GEN_DIR)" directory'
 	@rm -rf $(GEN_DIR)
+	@echo ''
+	@echo 'Finished cleaning project: $(PROJ_NAME)'
+	@echo '************************************************************'
+	@echo ''
+
+# Includes the dependencies that the compiler creates (-ppd and -ppa flags)
+-include $(OBJECTS:%.object=%.pp)
 
