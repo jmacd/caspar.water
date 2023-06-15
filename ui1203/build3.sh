@@ -49,8 +49,8 @@ configPins() {
 configPins
 #sleep 1
 
-make gen/ui1203.object PROC=pru TARGET=ui1203 CHIP=AM335x
-make gen/ui1203.out PROC=pru TARGET=ui1203 CHIP=AM335x
+make gen/ui1203.object PROC=pru CHIP=AM335x
+make gen/ui1203.out PROC=pru CHIP=AM335x
 
 cp gen/ui1203.out /lib/firmware/ui1203-fw
 

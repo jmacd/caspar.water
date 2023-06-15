@@ -75,6 +75,8 @@ uint16_t rpmsg_src, rpmsg_dst, rpmsg_len;
 #define HI 1
 #define LO 0
 
+#if OLD_4_19_STUFF
+
 // Mapping sysevts to a channel. Each pair contains a sysevt, channel.
 struct ch_map pru_intc_map[] = {
     // Interrupts to and from the ARM (virtio).
@@ -82,18 +84,37 @@ struct ch_map pru_intc_map[] = {
     {SYSEVT_ARM_TO_PRU, HOST_INTERRUPT_CHANNEL_ARM_TO_PRU},
 };
 
+#else
+
+#pragma DATA_SECTION(my_irq_rsc, ".pru_irq_map")
+#pragma RETAIN(my_irq_rsc)
+
+/*
+ * .pru_irq_map is used by the RemoteProc driver during initialization. However,
+ * the map is NOT used by the PRU firmware. That means DATA_SECTION and RETAIN
+ * are required to prevent the PRU compiler from optimizing out .pru_irq_map.
+ */
+// Note: this is only the interrupts going to the PRU, not the ARM.
+struct pru_irq_rsc my_irq_rsc = {
+    0, /* type = 0 */
+    1, /* number of system events being mapped */
+    {
+        {SYSEVT_ARM_TO_PRU, HOST_INTERRUPT_CHANNEL_ARM_TO_PRU, 0}, /* {sysevt, channel, host interrupt} */
+    },
+};
+
+#endif
+
 // my_resource_table describes the custom hardware settings used by
 // this program.
 struct my_resource_table {
   struct resource_table base;
 
-  uint32_t offset[2]; // Should match 'num' in actual definition
+  uint32_t offset[1]; // Should match 'num' in actual definition
 
   struct fw_rsc_vdev rpmsg_vdev;         // Resource 1
   struct fw_rsc_vdev_vring rpmsg_vring0; // (cont)
   struct fw_rsc_vdev_vring rpmsg_vring1; // (cont)
-
-  struct fw_rsc_custom pru_ints; // Resource 2
 };
 
 #pragma DATA_SECTION(resourceTable, ".resource_table")
@@ -104,13 +125,12 @@ struct my_resource_table resourceTable = {
     // resource_table base
     {
         1,    // Resource table version: only version 1 is supported
-        2,    // Number of entries in the table (equals length of offset field).
+        1,    // Number of entries in the table (equals length of offset field).
         0, 0, // Reserved zero fields
     },
     // Entry offsets
     {
         offsetof(struct my_resource_table, rpmsg_vdev),
-        offsetof(struct my_resource_table, pru_ints),
     },
     // RPMsg virtual device
     {
@@ -139,6 +159,7 @@ struct my_resource_table resourceTable = {
         0,                  // notifyid, will be populated, can't pass right now
         0                   // reserved
     },
+#if OLD_4_19_STUFF
     // Custom interrupt controller setup
     {
         TYPE_CUSTOM,
@@ -177,6 +198,7 @@ struct my_resource_table resourceTable = {
             pru_intc_map,
         },
     },
+#endif
 };
 
 #define WORDSZ sizeof(uint32_t)
