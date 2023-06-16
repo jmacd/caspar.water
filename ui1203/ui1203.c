@@ -75,17 +75,6 @@ uint16_t rpmsg_src, rpmsg_dst, rpmsg_len;
 #define HI 1
 #define LO 0
 
-#if OLD_4_19_STUFF
-
-// Mapping sysevts to a channel. Each pair contains a sysevt, channel.
-struct ch_map pru_intc_map[] = {
-    // Interrupts to and from the ARM (virtio).
-    {SYSEVT_PRU_TO_ARM, HOST_INTERRUPT_CHANNEL_PRU_TO_ARM},
-    {SYSEVT_ARM_TO_PRU, HOST_INTERRUPT_CHANNEL_ARM_TO_PRU},
-};
-
-#else
-
 #pragma DATA_SECTION(my_irq_rsc, ".pru_irq_map")
 #pragma RETAIN(my_irq_rsc)
 
@@ -102,8 +91,6 @@ struct pru_irq_rsc my_irq_rsc = {
         {SYSEVT_ARM_TO_PRU, HOST_INTERRUPT_CHANNEL_ARM_TO_PRU, 0}, /* {sysevt, channel, host interrupt} */
     },
 };
-
-#endif
 
 // my_resource_table describes the custom hardware settings used by
 // this program.
@@ -146,59 +133,19 @@ struct my_resource_table resourceTable = {
     },
     // The two vring structs must be packed after the vdev entry.
     {
-        0,                  // da, will be populated by host, can't pass it in
+        FW_RSC_ADDR_ANY,    // da, will be populated by host, can't pass it in
         16,                 // align (bytes),
         PRU_RPMSG_VQ0_SIZE, // num of descriptors
         0,                  // notifyid, will be populated, can't pass right now
         0                   // reserved
     },
     {
-        0,                  // da, will be populated by host, can't pass it in
+        FW_RSC_ADDR_ANY,    // da, will be populated by host, can't pass it in
         16,                 // align (bytes),
         PRU_RPMSG_VQ1_SIZE, // num of descriptors
         0,                  // notifyid, will be populated, can't pass right now
         0                   // reserved
     },
-#if OLD_4_19_STUFF
-    // Custom interrupt controller setup
-    {
-        TYPE_CUSTOM,
-        TYPE_PRU_INTS,
-        sizeof(struct fw_rsc_custom_ints),
-        {
-            // PRU_INTS version
-            PRU_INTS_VER0,
-
-            // See TRM 4.4.2.1.  There are 10 interrupt channels being
-            // mapped to hosts here.  The pru_intc_map struct maps
-            // system events to channels, and this struct maps them to
-            // hosts.  ARM and EDMA are the other hosts.
-            //
-            // Input interrupt channels.
-            HOST_INTERRUPT_CHANNEL_ARM_TO_PRU, // 0
-            HOST_UNUSED,                       // 1
-
-            // Output interrupt channels.
-            HOST_INTERRUPT_CHANNEL_PRU_TO_ARM, // 2
-
-            // Unused channels.
-            HOST_UNUSED, // 3
-            HOST_UNUSED, // 4
-            HOST_UNUSED, // 5
-            HOST_UNUSED, // 6
-            HOST_UNUSED, // 7
-            HOST_UNUSED, // 8
-
-            HOST_UNUSED, // 9
-
-            // Number of evts being mapped to channels.
-            (sizeof(pru_intc_map) / sizeof(struct ch_map)),
-
-            // The structure containing mapped events.
-            pru_intc_map,
-        },
-    },
-#endif
 };
 
 #define WORDSZ sizeof(uint32_t)
@@ -332,9 +279,23 @@ int read_bit() {
 
 void set_clock(int value) {
   if (value) {
-    __R30 |= OUTPUT_DATA_R30_MASK;
+    /* gpio3[GPIO_DATAOUT] = 0xffffffff; */
+    /* gpio2[GPIO_DATAOUT] = 0xffffffff; */
+    /* gpio1[GPIO_DATAOUT] = 0xffffffff; */
+    /* gpio0[GPIO_DATAOUT] = 0xffffffff; */
+    //__R30 |= OUTPUT_DATA_R30_MASK;
+    set(gpio3, 21, 1);
+    set(gpio1, 17, 1);
+
   } else {
-    __R30 &= ~OUTPUT_DATA_R30_MASK;
+    /* gpio3[GPIO_DATAOUT] = 0; */
+    /* gpio2[GPIO_DATAOUT] = 0; */
+    /* gpio1[GPIO_DATAOUT] = 0; */
+    /* gpio0[GPIO_DATAOUT] = 0; */
+    set(gpio3, 21, 0);
+    set(gpio1, 17, 0);
+
+    //__R30 &= ~OUTPUT_DATA_R30_MASK;
   }
 }
 
@@ -365,34 +326,18 @@ void main(void) {
   set_clock(0);
 
   while (1) {
-    __delay_cycles(100000000);
-    uled1(1);
+    __delay_cycles(300000000);
     set_clock(1);
+    uled1(1);
+    uled2(0);
+    uled3(1);
+    uled4(0);
 
-    __delay_cycles(100000000);
-    uled1(0);
+    __delay_cycles(300000000);
     set_clock(0);
-
-#if 0
-    if (check_signal() == 0) {
-      __delay_cycles(50 * CYCLES_PER_MS);
-      continue;
-    }
-
-    while (!meter0.done) {
-      memcpy(&meter0, 0, sizeof(meter0));
-
-      set_clock(LO);
-      __delay_cycles(PRE_SETTLE_CYCLES);
-
-      next_bit(&meter0);
-      __delay_cycles(POST_SETTLE_CYCLES);
-
-      set_clock(HI);
-      __delay_cycles(HALF_PERIOD_CYCLES);
-    }
-
-    send_to_arm();
-#endif
+    uled1(0);
+    uled2(1);
+    uled3(0);
+    uled4(1);
   }
 }
