@@ -9,3 +9,7 @@ https://beagleboard.org/static/prucookbook/#blocks_mapping_bits:
 
 Use P9_25 on PRU0 for output via R30[7] also gpio3[21] == gpio117
 Use P9_27 on PRU0 for input via R31[5] also gpio3[19] == gpio115
+
+Ugh oops.
+
+Have arrived on Pin P9.23 and Pin P9.25

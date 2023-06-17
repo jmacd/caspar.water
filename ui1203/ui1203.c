@@ -279,21 +279,13 @@ int read_bit() {
 
 void set_clock(int value) {
   if (value) {
-    /* gpio3[GPIO_DATAOUT] = 0xffffffff; */
-    /* gpio2[GPIO_DATAOUT] = 0xffffffff; */
-    /* gpio1[GPIO_DATAOUT] = 0xffffffff; */
-    /* gpio0[GPIO_DATAOUT] = 0xffffffff; */
     //__R30 |= OUTPUT_DATA_R30_MASK;
     set(gpio3, 21, 1);
-    set(gpio1, 17, 1);
+    set(gpio1, 17, 0);
 
   } else {
-    /* gpio3[GPIO_DATAOUT] = 0; */
-    /* gpio2[GPIO_DATAOUT] = 0; */
-    /* gpio1[GPIO_DATAOUT] = 0; */
-    /* gpio0[GPIO_DATAOUT] = 0; */
     set(gpio3, 21, 0);
-    set(gpio1, 17, 0);
+    set(gpio1, 17, 1);
 
     //__R30 &= ~OUTPUT_DATA_R30_MASK;
   }
@@ -326,14 +318,14 @@ void main(void) {
   set_clock(0);
 
   while (1) {
-    __delay_cycles(300000000);
+    __delay_cycles(5000000);
     set_clock(1);
     uled1(1);
     uled2(0);
     uled3(1);
     uled4(0);
 
-    __delay_cycles(300000000);
+    __delay_cycles(5000000);
     set_clock(0);
     uled1(0);
     uled2(1);
