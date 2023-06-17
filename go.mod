@@ -5,7 +5,6 @@ go 1.18
 require (
 	github.com/Rhymond/go-money v1.0.10
 	github.com/eclipse/paho.mqtt.golang v1.4.2
-	github.com/jmacd/maroto v0.0.0-00010101000000-000000000000
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mochi-co/mqtt v1.3.2
 	github.com/prometheus-community/pro-bing v0.2.0
@@ -38,6 +37,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
+	github.com/jmacd/maroto v0.0.0-20230617070925-955e5cabca9e // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/knadh/koanf v1.5.0 // indirect
@@ -67,10 +67,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-//replace github.com/mochi-co/mqtt => ../mochi-co-mqtt-jmacd
-
-// replace github.com/eclipse/paho.mqtt.golang => ../paho.mqtt.golang-jmacd
-
-// replace github.com/Rhymond/go-money => ../go-money
-
-replace github.com/jmacd/maroto => ../maroto
+replace github.com/jmacd/caspar.water/measure/bme280 => ./measure/bme280

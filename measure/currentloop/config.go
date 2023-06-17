@@ -63,6 +63,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Min >= cfg.Max {
 		return fmt.Errorf("min >= max")
 	}
+	if cfg.Interval < 50*time.Millisecond {
+		return fmt.Errorf("interval is too short")
+	}
 
 	return nil
 }

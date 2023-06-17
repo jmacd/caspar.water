@@ -168,7 +168,6 @@ func (mfe *matrixfruitExporter) line(n int) string {
 	}
 
 	line := fmt.Sprint(vstr, " ", ustr)
-	fmt.Println("Y", line)
 	return line
 }
 

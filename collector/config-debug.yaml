@@ -1,14 +1,20 @@
 
 receivers:
-  sparkplug:
-    broker:
-      host_id: waterco
-      self_hosted: true
-      endpoint: :1883
-
-processors:
+  bme280:
+    device: "/dev/i2c-5"
+    i2c_addr: "0x77"
+    interval: "5s"
+    prefix: "wellkit"
 
 exporters:
+  openlcd:
+    device: "/dev/i2c-5"
+    i2c_addr: "0x72"
+    metrics:
+    - wellkit_temperature
+    - wellkit_pressure
+    - wellkit_humidity
+
   logging:
     loglevel: debug
 
@@ -16,7 +22,7 @@ service:
   pipelines:
     metrics:
       receivers:
-        - sparkplug
-      processors: []
+        - bme280
       exporters:
+        - openlcd
         - logging
