@@ -115,6 +115,6 @@ uptime %f
 			)))
 	})
 	if err := http.ListenAndServe(fmt.Sprint(":", *port), nil); err != nil {
-		log.Fatal("error serving http: %v", err)
+		log.Fatalf("error serving http: %v", err)
 	}
 }
