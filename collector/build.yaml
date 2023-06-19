@@ -24,6 +24,8 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.79.0
 
 processors:
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/display/units
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.79.0
 
 replaces:

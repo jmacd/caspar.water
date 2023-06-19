@@ -166,10 +166,6 @@ func (bme *BME280) Read() (Measurements, error) {
 	meas.P = bme.compPressure(tFine, uncomp.P)
 	meas.H = bme.compHumidity(tFine, uncomp.H)
 
-	fmt.Printf("T compensated is %.3f C\n", meas.T)
-	fmt.Printf("P compensated is %.1f Pa\n", meas.P)
-	fmt.Printf("H compensated is %.3f RH%%\n", meas.H)
-
 	return meas, err
 }
 

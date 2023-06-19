@@ -4,18 +4,26 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
+
+type indexAndAbbrev struct {
+	index  int
+	abbrev string
+}
 
 type openLCDExporter struct {
 	display  *os.File
 	config   *Config
 	defs     []pmetric.Metric
 	current  []interface{} // a point type
-	name2idx map[string]int
+	name2iaa map[string]indexAndAbbrev
+	ablen    int
 	olcd     *OpenLCD
+	ch       chan struct{}
 }
 
 func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExporter, error) {
@@ -23,11 +31,18 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 	if err != nil {
 		return nil, fmt.Errorf("open device: %s: %w", cfg.Device, err)
 	}
-	n2i := map[string]int{}
-	cur := make([]interface{}, len(cfg.Metrics))
-	defs := make([]pmetric.Metric, len(cfg.Metrics))
-	for idx, mc := range cfg.Metrics {
-		n2i[mc] = idx
+	n2iaa := map[string]indexAndAbbrev{}
+	cur := make([]interface{}, len(cfg.Show))
+	defs := make([]pmetric.Metric, len(cfg.Show))
+	ablen := 0
+	for idx, mc := range cfg.Show {
+		n2iaa[mc.Metric] = indexAndAbbrev{
+			index:  idx,
+			abbrev: mc.Abbrev,
+		}
+		if len(mc.Abbrev) > ablen {
+			ablen = len(mc.Abbrev)
+		}
 		defs[idx] = pmetric.NewMetric()
 	}
 
@@ -36,14 +51,18 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 		return nil, err
 	}
 
-	return &openLCDExporter{
+	exp := &openLCDExporter{
 		display:  f,
 		config:   cfg,
 		current:  cur,
 		defs:     defs,
-		name2idx: n2i,
+		name2iaa: n2iaa,
+		ablen:    ablen + 1,
 		olcd:     olcd,
-	}, err
+		ch:       make(chan struct{}, 1),
+	}
+	go exp.export()
+	return exp, err
 }
 
 func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) error {
@@ -56,19 +75,20 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 			for mi := 0; mi < sm.Metrics().Len(); mi++ {
 				m := sm.Metrics().At(mi)
 
-				idx, ok := e.name2idx[m.Name()]
+				iaa, ok := e.name2iaa[m.Name()]
 				if !ok {
 					continue
 				}
 				switch m.Type() {
 				case pmetric.MetricTypeEmpty:
-					e.current[idx] = nil
+					e.current[iaa.index] = nil
 
 				case pmetric.MetricTypeGauge:
 					dp := m.Gauge().DataPoints()
-					e.current[idx] = dp.At(dp.Len() - 1)
-					e.defs[idx].SetUnit(m.Unit())
-					e.defs[idx].SetDescription(m.Description())
+					e.current[iaa.index] = dp.At(dp.Len() - 1)
+					e.defs[iaa.index].SetName(iaa.abbrev)
+					e.defs[iaa.index].SetUnit(m.Unit())
+					e.defs[iaa.index].SetDescription(m.Description())
 
 				case pmetric.MetricTypeSum,
 					pmetric.MetricTypeHistogram,
@@ -76,15 +96,19 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 					pmetric.MetricTypeSummary:
 					panic("unimplemented")
 				}
+
 			}
 		}
 	}
 
-	return e.export()
+	e.ch <- struct{}{}
+	return nil
 }
 
 func (e *openLCDExporter) line(n int) string {
 	value := e.current[n]
+
+	kstr := e.defs[n].Name() + strings.Repeat(" ", e.ablen-len(e.defs[n].Name()))
 
 	vstr := "<unset>"
 	if value != nil {
@@ -92,7 +116,7 @@ func (e *openLCDExporter) line(n int) string {
 		case pmetric.NumberDataPoint:
 			switch t.ValueType() {
 			case pmetric.NumberDataPointValueTypeDouble:
-				vstr = fmt.Sprintf("%f", t.DoubleValue())
+				vstr = fmt.Sprintf("%.2f", t.DoubleValue())
 			case pmetric.NumberDataPointValueTypeInt:
 				vstr = fmt.Sprint(t.IntValue())
 			case pmetric.NumberDataPointValueTypeEmpty:
@@ -101,33 +125,32 @@ func (e *openLCDExporter) line(n int) string {
 			panic("unhandled")
 		}
 	}
-	ustr := "<undef>"
+	ustr := ""
 	if e.defs[n].Unit() != "" {
-		ustr = e.defs[n].Unit()
+		switch e.defs[n].Unit() {
+		case "C":
+			ustr = "\xDFC"
+		default:
+			ustr = e.defs[n].Unit()
+		}
 	}
 
-	line := fmt.Sprint(vstr, " ", ustr)
+	line := fmt.Sprint(kstr, vstr, ustr)
 	return line
 }
 
 func (e *openLCDExporter) export() error {
-	var send []byte
-	send = append(send, []byte(e.line(0))...)
+	for {
+		<-e.ch
 
-	if len(e.current) > 1 {
-		send = append(send, '\n')
-		send = append(send, []byte(e.line(1))...)
+		e.olcd.Clear()
+
+		for i := 0; i < 4; i++ {
+			if len(e.current) > i {
+				e.olcd.Update(e.line(i))
+			} else {
+				e.olcd.Update("")
+			}
+		}
 	}
-
-	if len(e.current) > 2 {
-		send = append(send, '\n')
-		send = append(send, []byte(e.line(2))...)
-	}
-
-	if len(e.current) > 3 {
-		send = append(send, '\n')
-		send = append(send, []byte(e.line(3))...)
-	}
-
-	return e.olcd.Update(string(send))
 }

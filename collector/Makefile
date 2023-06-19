@@ -1,5 +1,4 @@
 #
-
 all:
 	@mkdir -p ./build
 	go install go.opentelemetry.io/collector/cmd/builder@v0.79.0

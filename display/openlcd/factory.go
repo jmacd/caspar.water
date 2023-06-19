@@ -22,7 +22,11 @@ func NewFactory() exporter.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{
+		I2CAddr: 0x72,
+		Rows:    4,
+		Cols:    20,
+	}
 }
 
 func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, config component.Config) (exporter.Metrics, error) {

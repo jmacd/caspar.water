@@ -10,19 +10,27 @@ exporters:
   openlcd:
     device: "/dev/i2c-5"
     i2c_addr: "0x72"
-    metrics:
-    - wellkit_temperature
-    - wellkit_pressure
-    - wellkit_humidity
+    show:
+    - metric: wellkit_temperature
+      abbrev: temp
+    - metric: wellkit_pressure
+      abbrev: atmos
+    - metric: wellkit_humidity
+      abbrev: humid
 
-  logging:
-    loglevel: debug
+processors:
+  units:
+    replace:
+    - input: "Pa"
+      output: "psi"
+      conversion: 0.0001450377
 
 service:
   pipelines:
     metrics:
       receivers:
         - bme280
+      processors:
+        - units
       exporters:
         - openlcd
-        - logging
