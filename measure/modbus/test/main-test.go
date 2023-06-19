@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/jmacd/caspar.water/measure/rt200"
+	"github.com/jmacd/caspar.water/measure/modbus"
 )
 
 func main() {
-	dev, err := rt200.New()
+	dev, err := modbus.New()
 
 	if err != nil {
 		log.Fatal("open: %w", err)

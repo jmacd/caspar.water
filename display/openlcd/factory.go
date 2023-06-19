@@ -23,6 +23,7 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
+		Device:  "/dev/i2c",
 		I2CAddr: 0x72,
 		Rows:    4,
 		Cols:    20,

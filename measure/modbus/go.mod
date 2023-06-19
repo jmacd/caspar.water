@@ -1,4 +1,4 @@
-module github.com/jmacd/caspar.water/measure/rt200
+module github.com/jmacd/caspar.water/measure/modbus
 
 go 1.19
 

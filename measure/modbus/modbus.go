@@ -1,4 +1,4 @@
-package rt200
+package modbus
 
 import (
 	"fmt"
@@ -8,31 +8,16 @@ import (
 	"github.com/simonvetter/modbus"
 )
 
-type RT200 struct {
-}
+// type MODBUS struct {
+// 	client *modbus.ModbusClient
+// }
 
-// Measurements contains compensated measurement values.
-type Measurements struct {
-	P float64
-}
+// // Measurements contains compensated measurement values.
+// type Measurements struct {
+// 	P float64
+// }
 
-func New() (*RT200, error) {
-	err := test()
-	if err != nil {
-		panic(err)
-	}
-	return &RT200{}, nil
-}
-
-func (rt *RT200) Close() error {
-	return nil
-}
-
-func (rt *RT200) Read() (Measurements, error) {
-	return Measurements{}, nil
-}
-
-func test() error {
+func New() (*MODBUS, error) {
 	var client *modbus.ModbusClient
 	var err error
 
@@ -46,6 +31,9 @@ func test() error {
 	})
 	if err != nil {
 		return fmt.Errorf("new client: %w", err)
+	}
+	modbus := &MODBUS{
+		client: client,
 	}
 
 	err = client.Open()
@@ -140,3 +128,11 @@ func test() error {
 	// close the TCP connection/serial port
 	return client.Close()
 }
+
+// func (rt *MODBUS) Close() error {
+// 	return nil
+// }
+
+// func (rt *MODBUS) Read() (Measurements, error) {
+// 	return Measurements{}, nil
+// }

@@ -1,4 +1,4 @@
-package bme280
+package modbus
 
 import (
 	"context"
@@ -10,10 +10,9 @@ import (
 )
 
 const (
-	typeStr = "bme280"
+	typeStr = "modbus"
 )
 
-// NewFactory creates a new OTLP receiver factory.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		typeStr,
@@ -25,9 +24,7 @@ func NewFactory() receiver.Factory {
 // createDefaultConfig creates the default configuration for receiver.
 func createDefaultConfig() component.Config {
 	return &Config{
-		Device:   "/dev/i2c",
-		I2CAddr:  0x77,
-		Prefix:   "bme280",
+		URL:      "/dev",
 		Interval: time.Second,
 	}
 }
@@ -40,5 +37,5 @@ func createMetrics(
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	oCfg := cfg.(*Config)
-	return newBme280Receiver(oCfg, set, consumer)
+	return newModbusReceiver(oCfg, set, consumer)
 }
