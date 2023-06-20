@@ -5,6 +5,25 @@ receivers:
     i2c_addr: "0x77"
     interval: "5s"
     prefix: "wellkit"
+  modbus:
+    url: "rtu:///dev/ttyUSB0"
+    prefix: "wellprobe"
+    attributes:
+    - name: "serial_number"
+      base: 9002
+      type: "uint32"
+      range: "holding"
+    metrics:
+    - name: "temperature"
+      base: 38
+      type: "float32"
+      range: "holding"
+      unit: "C"
+    - name: "pressure"
+      base: 46
+      type: "float32"
+      range: "holding"
+      unit: "psi"
 
 exporters:
   openlcd:
@@ -17,6 +36,8 @@ exporters:
       abbrev: atmos
     - metric: wellkit_humidity
       abbrev: humid
+    - metric: wellprobe_pressure
+      abbrev: depth
 
 processors:
   units:
@@ -30,6 +51,7 @@ service:
     metrics:
       receivers:
         - bme280
+        - modbus
       processors:
         - units
       exporters:

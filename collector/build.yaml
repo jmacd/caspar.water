@@ -19,8 +19,8 @@ receivers:
     import: github.com/jmacd/caspar.water/measure/currentloop
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/measure/bme280
-#  - gomod: github.com/jmacd/caspar.water v0.0.0
-#    import: github.com/jmacd/caspar.water/measure/modbus
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/measure/modbus
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.79.0
@@ -33,4 +33,5 @@ processors:
 replaces:
   - github.com/jmacd/caspar.water => ../../
   - github.com/jmacd/caspar.water/measure/bme280 => ../../measure/bme280
+  - github.com/jmacd/caspar.water/measure/modbus => ../../measure/modbus
   - github.com/jmacd/caspar.water/display/openlcd => ../../display/openlcd

@@ -2,27 +2,36 @@ package modbus
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/simonvetter/modbus"
+	"go.uber.org/zap"
 )
 
-// type MODBUS struct {
-// 	client *modbus.ModbusClient
-// }
+type modbusClient struct {
+	client  *modbus.ModbusClient
+	attrs   []Attribute
+	metrics []Metric
+	logger  *zap.Logger
+}
 
-// // Measurements contains compensated measurement values.
-// type Measurements struct {
-// 	P float64
-// }
+type pair[T any] struct {
+	field T
+	value interface{}
+}
 
-func New() (*MODBUS, error) {
+// Measurements contains compensated measurement values.
+type Measurements struct {
+	A []pair[Attribute]
+	M []pair[Metric]
+}
+
+func New(url string, attrs []Attribute, metrics []Metric, logger *zap.Logger) (*modbusClient, error) {
 	var client *modbus.ModbusClient
 	var err error
 
 	client, err = modbus.NewClient(&modbus.ClientConfiguration{
-		URL:      "rtu:///dev/ttyUSB0",
+		URL:      url,
 		Speed:    19200,              // default
 		DataBits: 8,                  // default, optional
 		Parity:   modbus.PARITY_EVEN, // default, optional
@@ -30,109 +39,100 @@ func New() (*MODBUS, error) {
 		Timeout:  300 * time.Millisecond,
 	})
 	if err != nil {
-		return fmt.Errorf("new client: %w", err)
+		return nil, fmt.Errorf("new client: %w", err)
 	}
-	modbus := &MODBUS{
-		client: client,
+	mc := &modbusClient{
+		client:  client,
+		attrs:   attrs,
+		metrics: metrics,
+		logger:  logger,
 	}
 
 	err = client.Open()
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-	fmt.Println("New client on /dev/ttyUSB0")
-
-	for {
-		sn, err := client.ReadUint32(9001, modbus.HOLDING_REGISTER)
-		time.Sleep(200 * time.Millisecond)
-		if err == nil {
-			fmt.Println("Serial number", sn)
-			break
-		}
-		fmt.Println("Waiting..", err)
+		return nil, fmt.Errorf("open: %w", err)
 	}
 
-	for {
-		u32, err := client.ReadUint32(9099, modbus.HOLDING_REGISTER)
-		if err == nil {
-			fmt.Println("STATUS_REGS", u32)
-			break
-		}
-		fmt.Println("Waiting..", err)
-	}
-
-	// devId, err := client.ReadRegister(9000, modbus.HOLDING_REGISTER)
-	// if err != nil {
-	// 	fmt.Println("can't read device ID")
-	// } else {
-	// 	switch devId {
-	// 	case 16:
-	// 		fmt.Println("RuggedTroll 200")
-	// 	}
-	// }
-
-	// Temp registers
-
-	for {
-		regs, err := client.ReadRegisters(37, 8, modbus.HOLDING_REGISTER)
-
-		if err != nil {
-			fmt.Println("Waiting", err)
-			continue
-		}
-
-		x := (uint32(regs[0]) << 16) | uint32(regs[1])
-		f := math.Float32frombits(x)
-		fmt.Println("PRESS", f)
-		break
-	}
-
-	for {
-		regs, err := client.ReadRegisters(45, 8, modbus.HOLDING_REGISTER)
-
-		if err != nil {
-			fmt.Println("Waiting", err)
-			continue
-		}
-
-		x := (uint32(regs[0]) << 16) | uint32(regs[1])
-		f := math.Float32frombits(x)
-		fmt.Println("TEMP", f)
-		break
-	}
-
-	// for {
-	// 	press, err := client.ReadFloat32(37, modbus.HOLDING_REGISTER)
-	// 	if err != nil {
-	// 		if err != nil {
-	// 			fmt.Println("can't read pressure", err)
-	// 		} else {
-	// 			fmt.Printf("Pressure: %v\n", press)
-	// 			break
-	// 		}
-	// 	}
-	// }
-
-	// press, err := client.ReadFloat32(38, modbus.HOLDING_REGISTER)
-	// fmt.Println("LOOK", press, err)
-
-	// for i := uint16(0); i < 100; i++ {
-	// 	press, err := client.ReadFloat32(i, modbus.HOLDING_REGISTER)
-	// 	if err != nil {
-	// 		fmt.Println("can't read pressure", i)
-	// 	} else {
-	// 		fmt.Printf("%d: Pressure: %v\n", i, press)
-	// 	}
-	// }
-
-	// close the TCP connection/serial port
-	return client.Close()
+	return mc, nil
 }
 
-// func (rt *MODBUS) Close() error {
-// 	return nil
-// }
+func (c *modbusClient) Close() error {
+	return c.client.Close()
+}
 
-// func (rt *MODBUS) Read() (Measurements, error) {
-// 	return Measurements{}, nil
-// }
+func (c *modbusClient) Read() (Measurements, error) {
+	var m Measurements
+
+	for _, attr := range c.attrs {
+		for {
+			aval, err := c.read(attr.Field)
+
+			if err != nil {
+				time.Sleep(20 * time.Millisecond)
+				if err != modbus.ErrRequestTimedOut {
+					c.logger.Info("will retry", zap.Error(err))
+				} else {
+					c.logger.Debug("request timeout")
+				}
+				continue
+			}
+			m.A = append(m.A, pair[Attribute]{
+				field: attr,
+				value: aval,
+			})
+			break
+		}
+	}
+
+	for _, metric := range c.metrics {
+		for {
+			aval, err := c.read(metric.Field)
+
+			if err != nil {
+				time.Sleep(20 * time.Millisecond)
+				if err != modbus.ErrRequestTimedOut {
+					c.logger.Info("will retry", zap.Error(err))
+				} else {
+					c.logger.Debug("request timeout")
+				}
+				continue
+			}
+			m.M = append(m.M, pair[Metric]{
+				field: metric,
+				value: aval,
+			})
+			break
+		}
+	}
+
+	return m, nil
+}
+
+func (c *modbusClient) read(f Field) (interface{}, error) {
+	var rt modbus.RegType
+	switch f.Range {
+	case "coil":
+		rt = modbus.INPUT_REGISTER
+	case "discrete":
+		rt = modbus.HOLDING_REGISTER
+	case "input":
+		rt = modbus.INPUT_REGISTER
+	case "holding":
+		rt = modbus.HOLDING_REGISTER
+	}
+
+	switch f.Type {
+	case "uint32":
+		return c.client.ReadUint32(f.Base-1, rt)
+	case "float32":
+		return c.client.ReadFloat32(f.Base-1, rt)
+	case "bool":
+		switch f.Range {
+		case "coil":
+			return c.client.ReadCoil(f.Base - 1)
+		case "discrete":
+			return c.client.ReadDiscreteInput(f.Base - 1)
+		}
+	}
+	return nil, fmt.Errorf("unknown type/range %q/%q", f.Type, f.Range)
+}
