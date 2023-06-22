@@ -28,7 +28,7 @@ func createDefaultConfig() component.Config {
 		Device:   "/dev/i2c",
 		I2CAddr:  0x77,
 		Prefix:   "bme280",
-		Interval: time.Second,
+		Interval: time.Minute,
 	}
 }
 

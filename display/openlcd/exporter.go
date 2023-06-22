@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -16,6 +18,7 @@ type indexAndAbbrev struct {
 }
 
 type openLCDExporter struct {
+	lock     sync.Mutex
 	display  *os.File
 	config   *Config
 	defs     []pmetric.Metric
@@ -23,7 +26,6 @@ type openLCDExporter struct {
 	name2iaa map[string]indexAndAbbrev
 	ablen    int
 	olcd     *OpenLCD
-	ch       chan struct{}
 }
 
 func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExporter, error) {
@@ -59,13 +61,15 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 		name2iaa: n2iaa,
 		ablen:    ablen + 1,
 		olcd:     olcd,
-		ch:       make(chan struct{}, 1),
 	}
 	go exp.export()
 	return exp, err
 }
 
 func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
 	for ri := 0; ri < md.ResourceMetrics().Len(); ri++ {
 		rm := md.ResourceMetrics().At(ri)
 
@@ -100,8 +104,6 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 			}
 		}
 	}
-
-	e.ch <- struct{}{}
 	return nil
 }
 
@@ -119,7 +121,7 @@ func (e *openLCDExporter) line(n int) string {
 				vstr = fmt.Sprintf("%.2f", t.DoubleValue())
 			case pmetric.NumberDataPointValueTypeInt:
 				vstr = fmt.Sprint(t.IntValue())
-			case pmetric.NumberDataPointValueTypeEmpty:
+
 			}
 		default:
 			panic("unhandled")
@@ -141,16 +143,23 @@ func (e *openLCDExporter) line(n int) string {
 
 func (e *openLCDExporter) export() error {
 	for {
-		<-e.ch
+		time.Sleep(5 * time.Second)
 
-		e.olcd.Clear()
+		e.draw()
+	}
+}
 
-		for i := 0; i < 4; i++ {
-			if len(e.current) > i {
-				e.olcd.Update(e.line(i))
-			} else {
-				e.olcd.Update("")
-			}
+func (e *openLCDExporter) draw() {
+	e.olcd.Clear()
+
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
+	for i := 0; i < 4; i++ {
+		if len(e.current) > i {
+			e.olcd.Update(e.line(i))
+		} else {
+			e.olcd.Update("")
 		}
 	}
 }

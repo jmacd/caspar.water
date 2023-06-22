@@ -25,7 +25,7 @@ func NewFactory() receiver.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		URL:      "rtu:///dev/ttyUSB0",
-		Interval: time.Second,
+		Interval: time.Minute,
 	}
 }
 

@@ -8,6 +8,7 @@ receivers:
   modbus:
     url: "rtu:///dev/ttyUSB0"
     prefix: "wellprobe"
+    interval: "5s"
     attributes:
     - name: "serial_number"
       base: 9002
