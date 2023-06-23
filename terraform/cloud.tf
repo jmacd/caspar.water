@@ -40,11 +40,36 @@ resource "null_resource" "setup-script" {
       destination = "/etc/sysctl.d/bridge.d"
   }
 
+  provisioner "file" {
+      source      = "nomadserver.service"
+      destination = "/etc/systemd/system/nomadserver.service"
+  }
+
+  provisioner "file" {
+      source      = "nomadclient.service"
+      destination = "/etc/systemd/system/nomadclient.service"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/setup_script.sh",
       "/tmp/setup_script.sh",
     ]
+  }
+
+  provisioner "file" {
+      source      = "nomadserver.hcl"
+      destination = "/etc/nomad.d/nomadserver.hcl"
+  }
+
+  provisioner "file" {
+      source      = "nomadclient.hcl"
+      destination = "/etc/nomadclient.d/nomadclient.hcl"
+  }
+
+  provisioner "file" {
+      source      = "influxdb-vars.hcl"
+      destination = "/etc/caspar.d/influxdb-vars.hcl"
   }
 
   triggers = {

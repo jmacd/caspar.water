@@ -2,9 +2,8 @@
 
 apt-get update
 apt-get install -y software-properties-common
-apt-get install -y influxdb
-apt-get install -y influxdb-client
-apt-get install -y wget gpg coreutils
+
+apt-get install -y openssl
 
 # From https://developer.hashicorp.com/nomad/docs/install
 if grep -q /usr/share/keyrings/hashicorp-archive-keyring.gpg /etc/apt/sources.list.d/hashicorp.list; then
@@ -15,7 +14,7 @@ else
     echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
 fi
 
-sudo apt-get install -y nomad
+apt-get install -y nomad
 
 if [ -d /opt/cni/bin ]; then
     echo Nomad CNI plugins already configured
@@ -25,3 +24,45 @@ else
   tar -C /opt/cni/bin -xzf /tmp/cni-plugins.tgz
   rm /tmp/cni-plugins.tgz
 fi
+
+echo Starting nomad
+mkdir -p /etc/nomadclient.d
+
+mkdir -p /opt/nomad
+mkdir -p /opt/nomadclient
+
+usermod -d /etc/nomad.d nomad
+usermod -aG docker nomad
+
+usermod -d /etc/nomad.d nomad
+
+adduser nomadclient root
+usermod -d /etc/nomadclient.d nomadclient
+
+systemctl enable nomad
+systemctl start nomad
+
+# https://www.linode.com/docs/guides/installing-and-using-docker-on-ubuntu-and-debian/
+echo Setup docker
+apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+
+if [ -f /usr/share/keyrings/docker-archive-keyring.gpg ]; then
+    echo Docker GPG key installed
+else 
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+fi
+
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt update -y
+apt install -y docker-ce docker-ce-cli containerd.io
+
+systemctl enable docker
+systemctl enable containerd
+systemctl start docker
+systemctl start containerd
+
+mkdir -p /etc/caspar.d
+mkdir -p /etc/caspar.d/certs
+
+mkdir -p /opt/influxdb
