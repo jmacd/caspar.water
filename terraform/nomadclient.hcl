@@ -14,7 +14,7 @@ client {
 
   host_volume "influxconfig" {
     path = "/etc/caspar.d"
-    read_only = true
+    read_only = false
   }
   host_volume "influxdata" {
     path      = "/opt/influxdb"

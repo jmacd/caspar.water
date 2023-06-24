@@ -66,3 +66,11 @@ mkdir -p /etc/caspar.d
 mkdir -p /etc/caspar.d/certs
 
 mkdir -p /opt/influxdb
+
+# TODO: install nomad-pack
+# Currently no debian package, have installed Go 1.20.x and built in /root/nomad-pack
+(cd /root/nomad-pack &&
+     ./bin/nomad-pack run influxdb \
+		      --registry=community \
+		      --ref=latest \
+		      -f /etc/caspar.d/influxdb-vars.hcl)
