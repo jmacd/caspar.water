@@ -50,13 +50,6 @@ resource "null_resource" "setup-script" {
       destination = "/etc/systemd/system/nomadclient.service"
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x /tmp/setup_script.sh",
-      "/tmp/setup_script.sh",
-    ]
-  }
-
   provisioner "file" {
       source      = "nomadserver.hcl"
       destination = "/etc/nomad.d/nomadserver.hcl"
@@ -69,7 +62,19 @@ resource "null_resource" "setup-script" {
 
   provisioner "file" {
       source      = "influxdb-vars.hcl"
-      destination = "/etc/caspar.d/influxdb-vars.hcl"
+      destination = "/etc/caspar.d/influxdb/vars.hcl"
+  }
+
+  provisioner "file" {
+      source      = "influxdb.yaml"
+      destination = "/etc/caspar.d/influxdb/config.yaml"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/setup_script.sh",
+      "/tmp/setup_script.sh",
+    ]
   }
 
   triggers = {

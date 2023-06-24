@@ -13,7 +13,7 @@ client {
   servers = ["0.0.0.0:4647"]
 
   host_volume "influxconfig" {
-    path = "/etc/caspar.d"
+    path = "/etc/caspar.d/influxdb"
     read_only = false
   }
   host_volume "influxdata" {

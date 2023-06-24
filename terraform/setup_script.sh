@@ -62,9 +62,7 @@ systemctl enable containerd
 systemctl start docker
 systemctl start containerd
 
-mkdir -p /etc/caspar.d
-mkdir -p /etc/caspar.d/certs
-
+mkdir -p /etc/caspar.d/influxdb/certs
 mkdir -p /opt/influxdb
 
 # TODO: install nomad-pack
@@ -73,4 +71,4 @@ mkdir -p /opt/influxdb
      ./bin/nomad-pack run influxdb \
 		      --registry=community \
 		      --ref=latest \
-		      -f /etc/caspar.d/influxdb-vars.hcl)
+		      -f /etc/caspar.d/influxdb/vars.hcl)
