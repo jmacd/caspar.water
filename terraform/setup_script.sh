@@ -67,8 +67,10 @@ mkdir -p /opt/influxdb
 
 # TODO: install nomad-pack
 # Currently no debian package, have installed Go 1.20.x and built in /root/nomad-pack
+# See git@github.com:jmacd/nomad-pack-community-registry.git, I've modified the pack
+# slightly to expose a static port 8086.
 (cd /root/nomad-pack &&
      ./bin/nomad-pack run influxdb \
-		      --registry=community \
-		      --ref=latest \
+		      --registry=jmacd-community \
+		      --ref=caspar_cloud_influx \
 		      -f /etc/caspar.d/influxdb/vars.hcl)
