@@ -8,4 +8,4 @@ make
 scp collector.bbb debian@wellkit.local:
 scp config-debug.yaml debian@wellkit.local:
 ssh debian@wellkit.local killall collector.bbb
-ssh debian@wellkit.local ./collector.bbb --config  config-debug.yaml
+#ssh debian@wellkit.local ./collector.bbb --config  config-debug.yaml

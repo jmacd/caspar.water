@@ -94,7 +94,6 @@ func (r *bme280Receiver) run(ctx context.Context) {
 		// Humidity
 		m = sm.Metrics().AppendEmpty()
 		m.SetName(r.cfg.Prefix + "_humidity")
-		m.SetUnit("rh%")
 		m.SetEmptyGauge()
 		pt = m.Gauge().DataPoints().AppendEmpty()
 		pt.SetDoubleValue(data.H)

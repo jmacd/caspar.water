@@ -39,6 +39,8 @@ exporters:
       abbrev: humid
     - metric: wellprobe_pressure
       abbrev: depth
+  influxdb:
+    endpoint: https://casparwater.us:8086
 
 processors:
   units:
@@ -46,6 +48,9 @@ processors:
     - input: "Pa"
       output: "psi"
       conversion: 0.0001450377
+  batch:
+    send_batch_size: 100
+    timeout: 5s
 
 service:
   pipelines:
@@ -55,5 +60,7 @@ service:
         - modbus
       processors:
         - units
+        - batch
       exporters:
         - openlcd
+        - influxdb
