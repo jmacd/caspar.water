@@ -20,4 +20,8 @@ client {
     path      = "/opt/influxdb"
     read_only = false
   }
+  host_volume "sslcerts" {
+    path      = "/etc/ssl/certs"
+    read_only = true
+  }
 }

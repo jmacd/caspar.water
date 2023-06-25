@@ -7,3 +7,5 @@ hardening-enabled: true
 pprof-disabled: true
 metrics-disabled: true
 
+bolt-path: /var/lib/influxdb2/influxd.bolt
+engine-path: /var/lib/influxdb2/engine
