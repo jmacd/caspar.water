@@ -3,12 +3,12 @@ receivers:
   bme280:
     device: "/dev/i2c-5"
     i2c_addr: "0x77"
-    interval: "5s"
+    interval: "60s"
     prefix: "wellkit"
   modbus:
     url: "rtu:///dev/ttyUSB0"
     prefix: "wellprobe"
-    interval: "5s"
+    interval: "60s"
     attributes:
     - name: "serial_number"
       base: 9002
@@ -50,7 +50,7 @@ processors:
       conversion: 0.0001450377
   batch:
     send_batch_size: 100
-    timeout: 5s
+    timeout: 30s
 
 service:
   pipelines:

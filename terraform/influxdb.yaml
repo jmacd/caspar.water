@@ -1,7 +1,7 @@
 query-concurrency: 1
 query-queue-size: 1
 session-length: 120
-tls-cert: /etc/influxdb2/influxdb.crt
+tls-cert: /etc/influxdb2/influxdb.pem
 tls-key: /etc/influxdb2/influxdb.key
 hardening-enabled: true
 pprof-disabled: true

@@ -75,7 +75,7 @@ func composeWriteURL(config *Config) (string, error) {
 	queryValues.Set("org", org)
 	queryValues.Set("bucket", bucket)
 
-	if config.Token != "" {
+	if token != "" {
 		if config.HTTPClientSettings.Headers == nil {
 			config.HTTPClientSettings.Headers = map[string]configopaque.String{}
 		}
@@ -159,7 +159,6 @@ func (w *influxHTTPWriter) doHTTP(req *http.Request, path string) error {
 	} else if err = res.Body.Close(); err != nil {
 		return err
 	} else {
-		fmt.Println("ERROR", res.StatusCode, res.Status)
 		switch res.StatusCode / 100 {
 		case 2: // Success
 			break
@@ -263,8 +262,6 @@ func (w *influxHTTPWriter) consumeMetrics(ctx context.Context, ld pmetric.Metric
 			}
 		}
 	}
-
-	fmt.Println("Influx:", string(enc.Bytes()))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.writeURL, bytes.NewReader(enc.Bytes()))
 	if err != nil {
