@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
@@ -59,16 +58,6 @@ func composeWriteURL(config *Config) (string, error) {
 	org := config.Org
 	bucket := config.Bucket
 	token := config.Token
-
-	if org == "" {
-		org = os.Getenv("INFLUX_ORG")
-	}
-	if bucket == "" {
-		bucket = os.Getenv("INFLUX_BUCKET")
-	}
-	if token == "" {
-		token = configopaque.String(os.Getenv("INFLUX_TOKEN"))
-	}
 
 	queryValues := writeURL.Query()
 	queryValues.Set("precision", "ns")

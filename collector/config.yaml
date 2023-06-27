@@ -26,9 +26,14 @@ exporters:
   otlp:
     endpoint: ingest.lightstep.com:443
     headers:
-    - lightstep-access-token: LS_ACCESS_TOKEN
+    - lightstep-access-token: ${env:LIGHTSTEP_TOKEN}
   jsonfile:
     path: "/home/data/casparwater.json"
+  influxdb:
+    endpoint: https://casparwater.us:8086
+    org: casparwater
+    bucket: production
+    token: ${env:INFLUXD_TOKEN}
 
 service:
   pipelines:
@@ -40,6 +45,7 @@ service:
       exporters:
       - otlp
       - jsonfile
+      - influxdb
   telemetry:
     logs:
       level:
