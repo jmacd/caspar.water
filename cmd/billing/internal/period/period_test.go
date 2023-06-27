@@ -15,9 +15,9 @@ func quoteBytes(s string) []byte {
 
 func TestPeriodJSONGood(t *testing.T) {
 	for _, good := range [][]string{
-		{"10/1/2021", "3/31/2022", "4/1/2022"},
-		{"4/1/2022", "9/30/2022", "10/1/2022"},
-		{"10/1/2022", "3/31/2023", "4/1/2023"},
+		{"10/1/2021", "3/31/2022"},
+		{"4/1/2022", "9/30/2022"},
+		{"10/1/2022", "3/31/2023"},
 	} {
 		var p Period
 
@@ -25,8 +25,7 @@ func TestPeriodJSONGood(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, good[0], p.Starting().Date().Format(constant.CsvLayout))
-		require.Equal(t, good[1], p.Ending().Date().Format(constant.CsvLayout))
-		require.Equal(t, good[2], p.Billing().Date().Format(constant.CsvLayout))
+		require.Equal(t, good[1], p.Closing().Date().Format(constant.CsvLayout))
 	}
 }
 

@@ -45,7 +45,7 @@ func stateReceived(client sparkplugclient.Client, msg sparkplugclient.Message) {
 }
 
 func main() {
-	server := flag.String("server", "tcp://localhost:1883", "The MQTT server to connect to")
+	server := flag.String("server", "tcp://192.168.0.40:1883", "The MQTT server to connect to")
 	flag.Parse()
 
 	sparkTopic := sparkplug.NewTopic("#", "", "", "")
