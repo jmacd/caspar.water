@@ -41,6 +41,9 @@ exporters:
       abbrev: depth
   influxdb:
     endpoint: https://casparwater.us:8086
+    org: ${env:INFLUX_ORG}
+    bucket: ${env:INFLUX_BUCKET}
+    token: ${env:INFLUX_TOKEN}
 
 processors:
   units:
