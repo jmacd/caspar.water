@@ -151,9 +151,10 @@ struct my_resource_table resourceTable = {
 #define WORDSZ sizeof(uint32_t)
 
 // These are word-size offsets from the GPIO register base address.
-#define GPIO_CLEARDATAOUT (0x190 / WORDSZ) // For clearing the GPIO registers
-#define GPIO_SETDATAOUT (0x194 / WORDSZ)   // For setting the GPIO registers
-#define GPIO_DATAOUT (0x13C / WORDSZ)      // For setting the GPIO registers
+#define GPIO_CLEARDATAOUT (0x190 / WORDSZ) // For clearing GPIO register bits
+#define GPIO_SETDATAOUT (0x194 / WORDSZ)   // For setting GPIO register bits
+#define GPIO_DATAOUT (0x13C / WORDSZ)      // For writing whole GPIO register
+#define GPIO_DATAIN (0x138 / WORDSZ)       // For reading whole GPIO registers
 
 // Set updates modifies a single bit of a GPIO register.
 void set(uint32_t *gpio, int bit, int on) {
@@ -162,6 +163,12 @@ void set(uint32_t *gpio, int bit, int on) {
   } else {
     gpio[GPIO_CLEARDATAOUT] = 1 << bit;
   }
+}
+
+// Get reads a single bit of a GPIO register.
+int get(uint32_t *gpio, int bit) {
+  uint32_t read = gpio[GPIO_DATAIN];
+  return (read & 1 << bit) != 0;
 }
 
 // Set up the pointers to each of the GPIO ports
@@ -249,87 +256,56 @@ uint32_t check_signal() {
   return 0;
 }
 
-#define CYCLES_PER_US 200
-#define CYCLES_PER_MS (1000 * CYCLES_PER_US)
-#define PRE_SETTLE_CYCLES (70 * CYCLES_PER_US)
-#define POST_SETTLE_CYCLES (430 * CYCLES_PER_US)
-#define HALF_PERIOD_CYCLES (500 * CYCLES_PER_US)
 #define DATA_ARRAY_SIZE 256
 
-struct meter_state {
-  char data[DATA_ARRAY_SIZE]; // Received data buffer
-  int data_index;             // index into received data buffer
-  int bitno;                  // bit position we're currently reading
-  int parity_check;           // parity check bit
-  int done;
-};
+// Note: I had intended to use two pins that could be read/written
+// with R30/R31 (i.e., P9_25 and P9_27), but mistook the pin numbers
+// and have pins P9_23 and P9_25 instead.  Since performance is not
+// a thing here, using GPIO register access exclusively.
 
-// Use P9_27 on PRU0 for input via R31[5] (also available on gpio3[19]).
-#define INPUT_DATA_R31_MASK (1 << 5)
-
-int read_bit() {
-  if (__R31 & INPUT_DATA_R31_MASK) {
-    return 1;
-  }
-  return 0;
-}
-
-// Output uses P9_25 on PRU0 for output via R30[7] (also available on gpio3[21]).
-#define OUTPUT_DATA_R30_MASK (1 << 7)
-
+int read_bit() { return get(gpio1, 17); }
 void set_clock(int value) {
-  if (value) {
-    //__R30 |= OUTPUT_DATA_R30_MASK;
-    set(gpio3, 21, 1);
-    set(gpio1, 17, 0);
-
-  } else {
-    set(gpio3, 21, 0);
-    set(gpio1, 17, 1);
-
-    //__R30 &= ~OUTPUT_DATA_R30_MASK;
-  }
+  set(gpio3, 21, value);
+  uled1(value);
+  uled2(value);
+  uled3(value);
+  uled4(value);
 }
 
-#if 0
-void next_bit(struct meter_state *meter) {
-  int input = read_bit();
+extern void sleep_cycles(int value);
 
-  switch (meter->state) {
-  case WAIT_FOR_START:
-  case READ_BITS:
-  case WAIT_FOR_PARITY:
-  case WAIT_FOR_STOP:
-  default:
-    break;
-  }
+void sleep_micros(int micros) {
+  // The machine is 200Mhz, so 200 cycles per microsecond.
+  sleep_cycles(micros * 200);
 }
-#endif
 
 void main(void) {
-  // static struct meter_state meter0;
-
   reset_hardware_state();
 
   wait_for_virtio_ready();
 
   setup_transport();
 
-  set_clock(0);
-
+  // Repeat forever.
   while (1) {
-    __delay_cycles(5000000);
-    set_clock(1);
-    uled1(1);
-    uled2(0);
-    uled3(1);
-    uled4(0);
 
-    __delay_cycles(5000000);
-    set_clock(0);
-    uled1(0);
-    uled2(1);
-    uled3(0);
-    uled4(1);
+    // Loop the clock/power line on and off.  The meter takes power
+    // in and may do so for a number of cycles before it begins to
+    // write to the data line.
+    int pos;
+    for (pos = 0; pos < DATA_ARRAY_SIZE; pos++) {
+      // On state:
+      set_clock(1);
+
+      // Let the device settle
+      sleep_micros(70 * 1000);
+
+      // TODO: Read bit
+      sleep_micros(430 * 1000);
+
+      // Off state
+      set_clock(0);
+      sleep_micros(500 * 1000);
+    }
   }
 }
