@@ -264,16 +264,13 @@ uint32_t check_signal() {
 // a thing here, using GPIO register access exclusively.
 
 int read_bit() { return get(gpio1, 17); }
-void set_clock(int value) {
-  set(gpio3, 21, value);
-  uled1(value);
-  uled2(value);
-  uled3(value);
-  uled4(value);
-}
+void set_clock(int value) { set(gpio3, 21, value); }
 
+// Defined in sleep.s.
+// TODO: use the SLP instruction between measurements.
 extern void sleep_cycles(int value);
 
+// Sleep for approximately as many microseconds.
 void sleep_micros(int micros) {
   // The machine is 200Mhz, so 200 cycles per microsecond.
   sleep_cycles(micros * 200);

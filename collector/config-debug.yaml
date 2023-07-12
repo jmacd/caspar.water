@@ -30,6 +30,7 @@ exporters:
   openlcd:
     device: "/dev/i2c-5"
     i2c_addr: "0x72"
+    run_for: 2m
     show:
     - metric: wellkit_temperature
       abbrev: temp
@@ -60,7 +61,7 @@ service:
     metrics:
       receivers:
         - bme280
-        - modbus
+        #- modbus
       processors:
         - units
         - batch

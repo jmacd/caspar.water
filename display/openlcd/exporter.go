@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
+const updateInterval = 5 * time.Second
+
 type indexAndAbbrev struct {
 	index  int
 	abbrev string
@@ -46,6 +48,7 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 			ablen = len(mc.Abbrev)
 		}
 		defs[idx] = pmetric.NewMetric()
+		defs[idx].SetName(mc.Abbrev)
 	}
 
 	olcd, err := New(cfg.Device, int(cfg.I2CAddr))
@@ -62,6 +65,7 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 		ablen:    ablen + 1,
 		olcd:     olcd,
 	}
+	_ = exp.olcd.On()
 	go exp.export()
 	return exp, err
 }
@@ -69,6 +73,14 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) error {
 	e.lock.Lock()
 	defer e.lock.Unlock()
+
+	// TODO: support staleness?
+	// 1. If one receiver stops adn the other contnues, the stopped one
+	// will be stale w/o showing it.  This can be if the modbus device
+	// stops responding, e.g., or indicate freshness
+	// 2. Print the time to indicate freshness
+	// 3. Scroll > 4
+	// 4. Update only changed bytes
 
 	for ri := 0; ri < md.ResourceMetrics().Len(); ri++ {
 		rm := md.ResourceMetrics().At(ri)
@@ -141,12 +153,16 @@ func (e *openLCDExporter) line(n int) string {
 	return line
 }
 
-func (e *openLCDExporter) export() error {
-	for {
-		time.Sleep(5 * time.Second)
+func (e *openLCDExporter) export() {
+	start := time.Now()
+
+	for e.config.RunFor == 0 || time.Since(start) < e.config.RunFor {
+		time.Sleep(updateInterval)
 
 		e.draw()
 	}
+
+	_ = e.olcd.Off()
 }
 
 func (e *openLCDExporter) draw() {

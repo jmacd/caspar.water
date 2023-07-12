@@ -28,6 +28,28 @@ func New(i2cPath string, devAddr int) (*OpenLCD, error) {
 	}, nil
 }
 
+func (lcd *OpenLCD) On() error {
+	defer time.Sleep(1 * time.Millisecond)
+	return lcd.device.Write([]byte{
+		// SETTING_COMMAND, SET_RGB_COMMAND, R, G, B
+		0x7C, 0x2B, 0xff, 0xff, 0xff,
+
+		// SPECIAL_COMMAND, DISPLAYCONTROL|LCD_DISPLAYON
+		254, 0x8 | 0x4,
+	})
+}
+
+func (lcd *OpenLCD) Off() error {
+	defer time.Sleep(1 * time.Millisecond)
+	return lcd.device.Write([]byte{
+		// SPECIAL_COMMAND, DISPLAYCONTROL|LCD_DISPLAYOFF
+		254, 0x8 | 0x0,
+
+		// SETTING_COMMAND, SET_RGB_COMMAND, R, G, B
+		0x7C, 0x2B, 0, 0, 0,
+	})
+}
+
 func (lcd *OpenLCD) Update(str string) error {
 	for _, c := range []byte(str) {
 		if err := lcd.write([]byte{c}); err != nil {

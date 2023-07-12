@@ -16,16 +16,21 @@ const (
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		typeStr,
-		createDefaultConfig,
+		DefaultConfig,
 		receiver.WithMetrics(createMetrics, component.StabilityLevelAlpha),
 	)
 }
 
-// createDefaultConfig creates the default configuration for receiver.
-func createDefaultConfig() component.Config {
+// DefaultConfig creates the default configuration for receiver.
+func DefaultConfig() component.Config {
 	return &Config{
 		URL:      "rtu:///dev/ttyUSB0",
 		Interval: time.Minute,
+		Baud:     19200,
+		DataBits: 8,
+		StopBits: 1,
+		Parity:   "even",
+		Timeout:  time.Millisecond * 300,
 	}
 }
 

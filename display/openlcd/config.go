@@ -2,6 +2,7 @@ package openlcd
 
 import (
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 )
@@ -21,6 +22,8 @@ type Config struct {
 	Rows int    `mapstructure:"rows"`
 	Cols int    `mapstructure:"cols"`
 	Show []Pair `mapstructure:"show"`
+
+	RunFor time.Duration `mapstructure:"run_for"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -40,6 +43,9 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("empty metrics list")
 	case len(cfg.Show) > cfg.Rows:
 		return fmt.Errorf("too many metrics")
+	}
+	if cfg.RunFor < 0 {
+		return fmt.Errorf("negative run_for")
 	}
 	return nil
 }

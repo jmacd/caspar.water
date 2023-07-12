@@ -24,7 +24,7 @@ type modbusReceiver struct {
 }
 
 func newModbusReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*modbusReceiver, error) {
-	client, err := New(cfg.URL, cfg.Attributes, cfg.Metrics, set.Logger)
+	client, err := New(cfg, cfg.Attributes, cfg.Metrics, set.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (r *modbusReceiver) run(ctx context.Context) {
 		}
 
 		ts := pcommon.NewTimestampFromTime(time.Now())
-		data, err := r.client.Read()
+		data, err := r.client.Read(ctx)
 		if err != nil {
 			r.settings.TelemetrySettings.Logger.Error("read modbus device", zap.String("device", r.cfg.URL), zap.Error(err))
 			continue
