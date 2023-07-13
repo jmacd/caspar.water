@@ -23,8 +23,9 @@ type Config struct {
 	Cols int    `mapstructure:"cols"`
 	Show []Pair `mapstructure:"show"`
 
-	RunFor  time.Duration `mapstructure:"run_for"`
-	Refresh time.Duration `mapstructure:"refresh"`
+	RunFor    time.Duration `mapstructure:"run_for"`
+	Refresh   time.Duration `mapstructure:"refresh"`
+	Staleness time.Duration `mapstructure:"staleness"`
 }
 
 var _ component.Config = (*Config)(nil)

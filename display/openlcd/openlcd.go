@@ -56,11 +56,6 @@ func (lcd *OpenLCD) Update(str string) error {
 			return err
 		}
 	}
-	for i := len(str); i < 20; i++ {
-		if err := lcd.write([]byte{' '}); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

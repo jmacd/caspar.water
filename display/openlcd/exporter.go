@@ -72,13 +72,9 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	// TODO: support staleness?
-	// 1. If one receiver stops adn the other contnues, the stopped one
-	// will be stale w/o showing it.  This can be if the modbus device
-	// stops responding, e.g., or indicate freshness
-	// 2. Print the time to indicate freshness
-	// 3. Scroll > 4
-	// 4. Update only changed bytes
+	// TODO:
+	// 1. Update only changed bytes
+	// 2. Measurements should arrive right away, not see <unset>
 
 	for ri := 0; ri < md.ResourceMetrics().Len(); ri++ {
 		rm := md.ResourceMetrics().At(ri)
@@ -110,16 +106,15 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 					pmetric.MetricTypeSummary:
 					panic("unimplemented")
 				}
-
 			}
 		}
 	}
 	return nil
 }
 
-func (e *openLCDExporter) line(n int) string {
+func (e *openLCDExporter) line(n, pos int, now time.Time) string {
 	value := e.current[n]
-
+	stale := false
 	kstr := e.defs[n].Name() + strings.Repeat(" ", e.ablen-len(e.defs[n].Name()))
 
 	vstr := "<unset>"
@@ -131,14 +126,17 @@ func (e *openLCDExporter) line(n int) string {
 				vstr = fmt.Sprintf("%.2f", t.DoubleValue())
 			case pmetric.NumberDataPointValueTypeInt:
 				vstr = fmt.Sprint(t.IntValue())
-
+			}
+			if now.Sub(t.Timestamp().AsTime()) > e.config.Staleness {
+				stale = true
+				vstr = "<stale>"
 			}
 		default:
 			panic("unhandled")
 		}
 	}
 	ustr := ""
-	if e.defs[n].Unit() != "" {
+	if !stale && e.defs[n].Unit() != "" {
 		switch e.defs[n].Unit() {
 		case "C":
 			ustr = "\xDFC"
@@ -148,6 +146,16 @@ func (e *openLCDExporter) line(n int) string {
 	}
 
 	line := fmt.Sprint(kstr, vstr, ustr)
+	if pos == 0 {
+		const hhmm = "15:04"
+		for len(line) < e.config.Cols-len(hhmm) {
+			line += " "
+		}
+		line += now.Local().Format(hhmm)
+	}
+	for len(line) < e.config.Cols {
+		line += " "
+	}
 	return line
 }
 
@@ -166,17 +174,18 @@ func (e *openLCDExporter) export() {
 }
 
 func (e *openLCDExporter) draw(seq int) {
-	e.olcd.Clear()
-
 	e.lock.Lock()
 	defer e.lock.Unlock()
+
+	e.olcd.Clear()
+	now := time.Now()
 
 	for x := 0; x < e.config.Rows; x++ {
 		if len(e.current) > x {
 			if len(e.current) <= e.config.Rows {
-				e.olcd.Update(e.line(x))
+				e.olcd.Update(e.line(x, x, now))
 			} else {
-				e.olcd.Update(e.line((x + seq) % len(e.current)))
+				e.olcd.Update(e.line((x+seq)%len(e.current), x, now))
 			}
 		} else {
 			e.olcd.Update("")
