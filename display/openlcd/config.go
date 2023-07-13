@@ -23,7 +23,8 @@ type Config struct {
 	Cols int    `mapstructure:"cols"`
 	Show []Pair `mapstructure:"show"`
 
-	RunFor time.Duration `mapstructure:"run_for"`
+	RunFor  time.Duration `mapstructure:"run_for"`
+	Refresh time.Duration `mapstructure:"refresh"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -38,14 +39,14 @@ func (cfg *Config) Validate() error {
 	if cfg.Cols == 0 {
 		return fmt.Errorf("cols can't be zero")
 	}
-	switch {
-	case len(cfg.Show) == 0:
+	if len(cfg.Show) == 0 {
 		return fmt.Errorf("empty metrics list")
-	case len(cfg.Show) > cfg.Rows:
-		return fmt.Errorf("too many metrics")
 	}
 	if cfg.RunFor < 0 {
 		return fmt.Errorf("negative run_for")
+	}
+	if cfg.Refresh <= 0 {
+		return fmt.Errorf("invalid refresh")
 	}
 	return nil
 }

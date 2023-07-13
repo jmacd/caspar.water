@@ -12,8 +12,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-const updateInterval = 5 * time.Second
-
 type indexAndAbbrev struct {
 	index  int
 	abbrev string
@@ -154,26 +152,32 @@ func (e *openLCDExporter) line(n int) string {
 }
 
 func (e *openLCDExporter) export() {
+	seq := 0
 	start := time.Now()
 
 	for e.config.RunFor == 0 || time.Since(start) < e.config.RunFor {
-		time.Sleep(updateInterval)
+		time.Sleep(e.config.Refresh)
 
-		e.draw()
+		e.draw(seq)
+		seq++
 	}
 
 	_ = e.olcd.Off()
 }
 
-func (e *openLCDExporter) draw() {
+func (e *openLCDExporter) draw(seq int) {
 	e.olcd.Clear()
 
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	for i := 0; i < 4; i++ {
-		if len(e.current) > i {
-			e.olcd.Update(e.line(i))
+	for x := 0; x < e.config.Rows; x++ {
+		if len(e.current) > x {
+			if len(e.current) <= e.config.Rows {
+				e.olcd.Update(e.line(x))
+			} else {
+				e.olcd.Update(e.line((x + seq) % len(e.current)))
+			}
 		} else {
 			e.olcd.Update("")
 		}

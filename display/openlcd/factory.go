@@ -2,6 +2,7 @@ package openlcd
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -27,6 +28,7 @@ func createDefaultConfig() component.Config {
 		I2CAddr: 0x72,
 		Rows:    4,
 		Cols:    20,
+		Refresh: 5 * time.Second,
 	}
 }
 

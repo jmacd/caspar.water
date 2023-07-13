@@ -30,7 +30,7 @@ exporters:
   openlcd:
     device: "/dev/i2c-5"
     i2c_addr: "0x72"
-    run_for: 2m
+    run_for: 1h
     show:
     - metric: wellkit_temperature
       abbrev: temp
@@ -40,6 +40,8 @@ exporters:
       abbrev: humid
     - metric: wellprobe_pressure
       abbrev: depth
+    - metric: wellprobe_temperature
+      abbrev: wtemp
   influxdb:
     endpoint: https://casparwater.us:8086
     org: ${env:INFLUX_ORG}
@@ -61,7 +63,7 @@ service:
     metrics:
       receivers:
         - bme280
-        #- modbus
+        - modbus
       processors:
         - units
         - batch
