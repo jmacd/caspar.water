@@ -176,7 +176,7 @@ func (e *openLCDExporter) draw(seq int) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	e.olcd.Clear()
+	e.olcd.Home()
 	now := time.Now()
 
 	for x := 0; x < e.config.Rows; x++ {

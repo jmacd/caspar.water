@@ -68,3 +68,10 @@ func (lcd *OpenLCD) Clear() error {
 	defer time.Sleep(1 * time.Millisecond)
 	return lcd.device.Write([]byte{0x7c, 0x2d})
 }
+
+func (lcd *OpenLCD) Home() error {
+	defer time.Sleep(1 * time.Millisecond)
+	return lcd.device.Write([]byte{
+		254, 0x2,
+	})
+}
