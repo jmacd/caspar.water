@@ -63,6 +63,7 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 		ablen:    ablen + 1,
 		olcd:     olcd,
 	}
+	_ = exp.olcd.Clear()
 	_ = exp.olcd.On()
 	go exp.export()
 	return exp, err
@@ -74,7 +75,6 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 
 	// TODO:
 	// 1. Update only changed bytes
-	// 2. Measurements should arrive right away, not see <unset>
 
 	for ri := 0; ri < md.ResourceMetrics().Len(); ri++ {
 		rm := md.ResourceMetrics().At(ri)
@@ -164,10 +164,9 @@ func (e *openLCDExporter) export() {
 	start := time.Now()
 
 	for e.config.RunFor == 0 || time.Since(start) < e.config.RunFor {
-		time.Sleep(e.config.Refresh)
-
 		e.draw(seq)
 		seq++
+		time.Sleep(e.config.Refresh)
 	}
 
 	_ = e.olcd.Off()

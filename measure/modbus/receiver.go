@@ -48,6 +48,10 @@ func (r *modbusReceiver) Start(_ context.Context, host component.Host) error {
 
 func (r *modbusReceiver) run(ctx context.Context) {
 	defer r.wg.Done()
+
+	// Send an initial masurement immediately.
+	r.measure(ctx)
+
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
 	for {
@@ -57,55 +61,58 @@ func (r *modbusReceiver) run(ctx context.Context) {
 		case <-ticker.C:
 			break
 		}
+		r.measure(ctx)
+	}
+}
 
-		ts := pcommon.NewTimestampFromTime(time.Now())
-		data, err := r.client.Read(ctx)
-		if err != nil {
-			r.settings.TelemetrySettings.Logger.Error("read modbus device", zap.String("device", r.cfg.URL), zap.Error(err))
-			continue
+func (r *modbusReceiver) measure(ctx context.Context) {
+	ts := pcommon.NewTimestampFromTime(time.Now())
+	data, err := r.client.Read(ctx)
+	if err != nil {
+		r.settings.TelemetrySettings.Logger.Error("read modbus device", zap.String("device", r.cfg.URL), zap.Error(err))
+		return
+	}
+
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("modbus")
+
+	attrs := sm.Scope().Attributes()
+
+	for _, ma := range data.A {
+		switch t := ma.value.(type) {
+		case uint32:
+			attrs.PutInt(r.cfg.Prefix+"_"+ma.field.Name, int64(t))
+		case float32:
+			attrs.PutDouble(r.cfg.Prefix+"_"+ma.field.Name, float64(t))
+		case string:
+			attrs.PutStr(r.cfg.Prefix+"_"+ma.field.Name, t)
+		default:
+			r.settings.TelemetrySettings.Logger.Error("unhandled attribute type")
 		}
+	}
 
-		md := pmetric.NewMetrics()
-		rm := md.ResourceMetrics().AppendEmpty()
-		sm := rm.ScopeMetrics().AppendEmpty()
-		sm.Scope().SetName("modbus")
+	for _, ma := range data.M {
+		m := sm.Metrics().AppendEmpty()
+		m.SetName(r.cfg.Prefix + "_" + ma.field.Name)
+		m.SetUnit(ma.field.Unit)
+		m.SetEmptyGauge()
+		pt := m.Gauge().DataPoints().AppendEmpty()
+		pt.SetTimestamp(ts)
 
-		attrs := sm.Scope().Attributes()
-
-		for _, ma := range data.A {
-			switch t := ma.value.(type) {
-			case uint32:
-				attrs.PutInt(r.cfg.Prefix+"_"+ma.field.Name, int64(t))
-			case float32:
-				attrs.PutDouble(r.cfg.Prefix+"_"+ma.field.Name, float64(t))
-			case string:
-				attrs.PutStr(r.cfg.Prefix+"_"+ma.field.Name, t)
-			default:
-				r.settings.TelemetrySettings.Logger.Error("unhandled attribute type")
-			}
+		switch t := ma.value.(type) {
+		case uint32:
+			pt.SetIntValue(int64(t))
+		case float32:
+			pt.SetDoubleValue(float64(t))
+		default:
+			r.settings.TelemetrySettings.Logger.Error("unhandled metric type")
 		}
+	}
 
-		for _, ma := range data.M {
-			m := sm.Metrics().AppendEmpty()
-			m.SetName(r.cfg.Prefix + "_" + ma.field.Name)
-			m.SetUnit(ma.field.Unit)
-			m.SetEmptyGauge()
-			pt := m.Gauge().DataPoints().AppendEmpty()
-			pt.SetTimestamp(ts)
-
-			switch t := ma.value.(type) {
-			case uint32:
-				pt.SetIntValue(int64(t))
-			case float32:
-				pt.SetDoubleValue(float64(t))
-			default:
-				r.settings.TelemetrySettings.Logger.Error("unhandled metric type")
-			}
-		}
-
-		if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
-			r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
-		}
+	if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
+		r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
 	}
 }
 

@@ -65,10 +65,13 @@ connectors:
 
 service:
   pipelines:
+    # The arrangement of 3 pipelines w/ a forwarding connector
+    # allows the display to be immediate while the influxdb export
+    # is delayed by the batcher.
     metrics/produce:
       receivers:
         - bme280
-        - modbus
+        #- modbus
       processors:
         - units
       exporters:

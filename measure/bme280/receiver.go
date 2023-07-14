@@ -52,6 +52,10 @@ func (r *bme280Receiver) Start(_ context.Context, host component.Host) error {
 
 func (r *bme280Receiver) run(ctx context.Context) {
 	defer r.wg.Done()
+
+	// Send an initial masurement immediately.
+	r.measure()
+
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
 	for {
@@ -61,47 +65,51 @@ func (r *bme280Receiver) run(ctx context.Context) {
 		case <-ticker.C:
 			break
 		}
-		ts := pcommon.NewTimestampFromTime(time.Now())
-		data, err := r.bme.Read()
-		if err != nil {
-			r.settings.TelemetrySettings.Logger.Error("read bme280 device", zap.String("device", r.cfg.Device), zap.Error(err))
-			continue
-		}
+		r.measure()
+	}
+}
 
-		md := pmetric.NewMetrics()
-		rm := md.ResourceMetrics().AppendEmpty()
-		sm := rm.ScopeMetrics().AppendEmpty()
-		sm.Scope().SetName("bme280")
+func (r *bme280Receiver) measure() {
+	ts := pcommon.NewTimestampFromTime(time.Now())
+	data, err := r.bme.Read()
+	if err != nil {
+		r.settings.TelemetrySettings.Logger.Error("read bme280 device", zap.String("device", r.cfg.Device), zap.Error(err))
+		return
+	}
 
-		// Temperature
-		m := sm.Metrics().AppendEmpty()
-		m.SetName(r.cfg.Prefix + "_temperature")
-		m.SetUnit("C")
-		m.SetEmptyGauge()
-		pt := m.Gauge().DataPoints().AppendEmpty()
-		pt.SetDoubleValue(data.T)
-		pt.SetTimestamp(ts)
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("bme280")
 
-		// Pressure
-		m = sm.Metrics().AppendEmpty()
-		m.SetName(r.cfg.Prefix + "_pressure")
-		m.SetUnit("Pa")
-		m.SetEmptyGauge()
-		pt = m.Gauge().DataPoints().AppendEmpty()
-		pt.SetDoubleValue(data.P)
-		pt.SetTimestamp(ts)
+	// Temperature
+	m := sm.Metrics().AppendEmpty()
+	m.SetName(r.cfg.Prefix + "_temperature")
+	m.SetUnit("C")
+	m.SetEmptyGauge()
+	pt := m.Gauge().DataPoints().AppendEmpty()
+	pt.SetDoubleValue(data.T)
+	pt.SetTimestamp(ts)
 
-		// Humidity
-		m = sm.Metrics().AppendEmpty()
-		m.SetName(r.cfg.Prefix + "_humidity")
-		m.SetEmptyGauge()
-		pt = m.Gauge().DataPoints().AppendEmpty()
-		pt.SetDoubleValue(data.H)
-		pt.SetTimestamp(ts)
+	// Pressure
+	m = sm.Metrics().AppendEmpty()
+	m.SetName(r.cfg.Prefix + "_pressure")
+	m.SetUnit("Pa")
+	m.SetEmptyGauge()
+	pt = m.Gauge().DataPoints().AppendEmpty()
+	pt.SetDoubleValue(data.P)
+	pt.SetTimestamp(ts)
 
-		if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
-			r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
-		}
+	// Humidity
+	m = sm.Metrics().AppendEmpty()
+	m.SetName(r.cfg.Prefix + "_humidity")
+	m.SetEmptyGauge()
+	pt = m.Gauge().DataPoints().AppendEmpty()
+	pt.SetDoubleValue(data.H)
+	pt.SetTimestamp(ts)
+
+	if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
+		r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
 	}
 }
 
