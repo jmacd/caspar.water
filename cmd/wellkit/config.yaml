@@ -57,18 +57,35 @@ processors:
       output: "psi"
       conversion: 0.0001450377
   batch:
-    send_batch_size: 100
-    timeout: 30s
+    send_batch_size: 500
+    timeout: 5m
+
+connectors:
+  forward:
 
 service:
   pipelines:
-    metrics:
+    metrics/produce:
       receivers:
         - bme280
         - modbus
       processors:
         - units
+      exporters:
+        - forward
+
+    metrics/egress:
+      receivers:
+        - forward
+      processors:
         - batch
       exporters:
-        - openlcd
         - influxdb
+
+    metrics/display:
+      receivers:
+        - forward
+      exporters:
+        - openlcd
+
+
