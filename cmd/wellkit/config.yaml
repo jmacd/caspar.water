@@ -71,7 +71,7 @@ service:
     metrics/produce:
       receivers:
         - bme280
-        #- modbus
+        - modbus
       processors:
         - units
       exporters:

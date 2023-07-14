@@ -73,9 +73,6 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	// TODO:
-	// 1. Update only changed bytes
-
 	for ri := 0; ri < md.ResourceMetrics().Len(); ri++ {
 		rm := md.ResourceMetrics().At(ri)
 
