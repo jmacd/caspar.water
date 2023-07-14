@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/jmacd/caspar.water/measure/modbus"
@@ -9,7 +10,8 @@ import (
 
 func main() {
 	logger, _ := zap.NewDevelopment()
-	dev, err := modbus.New("rtu:///dev/ttyUSB0",
+	dev, err := modbus.New(
+		modbus.DefaultConfig().(*modbus.Config),
 		[]modbus.Attribute{
 			{
 				Field: modbus.Field{
@@ -47,7 +49,7 @@ func main() {
 		log.Fatal("open: %w", err)
 	}
 
-	comp, err := dev.Read()
+	comp, err := dev.Read(context.Background())
 	if err != nil {
 		log.Fatal("read: %w", err)
 	}

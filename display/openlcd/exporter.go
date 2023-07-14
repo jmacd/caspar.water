@@ -46,6 +46,7 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 			ablen = len(mc.Abbrev)
 		}
 		defs[idx] = pmetric.NewMetric()
+		defs[idx].SetName(mc.Abbrev)
 	}
 
 	olcd, err := New(cfg.Device, int(cfg.I2CAddr))
@@ -62,6 +63,8 @@ func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExpor
 		ablen:    ablen + 1,
 		olcd:     olcd,
 	}
+	_ = exp.olcd.Clear()
+	_ = exp.olcd.On()
 	go exp.export()
 	return exp, err
 }
@@ -100,16 +103,15 @@ func (e *openLCDExporter) pushMetrics(_ context.Context, md pmetric.Metrics) err
 					pmetric.MetricTypeSummary:
 					panic("unimplemented")
 				}
-
 			}
 		}
 	}
 	return nil
 }
 
-func (e *openLCDExporter) line(n int) string {
+func (e *openLCDExporter) line(n, pos int, now time.Time) string {
 	value := e.current[n]
-
+	stale := false
 	kstr := e.defs[n].Name() + strings.Repeat(" ", e.ablen-len(e.defs[n].Name()))
 
 	vstr := "<unset>"
@@ -121,14 +123,17 @@ func (e *openLCDExporter) line(n int) string {
 				vstr = fmt.Sprintf("%.2f", t.DoubleValue())
 			case pmetric.NumberDataPointValueTypeInt:
 				vstr = fmt.Sprint(t.IntValue())
-
+			}
+			if now.Sub(t.Timestamp().AsTime()) > e.config.Staleness {
+				stale = true
+				vstr = "<stale>"
 			}
 		default:
 			panic("unhandled")
 		}
 	}
 	ustr := ""
-	if e.defs[n].Unit() != "" {
+	if !stale && e.defs[n].Unit() != "" {
 		switch e.defs[n].Unit() {
 		case "C":
 			ustr = "\xDFC"
@@ -138,26 +143,46 @@ func (e *openLCDExporter) line(n int) string {
 	}
 
 	line := fmt.Sprint(kstr, vstr, ustr)
+	if pos == 0 {
+		const hhmm = "15:04"
+		for len(line) < e.config.Cols-len(hhmm) {
+			line += " "
+		}
+		line += now.Local().Format(hhmm)
+	}
+	for len(line) < e.config.Cols {
+		line += " "
+	}
 	return line
 }
 
-func (e *openLCDExporter) export() error {
-	for {
-		time.Sleep(5 * time.Second)
+func (e *openLCDExporter) export() {
+	seq := 0
+	start := time.Now()
 
-		e.draw()
+	for e.config.RunFor == 0 || time.Since(start) < e.config.RunFor {
+		e.draw(seq)
+		seq++
+		time.Sleep(e.config.Refresh)
 	}
+
+	_ = e.olcd.Off()
 }
 
-func (e *openLCDExporter) draw() {
-	e.olcd.Clear()
-
+func (e *openLCDExporter) draw(seq int) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	for i := 0; i < 4; i++ {
-		if len(e.current) > i {
-			e.olcd.Update(e.line(i))
+	e.olcd.Home()
+	now := time.Now()
+
+	for x := 0; x < e.config.Rows; x++ {
+		if len(e.current) > x {
+			if len(e.current) <= e.config.Rows {
+				e.olcd.Update(e.line(x, x, now))
+			} else {
+				e.olcd.Update(e.line((x+seq)%len(e.current), x, now))
+			}
 		} else {
 			e.olcd.Update("")
 		}

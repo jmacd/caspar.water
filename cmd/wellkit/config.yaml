@@ -15,21 +15,24 @@ receivers:
       type: "uint32"
       range: "holding"
     metrics:
-    - name: "temperature"
+    - name: "pressure"
       base: 38
       type: "float32"
       range: "holding"
-      unit: "C"
-    - name: "pressure"
+      unit: "psi"
+    - name: "temperature"
       base: 46
       type: "float32"
       range: "holding"
-      unit: "psi"
+      unit: "C"
 
 exporters:
   openlcd:
     device: "/dev/i2c-5"
     i2c_addr: "0x72"
+    run_for: 10m
+    refresh: 5s
+    staleness: 2m
     show:
     - metric: wellkit_temperature
       abbrev: temp
@@ -39,8 +42,13 @@ exporters:
       abbrev: humid
     - metric: wellprobe_pressure
       abbrev: depth
+    - metric: wellprobe_temperature
+      abbrev: wtemp
   influxdb:
     endpoint: https://casparwater.us:8086
+    org: ${env:INFLUX_ORG}
+    bucket: ${env:INFLUX_BUCKET}
+    token: ${env:INFLUX_TOKEN}
 
 processors:
   units:
@@ -49,18 +57,38 @@ processors:
       output: "psi"
       conversion: 0.0001450377
   batch:
-    send_batch_size: 100
-    timeout: 30s
+    send_batch_size: 500
+    timeout: 5m
+
+connectors:
+  forward:
 
 service:
   pipelines:
-    metrics:
+    # The arrangement of 3 pipelines w/ a forwarding connector
+    # allows the display to be immediate while the influxdb export
+    # is delayed by the batcher.
+    metrics/produce:
       receivers:
         - bme280
         - modbus
       processors:
         - units
+      exporters:
+        - forward
+
+    metrics/egress:
+      receivers:
+        - forward
+      processors:
         - batch
       exporters:
-        - openlcd
         - influxdb
+
+    metrics/display:
+      receivers:
+        - forward
+      exporters:
+        - openlcd
+
+

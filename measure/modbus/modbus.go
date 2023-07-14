@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 )
 
 type modbusClient struct {
+	cfg     *Config
 	client  *modbus.ModbusClient
 	attrs   []Attribute
 	metrics []Metric
@@ -26,22 +28,27 @@ type Measurements struct {
 	M []pair[Metric]
 }
 
-func New(url string, attrs []Attribute, metrics []Metric, logger *zap.Logger) (*modbusClient, error) {
+func New(cfg *Config, attrs []Attribute, metrics []Metric, logger *zap.Logger) (*modbusClient, error) {
 	var client *modbus.ModbusClient
 	var err error
 
+	parity, err := parityFromString(cfg.Parity)
+	if err != nil {
+		return nil, err
+	}
 	client, err = modbus.NewClient(&modbus.ClientConfiguration{
-		URL:      url,
-		Speed:    19200,              // default
-		DataBits: 8,                  // default, optional
-		Parity:   modbus.PARITY_EVEN, // default, optional
-		StopBits: 1,                  // default if no parity, optional
-		Timeout:  300 * time.Millisecond,
+		URL:      cfg.URL,
+		Speed:    cfg.Baud,
+		DataBits: cfg.DataBits,
+		Parity:   parity,
+		StopBits: cfg.StopBits,
+		Timeout:  cfg.Timeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new client: %w", err)
 	}
 	mc := &modbusClient{
+		cfg:     cfg,
 		client:  client,
 		attrs:   attrs,
 		metrics: metrics,
@@ -60,11 +67,24 @@ func (c *modbusClient) Close() error {
 	return c.client.Close()
 }
 
-func (c *modbusClient) Read() (Measurements, error) {
+func isDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 	var m Measurements
 
+	wholeTimeout := c.cfg.Timeout * 2 * time.Duration(len(c.attrs)+len(c.metrics))
+	ctx, cancel := context.WithTimeout(ctx, wholeTimeout)
+	defer cancel()
+
 	for _, attr := range c.attrs {
-		for {
+		for !isDone(ctx) {
 			aval, err := c.read(attr.Field)
 
 			if err != nil {
@@ -85,7 +105,7 @@ func (c *modbusClient) Read() (Measurements, error) {
 	}
 
 	for _, metric := range c.metrics {
-		for {
+		for !isDone(ctx) {
 			aval, err := c.read(metric.Field)
 
 			if err != nil {

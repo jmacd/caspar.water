@@ -2,8 +2,10 @@ package modbus
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/simonvetter/modbus"
 	"go.opentelemetry.io/collector/component"
 )
 
@@ -31,6 +33,12 @@ type Config struct {
 	Prefix     string        `mapstructure:"prefix"`
 	Metrics    []Metric      `mapstructure:"metrics"`
 	Attributes []Attribute   `mapstructure:"attributes"`
+
+	Baud     uint          `mapstructure:"baud"`
+	DataBits uint          `mapstructure:"data_bits"`
+	StopBits uint          `mapstructure:"stop_bits"`
+	Parity   string        `mapstructure:"parity"`
+	Timeout  time.Duration `mapstructure:"timeout"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -56,7 +64,23 @@ func (cfg *Config) Validate() error {
 			return err
 		}
 	}
+	_, err := parityFromString(cfg.Parity)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func parityFromString(p string) (uint, error) {
+	switch strings.ToLower(p) {
+	case "even":
+		return modbus.PARITY_EVEN, nil
+	case "odd":
+		return modbus.PARITY_ODD, nil
+	case "none":
+		return modbus.PARITY_NONE, nil
+	}
+	return 0, fmt.Errorf("invalid parity: %s", p)
 }
 
 func (f Field) check() error {
