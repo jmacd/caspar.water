@@ -70,6 +70,7 @@ func (b *Billing) normalAdjustment() {
 	// The margin updates every other period, up until the number
 	// of statements required to reach the target margin.
 	if b.adjustments < constant.MarginIncreaseYears*constant.StatementsPerYear {
+		// TODO this deserves testing
 		ratio := float64(b.adjustments) / (constant.MarginIncreaseYears * constant.StatementsPerYear)
 		b.savingsRate = 1 + ratio*constant.TargetMargin
 	}

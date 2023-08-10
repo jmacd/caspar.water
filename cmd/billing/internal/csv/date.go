@@ -56,3 +56,7 @@ func DateFromTime(t time.Time) Date {
 		date: t,
 	}
 }
+
+func (d Date) Before(x Date) bool {
+	return d.date.Before(x.date)
+}

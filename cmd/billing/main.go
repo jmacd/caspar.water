@@ -57,6 +57,7 @@ type (
 		// How the fraction/percent are computed.
 		EffectiveUserCount int
 		UserWeight         int
+		Estimated          bool
 
 		// Display strings
 		Percent  string
@@ -194,6 +195,9 @@ func Main() error {
 
 		marginStr := fmt.Sprintf("%.2f%%", bill.SavingsRate()-1)
 
+		// If the bill date is prior to
+		estimatedBilling := cycle.BillDate.Before(cycle.PeriodStart.Closing())
+
 		for _, user := range users {
 			if !user.Active {
 				continue
@@ -214,6 +218,10 @@ func Main() error {
 
 			bill.EnterAmountDue(user, cycle.PeriodStart.Closing(), owes)
 
+			if estimatedBilling {
+				cycle.BillDate = cycle.PeriodStart.Closing()
+			}
+
 			totalDue := bill.Balance(user, cycle.BillDate)
 
 			var lastPay string
@@ -233,6 +241,7 @@ func Main() error {
 				// Share
 				EffectiveUserCount: bill.EffectiveUserCount(),
 				UserWeight:         weight,
+				Estimated:          estimatedBilling,
 
 				// Fractions
 				Percent:  pctStr,
@@ -385,9 +394,15 @@ func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *
 
 	toStyle.multiLine(m, append([]string{user.UserName}, user.BillingAddress.Split()...))
 	m.Row(4, func() {})
+
+	invoiceName := vars.CloseMonthDate
+	if vars.Estimated {
+		invoiceName += "-Estimate"
+	}
+
 	m.Row(8, func() {
 		m.Col(8, func() {
-			m.Text("Invoice: "+vars.CloseMonthDate, boldText)
+			m.Text("Invoice: "+invoiceName, boldText)
 		})
 		m.Row(4, func() {})
 	})
