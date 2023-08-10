@@ -53,7 +53,6 @@ make gen/ui1203.object PROC=pru CHIP=AM335x
 make gen/ui1203.out PROC=pru CHIP=AM335x
 
 cp gen/ui1203.out /lib/firmware/ui1203-fw
-
 echo ui1203-fw > /sys/class/remoteproc/remoteproc1/firmware
 #echo ui1203-fw > /sys/class/remoteproc/remoteproc2/firmware
 

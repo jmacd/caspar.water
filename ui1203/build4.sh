@@ -1,6 +1,7 @@
 #!/bin/sh
 
-BONE=presskit.local
+#BONE=presskit.local
+BONE=192.168.6.2
 
 scp -q -r -p * debian@${BONE}:ui1203
 
