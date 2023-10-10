@@ -5,11 +5,6 @@ const (
 	InvoiceDateLayout = "2006-Jan"
 	FullDateLayout    = "January 2, 2006"
 
-	// MaxConnections is how many connections we can reach,
-	// excluding the one that is not viable (so that with that
-	// connection maxConnections would be 14).  Limit is 14.
-	MaxConnections = 13
-
 	// CommunityCenterAdjustedUserCount is the target effective
 	// user count for the CC used for billing after the initial
 	// adjustment, which gives the CC double weight.
@@ -28,6 +23,6 @@ const (
 	MarginIncreaseYears = 2
 	StatementsPerYear   = 2
 
-	FirstCycleMonth  = 4
-	SecondCycleMonth = 10
+	FirstCycleMonth      = 4
+	FirstCycleCloseMonth = 9
 )

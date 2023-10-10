@@ -32,9 +32,9 @@ type Billing struct {
 	accounts *account.Accounts
 }
 
-func New() *Billing {
+func New(startingUserCount int) *Billing {
 	return &Billing{
-		effectiveUserCount:   constant.MaxConnections,
+		effectiveUserCount:   startingUserCount,
 		communityCenterCount: 1,
 		savingsRate:          1 + constant.InitialMargin,
 		accounts:             account.NewAccounts(),
@@ -86,7 +86,7 @@ func (b *Billing) StartCycle(cycle expense.Cycle) {
 
 	case "NormalAdjustment":
 		// Adjustments happen in the second cycle of the year.
-		if cycle.PeriodStart.Starting().Date().Month() == constant.SecondCycleMonth {
+		if cycle.PeriodStart.Closing().Date().Month() == constant.FirstCycleCloseMonth {
 			b.normalAdjustment()
 		}
 

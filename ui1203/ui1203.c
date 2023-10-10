@@ -256,7 +256,7 @@ uint32_t check_signal() {
 
 #define DATA_ARRAY_SIZE 256
 
-// Note: I had intended to use two pins that could be read/written
+// Note: I had intended to use two pins that could be written/read
 // with R30/R31 (i.e., P9_25 and P9_27), but mistook the pin numbers
 // and have pins P9_23 and P9_25 instead.  Since performance is not
 // a thing here, using GPIO register access exclusively.

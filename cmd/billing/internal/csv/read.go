@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
+
+	"github.com/spf13/afero"
 )
 
 type Validator interface {
@@ -16,8 +17,8 @@ type Validator interface {
 // ReadAll converts a CSV file into a list of T structs (all defined
 // above), where the first CSV row matches field names.  This is done
 // via an intermediate JSON representation.
-func ReadFile[T Validator](name string) ([]T, error) {
-	f, err := os.Open(name)
+func ReadFile[T Validator](name string, fs afero.Fs) ([]T, error) {
+	f, err := fs.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", name, err)
 	}

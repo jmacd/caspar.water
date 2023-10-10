@@ -10,6 +10,7 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mochi-co/mqtt v1.3.2
 	github.com/prometheus-community/pro-bing v0.2.0
+	github.com/spf13/afero v1.10.0
 	github.com/stretchr/testify v1.8.4
 	go.opentelemetry.io/collector v0.79.0
 	go.opentelemetry.io/collector/component v0.79.0
@@ -76,4 +77,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/jmacd/caspar.water/measure/bme280 => ./measure/bme280
+//replace github.com/jmacd/caspar.water/measure/bme280 => ./measure/bme280
