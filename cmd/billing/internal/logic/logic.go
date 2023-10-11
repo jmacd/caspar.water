@@ -11,7 +11,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/account"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/business"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/constant"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
@@ -37,8 +37,6 @@ var (
 
 type (
 	Inputs struct {
-		InitialConnectionCount int
-
 		UsersFile     string
 		BusinessFile  string
 		CyclesFile    string
@@ -92,36 +90,33 @@ type (
 	}
 
 	Result struct {
-		Billing  *billing.Billing
+		Accounts *account.Accounts
 		Business business.Business
 		Cycles   []*CompanyStatement
 	}
 )
 
-func getPayment(user user.User, charges []currency.Amount, b *billing.Billing) (currency.Amount, float64, int, []currency.Amount) {
-	if !user.Active {
-		panic("impossible")
+func getPayment(user user.User, charges []currency.Amount, cycle expense.Cycle) (currency.Amount, float64, int, []currency.Amount) {
+	if cycle.Inactive.Contains(user) {
+		return currency.Units(0), 0, 0, charges
 	}
 
 	pay := charges[0]
 	charges = charges[1:]
 	weight := 1
 
-	if user.AccountName == constant.CommunityCenterAccount {
-		weight = b.CommunityCenterCount()
-
-		for i := 1; i < b.CommunityCenterCount(); i++ {
-			pay = currency.Sum(pay, charges[0])
-			charges = charges[1:]
-		}
+	if user.Commercial && cycle.Method == expense.NormalMethod {
+		weight = 2
+		pay = currency.Sum(pay, charges[0])
+		charges = charges[1:]
 	}
 
-	fraction := float64(weight) / float64(b.EffectiveUserCount())
+	fraction := float64(weight) / float64(cycle.EffectiveConnections)
 	return pay, fraction, weight, charges
 }
 
 func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
-	biller := billing.New(inputs.InitialConnectionCount)
+	accts := account.NewAccounts()
 
 	// Users
 	users, err := csv.ReadFile[user.User](inputs.UsersFile, fs)
@@ -154,15 +149,20 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 		return nil, err
 	}
 
-	if err := biller.EnterUsers(users); err != nil {
-		return nil, err
+	for _, user := range users {
+		accts.Register(user)
 	}
-	if err := biller.EnterPayments(payments); err != nil {
-		return nil, err
+
+	for _, pay := range payments {
+		acct := accts.Lookup(pay.AccountName)
+		if acct == nil {
+			return nil, fmt.Errorf("payment account not found: %s", pay.AccountName)
+		}
+		acct.EnterPayment(pay)
 	}
 
 	result := &Result{
-		Billing:  biller,
+		Accounts: accts,
 		Business: business[0],
 	}
 
@@ -185,8 +185,6 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			return nil, fmt.Errorf("mkdir: %s: %w", outputPath, err)
 		}
 
-		biller.StartCycle(cycle)
-
 		compStmt.Template = template.New(inputText)
 
 		if _, err = compStmt.Template.ParseFS(afero.NewIOFS(fs), inputTextPath); err != nil {
@@ -200,11 +198,27 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			cycle.Insurance,
 		)
 
-		total := sumExpenses.Scale(biller.SavingsRate())
+		savingsRate := 1 + cycle.Margin
+		total := sumExpenses.Scale(savingsRate)
 
-		fmt.Printf("Billing cycle %v..%v cycles %v savingsRate %.3f\n", startMonthDate, closeMonthDate, sumExpenses.Display(), biller.SavingsRate())
+		// Check that effective connection count is not exceeded
+		realCount := 0
+		for _, user := range users {
+			if cycle.Inactive.Contains(user) {
+				continue
+			}
+			realCount++
+			if user.Commercial && cycle.Method == expense.NormalMethod {
+				realCount++
+			}
+		}
+		if realCount > cycle.EffectiveConnections {
+			return nil, fmt.Errorf("logic error: too many connections found: %v > %v", realCount, cycle.EffectiveConnections)
+		}
 
-		charges := total.Split(biller.EffectiveUserCount())
+		fmt.Printf("Billing cycle %v..%v cycles %v savingsRate %.3f\n", startMonthDate, closeMonthDate, sumExpenses.Display(), savingsRate)
+
+		charges := total.Split(cycle.EffectiveConnections)
 
 		// Deterministically shuffle the $0.01 rounding
 		// differences so they are shared by different users.
@@ -212,15 +226,12 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			charges[i], charges[j] = charges[j], charges[i]
 		})
 
-		marginStr := fmt.Sprintf("%.2f", biller.SavingsRate())
+		marginStr := fmt.Sprintf("%.2f", savingsRate)
 
 		// If the bill date is prior to
 		estimatedBilling := cycle.BillDate.Before(cycle.PeriodStart.Closing())
 
 		for _, user := range users {
-			if !user.Active {
-				continue
-			}
 			if user.FirstPeriodStart.Starting().Date().After(cycle.PeriodStart.Starting().Date()) {
 				continue
 			}
@@ -231,25 +242,26 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			}
 			compStmt.Statements = append(compStmt.Statements, userStmt)
 
-			owes, fraction, weight, reduced := getPayment(user, charges, biller)
+			owes, fraction, weight, reduced := getPayment(user, charges, cycle)
 			charges = reduced
 
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
 			fracStr := fmt.Sprintf("%.4f", fraction)
 
-			priorBalance := biller.Balance(user, cycle.BillDate)
+			acct := accts.Lookup(user.AccountName)
+			priorBalance := acct.Balance(cycle.BillDate)
 
-			biller.EnterAmountDue(user, cycle.PeriodStart.Closing(), owes)
+			acct.EnterAmountDue(cycle.PeriodStart.Closing(), owes)
 
 			if estimatedBilling {
 				cycle.BillDate = cycle.PeriodStart.Closing()
 			}
 
-			totalDue := biller.Balance(user, cycle.BillDate)
+			totalDue := acct.Balance(cycle.BillDate)
 
 			var lastPay string
 			var lastPayDate string
-			if lp := biller.LastPayment(user); !lp.Amount.IsZero() {
+			if lp := acct.LastPayment(); !lp.Amount.IsZero() {
 				lastPay = lp.Amount.Display()
 				lastPayDate = lp.Date.Date().Format(constant.FullDateLayout)
 			}
@@ -262,7 +274,7 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 				LastPaymentReceived: lastPayDate,
 
 				// Share
-				EffectiveUserCount: biller.EffectiveUserCount(),
+				EffectiveUserCount: cycle.EffectiveConnections,
 				UserWeight:         weight,
 				Estimated:          estimatedBilling,
 
@@ -292,7 +304,7 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 func Output(result *Result) error {
 	for _, cycle := range result.Cycles {
 		for _, stmt := range cycle.Statements {
-			print, err := makeBill(result.Business, cycle.Expenses, stmt.User, stmt.Vars, cycle.Template, result.Billing)
+			print, err := makeBill(result.Business, cycle.Expenses, stmt.User, stmt.Vars, cycle.Template)
 			if err != nil {
 				return err
 			}
@@ -329,7 +341,7 @@ func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
 	}
 }
 
-func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template, b *billing.Billing) (pdf.Maroto, error) {
+func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template) (pdf.Maroto, error) {
 	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
 	m.SetPageMargins(30, 25, 30)
 
@@ -460,7 +472,7 @@ func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *
 				m.Text(para, normText)
 			})
 		})
-		m.Row(1, func() {})
+		//m.Row(1, func() {})
 	}
 	m.Row(1, func() {})
 

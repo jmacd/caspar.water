@@ -1,11 +1,14 @@
 package expense
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
 	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
+	"github.com/jmacd/caspar.water/cmd/billing/internal/user"
 )
 
 // Cycle describes the cost of doing business for one billing cycle.
@@ -34,7 +37,64 @@ type Cycle struct {
 	// - FirstAdjustment: a billing cycle where the CommCtr
 	//   doubles in weight and the first cost-of-living
 	//   adjustment is applied.
-	Method string
+	Method Method
+
+	// Margin is the target ratio for earnings above cost.
+	Margin float64
+
+	// EffectiveConnections is the denominator
+	EffectiveConnections int
+
+	// Inactive is a comma/whitespace separated list of
+	// accounts that are inactive for the period.
+	Inactive Inactive
+}
+
+type Method string
+
+const (
+	NormalMethod       Method = "Normal"
+	IntroductoryMethod Method = "Introductory"
+)
+
+func (m *Method) UnmarshalJSON(data []byte) error {
+	var s string
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return err
+	}
+	str := strings.ToLower(s)
+	switch str {
+	case "normal":
+		*m = NormalMethod
+	case "introductory":
+		*m = IntroductoryMethod
+	default:
+		return fmt.Errorf("invalid method: %q", str)
+	}
+	return nil
+}
+
+type Inactive []string
+
+func (in *Inactive) UnmarshalJSON(data []byte) error {
+	var s string
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return err
+	}
+	s = strings.ReplaceAll(s, " ", "")
+	*in = strings.Split(s, ",")
+	return nil
+}
+
+func (in *Inactive) Contains(user user.User) bool {
+	for _, name := range *in {
+		if user.AccountName == name {
+			return true
+		}
+	}
+	return false
 }
 
 func SplitAnnual(cycles []Cycle) error {

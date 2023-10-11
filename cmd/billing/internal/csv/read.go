@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -42,7 +43,14 @@ func Read[T Validator](name string, file io.Reader) ([]T, error) {
 	for _, row := range rows {
 		xing := map[string]interface{}{}
 		for i, v := range row {
-			xing[legend[i]] = v
+			key := legend[i]
+			if vx, err := strconv.ParseUint(v, 10, 64); err == nil {
+				xing[key] = vx
+			} else if vx, err := strconv.ParseFloat(v, 64); err == nil {
+				xing[key] = vx
+			} else {
+				xing[key] = v
+			}
 		}
 		data, err := json.Marshal(xing)
 		if err != nil {
@@ -50,7 +58,7 @@ func Read[T Validator](name string, file io.Reader) ([]T, error) {
 		}
 		var out T
 		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("from json %w", err)
+			return nil, fmt.Errorf("from json %q %w", string(data), err)
 		}
 		if err := out.Validate(); err != nil {
 			return nil, fmt.Errorf("row %s: %w", row, err)

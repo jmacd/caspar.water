@@ -21,12 +21,11 @@ func main() {
 	flag.Parse()
 
 	result, err := logic.Logic(logic.Inputs{
-		InitialConnectionCount: 13, // TODO: existing logic
-		UsersFile:              *usersFile,
-		BusinessFile:           *businessFile,
-		CyclesFile:             *cyclesFile,
-		PaymentsFile:           *paymentsFile,
-		StatementsDir:          *statementsDir,
+		UsersFile:     *usersFile,
+		BusinessFile:  *businessFile,
+		CyclesFile:    *cyclesFile,
+		PaymentsFile:  *paymentsFile,
+		StatementsDir: *statementsDir,
 	}, afero.NewOsFs())
 	if err != nil {
 		fmt.Printf("command failed: %v", err)
