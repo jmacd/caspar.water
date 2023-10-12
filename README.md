@@ -10,4 +10,4 @@ Includes:
 - Custom billing program.
 
 Under development:
-- UI1203 receiver (a.k.a. Sensus protocol) under development
+- UI1203 receiver (a.k.a. Sensus protocol).
