@@ -41,7 +41,7 @@ func ParseDate(s string) (Date, error) {
 }
 
 var dateTooOld = Date{
-	date: internal.Must(time.Parse(constant.CsvLayout, "1/1/2000")),
+	date: internal.Must(time.Parse(constant.CsvLayout, "1/1/1900")),
 }
 
 func (d Date) Validate() error {
@@ -55,4 +55,8 @@ func DateFromTime(t time.Time) Date {
 	return Date{
 		date: t,
 	}
+}
+
+func (d Date) Before(x Date) bool {
+	return d.date.Before(x.date)
 }

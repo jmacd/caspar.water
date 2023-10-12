@@ -24,11 +24,11 @@ type User struct {
 	// BillingAddress is where the user receives mail.
 	BillingAddress address.Address
 
-	// Active indicates a viable connection.
-	Active bool.Bool
-
 	// FirstPeriodStart is the initial billing cycle.
 	FirstPeriodStart period.Period
+
+	// Commercial indicates double weight.
+	Commercial bool.Bool
 }
 
 func (u User) Validate() error {

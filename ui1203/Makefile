@@ -24,7 +24,8 @@ $(error $(ERROR_BODY))
 endif
 
 PROJ_NAME=ui1203
-TOP := /usr/lib/ti/pru-software-support-package-v6.0
+#TOP := /usr/lib/ti/pru-software-support-package-v6.0
+TOP := /home/debian/pru-software-support-package
 MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(notdir $(patsubst %/,%,$(dir $(MKFILE_PATH))))
 LINKER_COMMAND_FILE=./AM335x_PRU_intc_rscTbl.cmd

@@ -79,7 +79,7 @@ uint16_t rpmsg_src, rpmsg_dst, rpmsg_len;
 #pragma RETAIN(my_irq_rsc)
 
 /*
- * .pru_irq_map is used by the RemoteProc driver during initialization. However,
+ * .pru_irq_sec is used by the RemoteProc driver during initialization. However,
  * the map is NOT used by the PRU firmware. That means DATA_SECTION and RETAIN
  * are required to prevent the PRU compiler from optimizing out .pru_irq_map.
  */
@@ -219,7 +219,6 @@ void setup_transport() {
   // Using the name 'rpmsg-pru' will probe the rpmsg_pru driver found
   // at linux/drivers/rpmsg/rpmsg_pru.c
   char *const channel_name = "rpmsg-pru";
-  char *const channel_desc = "Channel 30";
   const int channel_port = 30;
 
   // Initialize two vrings using system events on dedicated channels.
@@ -227,8 +226,7 @@ void setup_transport() {
                  SYSEVT_ARM_TO_PRU);
 
   // Create the RPMsg channel between the PRU and the ARM.
-  while (pru_rpmsg_channel(RPMSG_NS_CREATE, &rpmsg_transport, channel_name, channel_desc, channel_port) !=
-         PRU_RPMSG_SUCCESS) {
+  while (pru_rpmsg_channel(RPMSG_NS_CREATE, &rpmsg_transport, channel_name, channel_port) != PRU_RPMSG_SUCCESS) {
   }
 }
 
@@ -258,7 +256,7 @@ uint32_t check_signal() {
 
 #define DATA_ARRAY_SIZE 256
 
-// Note: I had intended to use two pins that could be read/written
+// Note: I had intended to use two pins that could be written/read
 // with R30/R31 (i.e., P9_25 and P9_27), but mistook the pin numbers
 // and have pins P9_23 and P9_25 instead.  Since performance is not
 // a thing here, using GPIO register access exclusively.

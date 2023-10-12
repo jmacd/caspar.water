@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+	"strconv"
 	"strings"
+
+	"github.com/spf13/afero"
 )
 
 type Validator interface {
@@ -16,8 +18,8 @@ type Validator interface {
 // ReadAll converts a CSV file into a list of T structs (all defined
 // above), where the first CSV row matches field names.  This is done
 // via an intermediate JSON representation.
-func ReadFile[T Validator](name string) ([]T, error) {
-	f, err := os.Open(name)
+func ReadFile[T Validator](name string, fs afero.Fs) ([]T, error) {
+	f, err := fs.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
@@ -41,7 +43,14 @@ func Read[T Validator](name string, file io.Reader) ([]T, error) {
 	for _, row := range rows {
 		xing := map[string]interface{}{}
 		for i, v := range row {
-			xing[legend[i]] = v
+			key := legend[i]
+			if vx, err := strconv.ParseUint(v, 10, 64); err == nil {
+				xing[key] = vx
+			} else if vx, err := strconv.ParseFloat(v, 64); err == nil {
+				xing[key] = vx
+			} else {
+				xing[key] = v
+			}
 		}
 		data, err := json.Marshal(xing)
 		if err != nil {
@@ -49,7 +58,7 @@ func Read[T Validator](name string, file io.Reader) ([]T, error) {
 		}
 		var out T
 		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("from json %w", err)
+			return nil, fmt.Errorf("from json %q %w", string(data), err)
 		}
 		if err := out.Validate(); err != nil {
 			return nil, fmt.Errorf("row %s: %w", row, err)
