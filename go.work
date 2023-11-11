@@ -1,0 +1,8 @@
+go 1.21.3
+
+use (
+	.
+	./display/openlcd
+	./measure/bme280
+	./measure/modbus
+)
