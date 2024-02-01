@@ -5,4 +5,5 @@ use (
 	./display/openlcd
 	./measure/bme280
 	./measure/modbus
+	./measure/ph/atlas
 )
