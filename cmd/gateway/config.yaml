@@ -10,6 +10,7 @@ receivers:
       - well_depth_value
       - tank_level_value
       - chlorine_level_value
+      - concrete_tank_level_value
   prometheus:
     config:
       scrape_configs:
