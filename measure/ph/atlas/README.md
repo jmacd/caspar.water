@@ -5,7 +5,8 @@ need it to be in i2c mode for the arrangement in this repository.
 
 The data sheet indicates a procedure for manually changing from UART
 to i2c mode, by shorting the `Tx` and `Pgnd` pins during power-up,
-while `Rx` is disconnected.  I could not make this work.
+while `Rx` is disconnected.  The unit must be disconnected from the
+isolator board and requires a jumpers and possibly a breadboard.
 
 Another way to setup the new EZO pH probe receiver is to connect a USB
 to TTL serial cable, of the sort used for serial debugging.  My
