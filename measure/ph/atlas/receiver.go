@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -20,7 +22,7 @@ type phReceiver struct {
 	settings     receiver.CreateSettings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
-	ph           *Ph
+	ph           *ezo.Ph
 	nextConsumer consumer.Metrics
 }
 
@@ -28,7 +30,7 @@ type phReceiver struct {
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
 func newPhReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*phReceiver, error) {
-	ph, err := New(cfg.Device, int(cfg.I2CAddr))
+	dev, err := device.New(cfg.Device, int(cfg.I2CAddr))
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +38,7 @@ func newPhReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consum
 		cfg:          cfg,
 		settings:     set,
 		nextConsumer: nextConsumer,
-		ph:           ph,
+		ph:           ezo.New(dev),
 	}
 	return r, nil
 }

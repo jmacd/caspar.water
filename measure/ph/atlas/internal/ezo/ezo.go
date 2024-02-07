@@ -1,5 +1,5 @@
 // https://files.atlas-scientific.com/pH_EZO_Datasheet.pdf
-package atlas
+package ezo
 
 import (
 	"bytes"
@@ -8,16 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/io/i2c"
-)
-
-const (
-	millis = time.Millisecond
-	short  = 300 * millis
+	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
 )
 
 type Ph struct {
-	device *i2c.Device
+	dev device.I2C
 }
 
 type Info struct {
@@ -33,35 +28,17 @@ type Measurements struct {
 	Ph float64
 }
 
-func New(i2cPath string, devAddr int) (*Ph, error) {
-	opener := &i2c.Devfs{
-		Dev: i2cPath,
+func New(dev device.I2C) *Ph {
+	return &Ph{
+		dev: dev,
 	}
-	device, err := i2c.Open(opener, devAddr)
-	if err != nil {
-		return nil, err
-	}
-	ph := &Ph{
-		device: device,
-	}
-
-	// if info, err := ph.readStrings("i", 3, short); err != nil {
-	// 	return nil, fmt.Errorf("Device likely not an Atlas EZO pH receiver: %w", err)
-	// } else if !expectAtIdx(info, 0, "I") || !expectAtIdx(info, 1, "pH") || len(info) != 3 {
-	// 	return nil, fmt.Errorf("Unexpected Info response: %q", info)
-	// } else {
-	// 	fmt.Println("pH: firmware version", info[2])
-	// 	ph.version = info[2]
-	// }
-
-	return ph, nil
 }
 
 func (ph *Ph) Info() (info Info, _ error) {
-	strs, err := ph.readStrings("i", 3, short)
+	strs, err := ph.readStrings("i", 3, device.Short)
 	if err != nil {
 		return info, fmt.Errorf("Device likely not an Atlas EZO pH receiver: %w", err)
-	} else if !expectAtIdx(strs, 0, "I") || !expectAtIdx(strs, 1, "pH") {
+	} else if !expectAtIdx(strs, 1, "pH") {
 		return info, fmt.Errorf("Unexpected Info response: %q", strs)
 	}
 	info.Version = strs[2]
@@ -69,11 +46,9 @@ func (ph *Ph) Info() (info Info, _ error) {
 }
 
 func (ph *Ph) Status() (status Status, _ error) {
-	strs, err := ph.readStrings("Status", 3, short)
+	strs, err := ph.readStrings("Status", 3, device.Short)
 	if err != nil {
 		return status, fmt.Errorf("Error reading Status: %w", err)
-	} else if !expectAtIdx(strs, 0, "Status") {
-		return status, fmt.Errorf("Unexpected Status response: %v", strs)
 	}
 	status.Restart = ExpandRestartCode(strs[1])
 	status.Vcc, err = strconv.ParseFloat(strs[2], 64)
@@ -81,21 +56,73 @@ func (ph *Ph) Status() (status Status, _ error) {
 }
 
 func (ph *Ph) Name() (string, error) {
-	strs, err := ph.readStrings("Name,?", 2, short)
+	strs, err := ph.readStrings("Name,?", 2, device.Short)
 	if err != nil {
 		return "", fmt.Errorf("Error reading name: %w", err)
-	} else if !expectAtIdx(strs, 0, "Name") {
-		return "", fmt.Errorf("Unexpected Status response: %v", strs)
 	}
 	return strs[1], nil
 }
 
+func (ph *Ph) Slope() (acidPct, basePct, offsetMilliVolts float64, _ error) {
+	strs, err := ph.readStrings("Slope,?", 4, device.Short)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("Error reading slope: %w", err)
+	}
+	var fvs [3]float64
+	for i, val := range strs {
+		fvs[i], err = strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("Parse error in slope: %v: %w", val, err)
+		}
+	}
+	return fvs[0], fvs[1], fvs[2], nil
+}
+
+func (ph *Ph) CalibrationPoints() (points int, _ error) {
+	strs, err := ph.readStrings("Cal,?", 2, device.Short)
+	if err != nil {
+		return 0, fmt.Errorf("Error reading calibration state: %w", err)
+	}
+	num, err := strconv.Atoi(strs[1])
+	if err != nil {
+		return 0, err
+	}
+	if num < 0 || num > 3 {
+		return 0, fmt.Errorf("Calibration points: out of range")
+	}
+	return num, nil
+}
+
+func (ph *Ph) ClearCalibration() error {
+	return ph.readCommand("Cal,clear", device.Short)
+}
+
 func (ph *Ph) SetName(name string) error {
-	err := ph.readCommand("Name,"+name, short)
+	err := ph.readCommand("Name,"+name, device.Short)
 	if err != nil {
 		return fmt.Errorf("Error saving name: %w", err)
 	}
 	return nil
+}
+
+func (ph *Ph) ReadPh(tempCelsius float64) (float64, error) {
+	cmd := fmt.Sprintf("RT,%.2f", tempCelsius)
+	return ph.readFloat(cmd, device.Long)
+}
+
+func ExpandCalibrationPoints(num int) string {
+	switch num {
+	case 0:
+		return "uncalibrated, next is mid-point"
+	case 1:
+		return "in-progress, next is low-point"
+	case 2:
+		return "in-progress, next is high-point"
+	case 3:
+		return "calibrated"
+	default:
+		return "unrecognized"
+	}
 }
 
 func ExpandRestartCode(str string) string {
@@ -116,12 +143,8 @@ func ExpandRestartCode(str string) string {
 	return "Unrecognized:" + str
 }
 
-// if err := ph.readCommand("L,0", short); err != nil {
-// 	return nil, fmt.Errorf("Error setting LED state: %w", err)
-// }
-
 func (ph *Ph) Close() error {
-	return ph.device.Close()
+	return ph.dev.Close()
 }
 
 func (ph *Ph) Read() (Measurements, error) {
@@ -129,13 +152,13 @@ func (ph *Ph) Read() (Measurements, error) {
 }
 
 func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
-	if err := ph.device.Write([]byte(cmd)); err != nil {
+	if err := ph.dev.Write([]byte(cmd)); err != nil {
 		return nil, err
 	}
-	time.Sleep(wait)
+	ph.dev.Sleep(wait)
 	for n := 0; n < 2; n++ {
 		var status [40]byte
-		if err := ph.device.Read(status[:]); err != nil {
+		if err := ph.dev.Read(status[:]); err != nil {
 			return nil, err
 		}
 		switch status[0] {
@@ -144,6 +167,7 @@ func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
 			return nil, fmt.Errorf("No data to read")
 		case 254:
 			// Processing
+			fmt.Println("STILL PROC")
 			continue
 		case 2:
 			// Syntax
@@ -152,8 +176,10 @@ func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
 			// OK
 			data, _, _ := bytes.Cut(status[1:], []byte{0})
 			return data, nil
+		default:
+			fmt.Println("Unrecognized command:", status[0])
+			ph.dev.Sleep(device.Retry)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("Timeout")
 }
@@ -189,6 +215,11 @@ func (ph *Ph) readStrings(cmd string, num int, wait time.Duration) ([]string, er
 	if len(vals) != num {
 		return nil, fmt.Errorf("Expected %d string values: %v", num, vals)
 	}
+	// Expect the command-name to echo back, case insensitive.  Split at ',' first:
+	if cmdName, _, _ := strings.Cut(cmd, ","); strings.ToUpper(cmdName) != strings.ToUpper(vals[0]) {
+		return nil, fmt.Errorf("Unexpected multi-string response syntax: %v != %v", vals[0], cmdName)
+	}
+
 	return vals, nil
 }
 
