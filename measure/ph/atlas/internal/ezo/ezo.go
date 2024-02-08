@@ -78,6 +78,22 @@ func (ph *Ph) Slope() (acidPct, basePct, offsetMilliVolts float64, _ error) {
 	return fvs[0], fvs[1], fvs[2], nil
 }
 
+func (ph *Ph) CalibrateMidpoint(statedPh float64) error {
+	return ph.calibrateAt("mid", statedPh)
+}
+
+func (ph *Ph) CalibrateLowpoint(statedPh float64) error {
+	return ph.calibrateAt("low", statedPh)
+}
+
+func (ph *Ph) CalibrateHighpoint(statedPh float64) error {
+	return ph.calibrateAt("high", statedPh)
+}
+
+func (ph *Ph) calibrateAt(pt string, statedPh float64) error {
+	return ph.readCommand(fmt.Sprintf("Cal,%s,%.2f", pt, statedPh), device.Long)
+}
+
 func (ph *Ph) CalibrationPoints() (points int, _ error) {
 	strs, err := ph.readStrings("Cal,?", 2, device.Short)
 	if err != nil {
@@ -125,19 +141,18 @@ func ExpandCalibrationPoints(num int) string {
 	}
 }
 
+var restartMap = map[byte]string{
+	'P': "Powered off",
+	'S': "Software reset",
+	'B': "Brown-out",
+	'W': "Watchdog",
+	'U': "Unknown",
+}
+
 func ExpandRestartCode(str string) string {
 	if len(str) == 1 {
-		switch str[0] {
-		case 'P':
-			return "Powered off"
-		case 'S':
-			return "Software reset"
-		case 'B':
-			return "Brown-out"
-		case 'W':
-			return "Watchdog"
-		case 'U':
-			return "Unknown"
+		if reason, ok := restartMap[str[0]]; ok {
+			return reason
 		}
 	}
 	return "Unrecognized:" + str
@@ -167,7 +182,6 @@ func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
 			return nil, fmt.Errorf("No data to read")
 		case 254:
 			// Processing
-			fmt.Println("STILL PROC")
 			continue
 		case 2:
 			// Syntax
