@@ -35,36 +35,36 @@ func New(dev device.I2C) *Ph {
 }
 
 func (ph *Ph) Info() (info Info, _ error) {
-	strs, err := ph.readStrings("i", 3, device.Short)
+	strs, err := ph.readStrings("i", 2, device.Short)
 	if err != nil {
 		return info, fmt.Errorf("Device likely not an Atlas EZO pH receiver: %w", err)
-	} else if !expectAtIdx(strs, 1, "pH") {
+	} else if !expectAtIdx(strs, 0, "pH") {
 		return info, fmt.Errorf("Unexpected Info response: %q", strs)
 	}
-	info.Version = strs[2]
+	info.Version = strs[1]
 	return info, nil
 }
 
 func (ph *Ph) Status() (status Status, _ error) {
-	strs, err := ph.readStrings("Status", 3, device.Short)
+	strs, err := ph.readStrings("Status", 2, device.Short)
 	if err != nil {
 		return status, fmt.Errorf("Error reading Status: %w", err)
 	}
-	status.Restart = ExpandRestartCode(strs[1])
-	status.Vcc, err = strconv.ParseFloat(strs[2], 64)
+	status.Restart = ExpandRestartCode(strs[0])
+	status.Vcc, err = strconv.ParseFloat(strs[1], 64)
 	return status, err
 }
 
 func (ph *Ph) Name() (string, error) {
-	strs, err := ph.readStrings("Name,?", 2, device.Short)
+	strs, err := ph.readStrings("Name,?", 1, device.Short)
 	if err != nil {
 		return "", fmt.Errorf("Error reading name: %w", err)
 	}
-	return strs[1], nil
+	return strs[0], nil
 }
 
 func (ph *Ph) Slope() (acidPct, basePct, offsetMilliVolts float64, _ error) {
-	strs, err := ph.readStrings("Slope,?", 4, device.Short)
+	strs, err := ph.readStrings("Slope,?", 3, device.Short)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("Error reading slope: %w", err)
 	}
@@ -95,11 +95,11 @@ func (ph *Ph) calibrateAt(pt string, statedPh float64) error {
 }
 
 func (ph *Ph) CalibrationPoints() (points int, _ error) {
-	strs, err := ph.readStrings("Cal,?", 2, device.Short)
+	strs, err := ph.readStrings("Cal,?", 1, device.Short)
 	if err != nil {
 		return 0, fmt.Errorf("Error reading calibration state: %w", err)
 	}
-	num, err := strconv.Atoi(strs[1])
+	num, err := strconv.Atoi(strs[0])
 	if err != nil {
 		return 0, err
 	}
@@ -226,15 +226,15 @@ func (ph *Ph) readStrings(cmd string, num int, wait time.Duration) ([]string, er
 		return nil, fmt.Errorf("Missing '?' syntax")
 	}
 	vals := strings.Split(string(dat[1:]), ",")
-	if len(vals) != num {
-		return nil, fmt.Errorf("Expected %d string values: %v", num, vals)
+	if len(vals) != num+1 {
+		return nil, fmt.Errorf("Expected %d string values: %v", num+1, vals)
 	}
 	// Expect the command-name to echo back, case insensitive.  Split at ',' first:
 	if cmdName, _, _ := strings.Cut(cmd, ","); strings.ToUpper(cmdName) != strings.ToUpper(vals[0]) {
 		return nil, fmt.Errorf("Unexpected multi-string response syntax: %v != %v", vals[0], cmdName)
 	}
 
-	return vals, nil
+	return vals[1:], nil
 }
 
 func expectAtIdx(strs []string, idx int, val string) bool {
