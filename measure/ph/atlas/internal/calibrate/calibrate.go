@@ -1,7 +1,6 @@
 package calibrate
 
 import (
-	"bufio"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,13 +12,18 @@ import (
 const DefaultTemp = "15C"
 
 type Calibration struct {
-	rdr *bufio.Reader
+	rdr Interactive
 	ph  *ezo.Ph
+}
+
+type Interactive interface {
+	ReadRune() (r rune, size int, err error)
+	ReadLine() (line []byte, isPrefix bool, err error)
 }
 
 var canceled = fmt.Errorf("operation canceled by user")
 
-func NewCalibration(rdr *bufio.Reader, ph *ezo.Ph) *Calibration {
+func NewCalibration(rdr Interactive, ph *ezo.Ph) *Calibration {
 	return &Calibration{rdr: rdr, ph: ph}
 }
 
