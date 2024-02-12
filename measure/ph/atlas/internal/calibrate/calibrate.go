@@ -176,9 +176,10 @@ func (c *Calibration) Calibrate() error {
 			}
 			doneCh <- struct{}{}
 		}()
+		var pval float64
 		for {
 			select {
-			case pval := <-valueCh:
+			case pval = <-valueCh:
 				c.say("%.2f", pval)
 				continue
 			case <-doneCh:
@@ -194,11 +195,11 @@ func (c *Calibration) Calibrate() error {
 
 		switch pts {
 		case 0:
-			err = c.ph.CalibrateMidpoint(refPhF)
+			err = c.ph.CalibrateMidpoint(pval)
 		case 1:
-			err = c.ph.CalibrateLowpoint(refPhF)
+			err = c.ph.CalibrateLowpoint(pval)
 		case 2:
-			err = c.ph.CalibrateHighpoint(refPhF)
+			err = c.ph.CalibrateHighpoint(pval)
 		}
 		if err != nil {
 			return err

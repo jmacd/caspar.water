@@ -167,7 +167,7 @@ func (ph *Ph) Read() (Measurements, error) {
 }
 
 func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
-	if err := ph.dev.Write([]byte(cmd)); err != nil {
+	if err := ph.dev.Write(cmd); err != nil {
 		return nil, err
 	}
 	ph.dev.Sleep(wait)

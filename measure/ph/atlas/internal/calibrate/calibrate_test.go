@@ -26,40 +26,54 @@ func TestCalibrate(t *testing.T) {
 
 	inter := mymock.NewMockInteractive(ctrl)
 	cc := NewCalibration(inter, ph)
+	ch1 := make(chan struct{})
 
 	gomock.InOrder(
-		tdev.EXPECT().Write([]byte("Cal,?")),
-		tdev.EXPECT().Sleep(device.Short),
+		tdev.EXPECT().Write("Cal,?").Times(1),
+		tdev.EXPECT().Sleep(device.Short).Times(1),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?Cal,0")
 			return nil
-		}),
+		}).Times(1),
 
-		inter.EXPECT().ReadLine().Return([]byte(""), false, nil),
+		inter.EXPECT().ReadLine().Return([]byte(""), false, nil).Times(1),
 
-		tdev.EXPECT().Write([]byte("Cal,?")),
-		tdev.EXPECT().Sleep(device.Short),
+		tdev.EXPECT().Write("Cal,?").Times(1),
+		tdev.EXPECT().Sleep(device.Short).Times(1),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?Cal,0")
 			return nil
-		}),
+		}).Times(1),
 
-		inter.EXPECT().ReadLine().Return([]byte("7.10"), false, nil),
+		inter.EXPECT().ReadLine().Return([]byte("7.99"), false, nil).Times(1),
+
+		inter.EXPECT().ReadRune().DoAndReturn(func() (rune, int, error) {
+			<-ch1
+			return '\n', 1, nil
+		}).Times(1),
+
+		tdev.EXPECT().Write("RT,15.00").Times(1),
+		tdev.EXPECT().Sleep(device.Long).Times(1),
+		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
+			set(d, 1, "7.05")
+			close(ch1)
+			return nil
+		}).Times(1),
+
+		tdev.EXPECT().Write("Cal,mid,7.05").Times(1),
+		tdev.EXPECT().Sleep(device.Long).Times(1),
+		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
+			set(d, 1, "")
+			return nil
+		}).Times(1),
+
+		// tdev.EXPECT().Write("RT,15.00").Times(1),
+		// tdev.EXPECT().Sleep(device.Long).Times(1),
+		// tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
+		// 	set(d, 1, "7.05")
+		// 	return nil
+		// }),
 	)
-
-	ch1 := make(chan struct{})
-	tdev.EXPECT().Write([]byte("RT,15.00"))
-	tdev.EXPECT().Sleep(device.Long)
-	tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-		set(d, 1, "7.10")
-		close(ch1)
-		return nil
-	})
-
-	inter.EXPECT().ReadRune().DoAndReturn(func() (rune, int, error) {
-		<-ch1
-		return '\n', 1, nil
-	})
 
 	require.NoError(t, cc.Calibrate())
 }

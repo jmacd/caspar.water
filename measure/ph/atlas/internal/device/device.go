@@ -17,11 +17,11 @@ const (
 type I2C interface {
 	Close() error
 	Read([]byte) error
-	Write([]byte) error
+	Write(string) error
 	Sleep(time.Duration)
 }
 
-var _ I2C = &realSleeper{}
+var _ I2C = &stringDevice{}
 
 func New(i2cPath string, devAddr int) (I2C, error) {
 	opener := &i2c.Devfs{
@@ -31,13 +31,25 @@ func New(i2cPath string, devAddr int) (I2C, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &realSleeper{dev}, nil
+	return &stringDevice{dev}, nil
 }
 
-type realSleeper struct {
-	*i2c.Device
+type stringDevice struct {
+	device *i2c.Device
 }
 
-func (*realSleeper) Sleep(d time.Duration) {
+func (r *stringDevice) Write(s string) error {
+	return r.device.Write([]byte(s))
+}
+
+func (r *stringDevice) Close() error {
+	return r.device.Close()
+}
+
+func (r *stringDevice) Read(d []byte) error {
+	return r.device.Read(d)
+}
+
+func (r *stringDevice) Sleep(d time.Duration) {
 	time.Sleep(d)
 }

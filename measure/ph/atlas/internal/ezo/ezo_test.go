@@ -23,7 +23,7 @@ func TestPhInfo(t *testing.T) {
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write([]byte("i")),
+		tdev.EXPECT().Write("i"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?i,pH,1.23")
@@ -43,7 +43,7 @@ func TestPhStatus(t *testing.T) {
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write([]byte("Status")),
+		tdev.EXPECT().Write("Status"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?Status,P,3.83")
@@ -64,13 +64,13 @@ func TestPhName(t *testing.T) {
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write([]byte("Name,probe")),
+		tdev.EXPECT().Write("Name,probe"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "")
 			return nil
 		}),
-		tdev.EXPECT().Write([]byte("Name,?")),
+		tdev.EXPECT().Write("Name,?"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?Name,probe")
@@ -94,35 +94,35 @@ func TestCalibration(t *testing.T) {
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write([]byte("Cal,?")),
+		tdev.EXPECT().Write("Cal,?"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "?Cal,0")
 			return nil
 		}),
 
-		tdev.EXPECT().Write([]byte("Cal,mid,7.01")),
+		tdev.EXPECT().Write("Cal,mid,7.01"),
 		tdev.EXPECT().Sleep(device.Long),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "")
 			return nil
 		}),
 
-		tdev.EXPECT().Write([]byte("Cal,low,4.02")),
+		tdev.EXPECT().Write("Cal,low,4.02"),
 		tdev.EXPECT().Sleep(device.Long),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "")
 			return nil
 		}),
 
-		tdev.EXPECT().Write([]byte("Cal,high,10.03")),
+		tdev.EXPECT().Write("Cal,high,10.03"),
 		tdev.EXPECT().Sleep(device.Long),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "")
 			return nil
 		}),
 
-		tdev.EXPECT().Write([]byte("Cal,clear")),
+		tdev.EXPECT().Write("Cal,clear"),
 		tdev.EXPECT().Sleep(device.Short),
 		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
 			set(d, 1, "")

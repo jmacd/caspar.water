@@ -80,7 +80,7 @@ func (mr *MockI2CMockRecorder) Sleep(arg0 any) *gomock.Call {
 }
 
 // Write mocks base method.
-func (m *MockI2C) Write(arg0 []byte) error {
+func (m *MockI2C) Write(arg0 string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Write", arg0)
 	ret0, _ := ret[0].(error)
