@@ -17,18 +17,12 @@ func set(d []byte, n byte, s string) {
 
 func TestPhInfo(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	tdev := mock.NewMockI2C(ctrl)
+	tdev := mock.NewMockI2CStringer(ctrl)
 
 	ph := New(tdev)
 	require.NotNil(t, ph)
 
-	gomock.InOrder(
-		tdev.EXPECT().Write("i"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "?i,pH,1.23")
-			return nil
-		}))
+	tdev.EXPECT().WriteSleepRead("i", device.Short).Return(device.StatusOK, "?i,pH,1.23", nil)
 
 	info, err := ph.Info()
 	require.NoError(t, err)
@@ -37,18 +31,12 @@ func TestPhInfo(t *testing.T) {
 
 func TestPhStatus(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	tdev := mock.NewMockI2C(ctrl)
+	tdev := mock.NewMockI2CStringer(ctrl)
 
 	ph := New(tdev)
 	require.NotNil(t, ph)
 
-	gomock.InOrder(
-		tdev.EXPECT().Write("Status"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "?Status,P,3.83")
-			return nil
-		}))
+	tdev.EXPECT().WriteSleepRead("Status", device.Short).Return(device.StatusOK, "?Status,P,3.83", nil)
 
 	stat, err := ph.Status()
 	require.NoError(t, err)
@@ -58,24 +46,14 @@ func TestPhStatus(t *testing.T) {
 
 func TestPhName(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	tdev := mock.NewMockI2C(ctrl)
+	tdev := mock.NewMockI2CStringer(ctrl)
 
 	ph := New(tdev)
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write("Name,probe"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "")
-			return nil
-		}),
-		tdev.EXPECT().Write("Name,?"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "?Name,probe")
-			return nil
-		}),
+		tdev.EXPECT().WriteSleepRead("Name,probe", device.Short).Return(device.StatusOK, "", nil),
+		tdev.EXPECT().WriteSleepRead("Name,?", device.Short).Return(device.StatusOK, "?Name,probe", nil),
 	)
 
 	err := ph.SetName("probe")
@@ -88,46 +66,17 @@ func TestPhName(t *testing.T) {
 
 func TestCalibration(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	tdev := mock.NewMockI2C(ctrl)
+	tdev := mock.NewMockI2CStringer(ctrl)
 
 	ph := New(tdev)
 	require.NotNil(t, ph)
 
 	gomock.InOrder(
-		tdev.EXPECT().Write("Cal,?"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "?Cal,0")
-			return nil
-		}),
-
-		tdev.EXPECT().Write("Cal,mid,7.01"),
-		tdev.EXPECT().Sleep(device.Long),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "")
-			return nil
-		}),
-
-		tdev.EXPECT().Write("Cal,low,4.02"),
-		tdev.EXPECT().Sleep(device.Long),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "")
-			return nil
-		}),
-
-		tdev.EXPECT().Write("Cal,high,10.03"),
-		tdev.EXPECT().Sleep(device.Long),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "")
-			return nil
-		}),
-
-		tdev.EXPECT().Write("Cal,clear"),
-		tdev.EXPECT().Sleep(device.Short),
-		tdev.EXPECT().Read(gomock.Any()).DoAndReturn(func(d []byte) error {
-			set(d, 1, "")
-			return nil
-		}),
+		tdev.EXPECT().WriteSleepRead("Cal,?", device.Short).Return(device.StatusOK, "?Cal,0", nil),
+		tdev.EXPECT().WriteSleepRead("Cal,mid,7.01", device.Long).Return(device.StatusOK, "", nil),
+		tdev.EXPECT().WriteSleepRead("Cal,low,4.02", device.Long).Return(device.StatusOK, "", nil),
+		tdev.EXPECT().WriteSleepRead("Cal,high,10.03", device.Long).Return(device.StatusOK, "", nil),
+		tdev.EXPECT().WriteSleepRead("Cal,clear", device.Short).Return(device.StatusOK, "", nil),
 	)
 
 	pts, err := ph.CalibrationPoints()

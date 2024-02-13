@@ -2,7 +2,6 @@
 package ezo
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,7 +11,7 @@ import (
 )
 
 type Ph struct {
-	dev device.I2C
+	dev device.I2CStringer
 }
 
 type Info struct {
@@ -28,7 +27,7 @@ type Measurements struct {
 	Ph float64
 }
 
-func New(dev device.I2C) *Ph {
+func New(dev device.I2CStringer) *Ph {
 	return &Ph{
 		dev: dev,
 	}
@@ -166,36 +165,27 @@ func (ph *Ph) Read() (Measurements, error) {
 	return Measurements{}, nil
 }
 
-func (ph *Ph) read(cmd string, wait time.Duration) ([]byte, error) {
-	if err := ph.dev.Write(cmd); err != nil {
-		return nil, err
+func (ph *Ph) read(cmd string, wait time.Duration) (string, error) {
+	b, s, err := ph.dev.WriteSleepRead(cmd, wait)
+	if err != nil {
+		return "", err
 	}
-	ph.dev.Sleep(wait)
-	for n := 0; n < 2; n++ {
-		var status [40]byte
-		if err := ph.dev.Read(status[:]); err != nil {
-			return nil, err
-		}
-		switch status[0] {
-		case 255:
-			// No data
-			return nil, fmt.Errorf("No data to read")
-		case 254:
-			// Processing
-			continue
-		case 2:
-			// Syntax
-			return nil, fmt.Errorf("Command syntax error")
-		case 1:
-			// OK
-			data, _, _ := bytes.Cut(status[1:], []byte{0})
-			return data, nil
-		default:
-			fmt.Println("Unrecognized command:", status[0])
-			ph.dev.Sleep(device.Retry)
-		}
+	switch b {
+	case 255:
+		// No data
+		return "", fmt.Errorf("No data to read")
+	case 254:
+		// Processing
+		return "", fmt.Errorf("Insufficient delay")
+	case 2:
+		// Syntax
+		return "", fmt.Errorf("Command syntax error")
+	case 1:
+		// OK
+		return s, nil
+	default:
+		return "", fmt.Errorf("Unrecognized command: %s", s)
 	}
-	return nil, fmt.Errorf("Timeout")
 }
 
 func (ph *Ph) readFloat(cmd string, wait time.Duration) (float64, error) {

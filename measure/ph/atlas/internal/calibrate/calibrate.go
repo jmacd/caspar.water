@@ -143,20 +143,22 @@ func (c *Calibration) Calibrate() error {
 		c.say("wait for reading to stabilize and press any key")
 
 		var wait sync.WaitGroup
-		wait.Add(2)
+		wait.Add(1)
 
 		errCh := make(chan error, 2)
 		doneCh := make(chan struct{})
-		valueCh := make(chan float64, 1)
+		valueCh := make(chan float64)
 
 		go func() {
 			defer wait.Done()
+			defer fmt.Println("return from reader")
 			for {
 				select {
 				case <-doneCh:
 					return
 				default:
 				}
+				fmt.Println("READ")
 				reading, err := c.ph.ReadPh(refTempC)
 				if err != nil {
 					errCh <- err
@@ -167,24 +169,36 @@ func (c *Calibration) Calibrate() error {
 			}
 		}()
 
-		go func() {
+		readInput := func() {
 			defer wait.Done()
+			defer close(doneCh)
+			defer fmt.Println("return from input")
 			_, _, err = c.rdr.ReadRune()
 			if err != nil {
 				errCh <- err
 				return
 			}
-			doneCh <- struct{}{}
-		}()
-		var pval float64
+		}
+		minTimes := 1
 		for {
 			select {
-			case pval = <-valueCh:
+			case pval := <-valueCh:
+				fmt.Println("GOT", pval)
 				c.say("%.2f", pval)
+
+				minTimes--
+				if minTimes == 0 {
+					wait.Add(1)
+					fmt.Println("AWAIT")
+					go readInput()
+				}
+
 				continue
 			case <-doneCh:
-				close(doneCh)
+				fmt.Println("DONE")
+				break
 			case err := <-errCh:
+				fmt.Println("ERR")
 				c.say("error encountered, aborting")
 				return err
 			}
@@ -195,11 +209,11 @@ func (c *Calibration) Calibrate() error {
 
 		switch pts {
 		case 0:
-			err = c.ph.CalibrateMidpoint(pval)
+			err = c.ph.CalibrateMidpoint(refPhF)
 		case 1:
-			err = c.ph.CalibrateLowpoint(pval)
+			err = c.ph.CalibrateLowpoint(refPhF)
 		case 2:
-			err = c.ph.CalibrateHighpoint(pval)
+			err = c.ph.CalibrateHighpoint(refPhF)
 		}
 		if err != nil {
 			return err
