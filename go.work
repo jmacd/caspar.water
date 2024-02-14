@@ -1,9 +1,0 @@
-go 1.21
-
-use (
-	.
-	./display/openlcd
-	./measure/bme280
-	./measure/modbus
-	./measure/ph/atlas
-)

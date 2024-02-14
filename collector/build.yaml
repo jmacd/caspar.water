@@ -1,8 +1,9 @@
 dist:
   name: watermon
   description: Water monitoring collector
-  output_path: build
-  otelcol_version: 0.81.0
+  output_path: ./build
+  module: github.com/jmacd/caspar.water/collector/build
+  otelcol_version: 0.94.1
 
 exporters:
   - gomod: github.com/jmacd/caspar.water v0.0.0
@@ -13,8 +14,8 @@ exporters:
     import: github.com/jmacd/caspar.water/display/matrixfruit
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/display/openlcd
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.81.0
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.81.0
+  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.94.1
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.94.1
 
 receivers:
   - gomod: github.com/jmacd/caspar.water v0.0.0
@@ -25,19 +26,22 @@ receivers:
     import: github.com/jmacd/caspar.water/measure/modbus
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.81.0
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/measure/ph/atlas
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.94.0
 
 processors:
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/display/units
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.81.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.94.1
 
 connectors:
-  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.81.0
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.94.1
 
 
 replaces:
   - github.com/jmacd/caspar.water => ../../
   - github.com/jmacd/caspar.water/measure/bme280 => ../../measure/bme280
   - github.com/jmacd/caspar.water/measure/modbus => ../../measure/modbus
+  - github.com/jmacd/caspar.water/measure/ph/atlas => ../../measure/ph/atlas
   - github.com/jmacd/caspar.water/display/openlcd => ../../display/openlcd

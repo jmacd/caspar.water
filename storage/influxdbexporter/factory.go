@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -36,7 +37,7 @@ func createDefaultConfig() component.Config {
 			NumConsumers: 1,
 			QueueSize:    0,
 		},
-		RetrySettings: exporterhelper.RetrySettings{
+		BackOffConfig: configretry.BackOffConfig{
 			Enabled: true,
 		},
 	}
@@ -56,7 +57,7 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, con
 		cfg,
 		writer.consumeMetrics,
 		exporterhelper.WithQueue(cfg.QueueSettings),
-		exporterhelper.WithRetry(cfg.RetrySettings),
+		exporterhelper.WithRetry(cfg.BackOffConfig),
 		exporterhelper.WithStart(writer.Start),
 	)
 }
