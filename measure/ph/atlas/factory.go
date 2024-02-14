@@ -25,10 +25,11 @@ func NewFactory() receiver.Factory {
 // createDefaultConfig creates the default configuration for receiver.
 func createDefaultConfig() component.Config {
 	return &Config{
-		Device:   "/dev/i2c",
-		I2CAddr:  0x77,
-		Prefix:   "bme280",
-		Interval: time.Minute,
+		Device:         "/dev/i2c",
+		I2CAddr:        0x77,
+		Prefix:         "bme280",
+		Interval:       time.Minute,
+		ReferenceTempC: 15,
 	}
 }
 

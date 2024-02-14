@@ -23,10 +23,6 @@ type Status struct {
 	Restart string
 }
 
-type Measurements struct {
-	Ph float64
-}
-
 func New(dev device.I2CStringer) *Ph {
 	return &Ph{
 		dev: dev,
@@ -159,10 +155,6 @@ func ExpandRestartCode(str string) string {
 
 func (ph *Ph) Close() error {
 	return ph.dev.Close()
-}
-
-func (ph *Ph) Read() (Measurements, error) {
-	return Measurements{}, nil
 }
 
 func (ph *Ph) read(cmd string, wait time.Duration) (string, error) {

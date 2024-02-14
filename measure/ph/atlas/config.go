@@ -20,6 +20,10 @@ type Config struct {
 
 	// measurement interval
 	Interval time.Duration `mapstructure:"interval"`
+
+	// temperature input
+	// TODO: This could be input from a sensor.
+	ReferenceTempC float64 `mapstructure:"reference_temperature_c"`
 }
 
 var _ component.Config = (*Config)(nil)

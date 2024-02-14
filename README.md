@@ -7,7 +7,8 @@ Includes:
   - bme280 receiver
   - tiny LCD exporters
   - data recording tools
+  - Atlas Scientific EZO pH receiver
 - Custom billing program.
 
 Under development:
-- UI1203 receiver (a.k.a. Sensus protocol).
+- UI1203 receiver (a.k.a. Sensus protocol), see https://github.com/jmacd/supruglue.

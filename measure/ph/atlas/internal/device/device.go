@@ -30,7 +30,7 @@ type I2C interface {
 
 var _ I2C = &realDevice{}
 
-func New(i2cPath string, devAddr int) (I2C, error) {
+func New(i2cPath string, devAddr int) (I2CStringer, error) {
 	opener := &i2c.Devfs{
 		Dev: i2cPath,
 	}
@@ -38,7 +38,11 @@ func New(i2cPath string, devAddr int) (I2C, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &realDevice{dev}, nil
+	return &writeSleepReader{
+		device: &realDevice{
+			device: dev,
+		},
+	}, nil
 }
 
 type realDevice struct {

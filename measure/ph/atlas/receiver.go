@@ -73,7 +73,7 @@ func (r *phReceiver) run(ctx context.Context) {
 
 func (r *phReceiver) measure() {
 	ts := pcommon.NewTimestampFromTime(time.Now())
-	data, err := r.ph.Read()
+	ph, err := r.ph.ReadPh(r.cfg.ReferenceTempC)
 	if err != nil {
 		r.settings.TelemetrySettings.Logger.Error("read ph device", zap.String("device", r.cfg.Device), zap.Error(err))
 		return
@@ -90,7 +90,7 @@ func (r *phReceiver) measure() {
 	m.SetUnit("")
 	m.SetEmptyGauge()
 	pt := m.Gauge().DataPoints().AppendEmpty()
-	pt.SetDoubleValue(data.Ph)
+	pt.SetDoubleValue(ph)
 	pt.SetTimestamp(ts)
 
 	if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {

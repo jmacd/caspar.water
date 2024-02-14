@@ -213,8 +213,8 @@ func (c *Calibration) Calibrate() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Info: Acid slope %.2f%%\n", acid)
-	fmt.Printf("Info: Base slope %.2f%%\n", base)
-	fmt.Printf("Info: Offset %.2fmV\n", offset)
+	fmt.Printf("Acid slope %.1f%%\n", acid)
+	fmt.Printf("Base slope %.1f%%\n", base)
+	fmt.Printf("Neutral offset %.2fmV\n", offset)
 	return nil
 }
