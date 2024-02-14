@@ -1,12 +1,13 @@
 package calibrate
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
+	"golang.org/x/sync/errgroup"
 )
 
 const DefaultTemp = "15C"
@@ -139,73 +140,60 @@ func (c *Calibration) Calibrate() error {
 			return err
 		}
 
-		c.say("place probe into ph %.2f reference solution", refPhF)
-		c.say("wait for reading to stabilize and press any key")
+		c.say("place probe into pH %.2f reference solution", refPhF)
+		g, ctx := errgroup.WithContext(context.Background())
 
-		var wait sync.WaitGroup
-		wait.Add(1)
-
-		errCh := make(chan error, 2)
-		doneCh := make(chan struct{})
 		valueCh := make(chan float64)
 
-		go func() {
-			defer wait.Done()
-			defer fmt.Println("return from reader")
+		g.Go(func() error {
 			for {
 				select {
-				case <-doneCh:
-					return
+				case <-ctx.Done():
+					return ctx.Err()
 				default:
 				}
-				fmt.Println("READ")
 				reading, err := c.ph.ReadPh(refTempC)
 				if err != nil {
-					errCh <- err
-					return
+					return err
 				}
 
-				valueCh <- reading
+				select {
+				case valueCh <- reading:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
-		}()
+		})
 
-		readInput := func() {
-			defer wait.Done()
-			defer close(doneCh)
-			defer fmt.Println("return from input")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case pval := <-valueCh:
+			c.say("wait for reading to stabilize and press any key")
+			c.say("reading: %.2f", pval)
+		}
+		g.Go(func() error {
 			_, _, err = c.rdr.ReadRune()
 			if err != nil {
-				errCh <- err
-				return
-			}
-		}
-		minTimes := 1
-		for {
-			select {
-			case pval := <-valueCh:
-				fmt.Println("GOT", pval)
-				c.say("%.2f", pval)
-
-				minTimes--
-				if minTimes == 0 {
-					wait.Add(1)
-					fmt.Println("AWAIT")
-					go readInput()
-				}
-
-				continue
-			case <-doneCh:
-				fmt.Println("DONE")
-				break
-			case err := <-errCh:
-				fmt.Println("ERR")
-				c.say("error encountered, aborting")
 				return err
 			}
-			break
-		}
+			return canceled
+		})
+		g.Go(func() error {
+			for {
+				select {
+				case pval := <-valueCh:
+					c.say("reading: %.2f", pval)
+					continue
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		})
 
-		wait.Wait()
+		if err := g.Wait(); err != canceled {
+			return err
+		}
 
 		switch pts {
 		case 0:
