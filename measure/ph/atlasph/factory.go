@@ -1,9 +1,10 @@
-package atlas
+package atlasph
 
 import (
 	"context"
 	"time"
 
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/ezo"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
@@ -25,9 +26,9 @@ func NewFactory() receiver.Factory {
 // createDefaultConfig creates the default configuration for receiver.
 func createDefaultConfig() component.Config {
 	return &Config{
-		Device:         "/dev/i2c",
-		I2CAddr:        0x77,
-		Prefix:         "bme280",
+		Device:         ezo.DefaultDevice,
+		I2CAddr:        ezo.DefaultAddress,
+		Prefix:         "atlasph",
 		Interval:       time.Minute,
 		ReferenceTempC: 15,
 	}

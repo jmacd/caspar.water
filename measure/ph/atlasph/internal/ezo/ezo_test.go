@@ -3,8 +3,8 @@ package ezo
 import (
 	"testing"
 
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device/mock"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

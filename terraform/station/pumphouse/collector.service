@@ -1,0 +1,11 @@
+[Unit]
+Description=Caspar Water Pumphouse Collector
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/home/debian/bin/collector --config /home/debian/etc/config.yaml
+
+[Install]
+WantedBy=multi-user.target

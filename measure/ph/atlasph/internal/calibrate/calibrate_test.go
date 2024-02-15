@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	mymock "github.com/jmacd/caspar.water/measure/ph/atlas/internal/calibrate/mock"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device/mock"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
+	mymock "github.com/jmacd/caspar.water/measure/ph/atlasph/internal/calibrate/mock"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device/mock"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/ezo"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

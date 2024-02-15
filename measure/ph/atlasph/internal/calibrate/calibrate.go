@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/ezo"
 	"golang.org/x/sync/errgroup"
 )
 

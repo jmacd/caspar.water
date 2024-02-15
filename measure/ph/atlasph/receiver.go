@@ -1,4 +1,4 @@
-package atlas
+package atlasph
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/ezo"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -39,6 +39,11 @@ func newPhReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consum
 		settings:     set,
 		nextConsumer: nextConsumer,
 		ph:           ezo.New(dev),
+	}
+	if status, err := r.ph.Status(); err != nil {
+		return r, err
+	} else {
+		set.TelemetrySettings.Logger.Info("ph status", zap.Float64("vcc", status.Vcc), zap.String("restart", status.Restart))
 	}
 	return r, nil
 }

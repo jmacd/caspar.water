@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device"
 )
+
+const DefaultAddress = 0x63
+const DefaultDevice = "/dev/i2c-2"
 
 type Ph struct {
 	dev device.I2CStringer

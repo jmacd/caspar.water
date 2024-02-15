@@ -1,4 +1,4 @@
-module github.com/jmacd/caspar.water/measure/ph/atlas
+module github.com/jmacd/caspar.water/measure/ph/atlasph
 
 go 1.21
 

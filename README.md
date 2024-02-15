@@ -8,6 +8,7 @@ Includes:
   - tiny LCD exporters
   - data recording tools
   - Atlas Scientific EZO pH receiver
+  - modified InfluxDB exporter
 - Custom billing program.
 
 Under development:

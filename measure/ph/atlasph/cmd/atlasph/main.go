@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/calibrate"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/device"
-	"github.com/jmacd/caspar.water/measure/ph/atlas/internal/ezo"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/calibrate"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/device"
+	"github.com/jmacd/caspar.water/measure/ph/atlasph/internal/ezo"
 	"github.com/spf13/cobra"
 )
-
-const defaultAddress = 0x63
-const defaultDevice = "/dev/i2c-2"
 
 var (
 	rootCmd = &cobra.Command{
@@ -21,8 +18,8 @@ var (
 		Long:  "Interacts with Atlas pH receiver",
 	}
 
-	flagAddress = rootCmd.PersistentFlags().IntP("i2c_addr", "i", defaultAddress, "i2c address")
-	flagDevice  = rootCmd.PersistentFlags().StringP("i2c_device", "d", defaultDevice, "i2c device")
+	flagAddress = rootCmd.PersistentFlags().IntP("i2c_addr", "i", ezo.DefaultAddress, "i2c address")
+	flagDevice  = rootCmd.PersistentFlags().StringP("i2c_device", "d", ezo.DefaultDevice, "i2c device")
 )
 
 func init() {
