@@ -10,6 +10,7 @@ receivers:
       - well_depth_value
       - tank_level_value
       - chlorine_level_value
+      - concrete_tank_level_value
   prometheus:
     config:
       scrape_configs:
@@ -17,6 +18,10 @@ receivers:
           scrape_interval: 30s
           static_configs:
             - targets: ['192.168.0.80:8888']
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 192.168.0.40:4317
 
 processors:
 
@@ -41,6 +46,7 @@ service:
       receivers:
       - sparkplug
       - prometheus
+      - otlp
       processors: []
       exporters:
       - otlp

@@ -1,0 +1,22 @@
+
+receivers:
+  atlasph:
+
+exporters:
+  otlp:
+    endpoint: 192.168.0.40:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+      - atlasph
+      processors: []
+      exporters:
+      - otlp
+  telemetry:
+    logs:
+      level:
+        debug

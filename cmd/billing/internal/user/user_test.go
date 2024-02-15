@@ -23,7 +23,6 @@ TestAcct2,Misses and Mister,2 Driveway,2 P.O. Box,FALSE,10/1/2022
 			UserName:         "Mister and Misses",
 			ServiceAddress:   "1 Driveway",
 			BillingAddress:   "1 P.O. Box",
-			Active:           true,
 			FirstPeriodStart: internal.Must(period.ParseStart("4/1/2022")),
 		},
 		{
@@ -31,7 +30,6 @@ TestAcct2,Misses and Mister,2 Driveway,2 P.O. Box,FALSE,10/1/2022
 			UserName:         "Misses and Mister",
 			ServiceAddress:   "2 Driveway",
 			BillingAddress:   "2 P.O. Box",
-			Active:           false,
 			FirstPeriodStart: internal.Must(period.ParseStart("10/1/2022")),
 		},
 	}, users)
