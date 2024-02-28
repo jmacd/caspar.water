@@ -1,6 +1,6 @@
 #!/bin/sh
 
-BONE=beaglebone.local
+BONE=pumphouse.local
 
 GOOS=linux GOARCH=arm go build ./cmd/atlasph
 

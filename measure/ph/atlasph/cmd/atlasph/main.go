@@ -25,8 +25,10 @@ var (
 func init() {
 	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(nameCmd)
-	rootCmd.AddCommand(calCmd)
+	rootCmd.AddCommand(cal2Cmd)
+	rootCmd.AddCommand(cal3Cmd)
 	rootCmd.AddCommand(clearCmd)
+	rootCmd.AddCommand(measureCmd)
 }
 
 var infoCmd = &cobra.Command{
@@ -36,6 +38,13 @@ var infoCmd = &cobra.Command{
 	RunE:  runInfo,
 }
 
+var measureCmd = &cobra.Command{
+	Use:   "measure",
+	Short: "Print continuous measurements",
+	Args:  cobra.NoArgs,
+	RunE:  runMeasure,
+}
+
 var nameCmd = &cobra.Command{
 	Use:   "set_name",
 	Short: "Set device name",
@@ -43,11 +52,18 @@ var nameCmd = &cobra.Command{
 	RunE:  runSetName,
 }
 
-var calCmd = &cobra.Command{
-	Use:   "calibrate",
+var cal3Cmd = &cobra.Command{
+	Use:   "calibrate3",
 	Short: "Perform 3-point calibration",
 	Args:  cobra.NoArgs,
-	RunE:  runCal,
+	RunE:  runCal(3),
+}
+
+var cal2Cmd = &cobra.Command{
+	Use:   "calibrate2",
+	Short: "Perform 2-point calibration",
+	Args:  cobra.NoArgs,
+	RunE:  runCal(2),
 }
 
 var clearCmd = &cobra.Command{
@@ -98,7 +114,7 @@ func show(ph *ezo.Ph) error {
 	fmt.Println("Info: restart", status.Restart)
 	fmt.Println("Info: Vcc", status.Vcc)
 	fmt.Println("Info: calibration", ezo.ExpandCalibrationPoints(pts))
-	if pts == 3 {
+	if pts > 2 {
 		fmt.Printf("Info: slope, acid: %.1f%%\n", acid)
 		fmt.Printf("Info: slope, base: %.1f%%\n", base)
 		fmt.Printf("Info: slope, offset: %.2fmV\n", offset)
@@ -114,6 +130,30 @@ func runInfo(cmd *cobra.Command, _ []string) error {
 	defer ph.Close()
 	if err = show(ph); err != nil {
 		return err
+	}
+	return nil
+}
+
+func runMeasure(cmd *cobra.Command, _ []string) error {
+	ph, err := opener()
+	if err != nil {
+		return err
+	}
+	defer ph.Close()
+	if err = show(ph); err != nil {
+		return err
+	}
+	refTempC, err := calibrate.New(bufio.NewReader(os.Stdin), ph).AskTemp()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Info: reference temperature: %fC\n", refTempC)
+	for {
+		value, err := ph.ReadPh(refTempC)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("pH: %f\n", value)
 	}
 	return nil
 }
@@ -141,17 +181,19 @@ func runSetName(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runCal(cmd *cobra.Command, _ []string) error {
-	ph, err := opener()
-	if err != nil {
-		return err
+func runCal(pts int) func(cmd *cobra.Command, _ []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		ph, err := opener()
+		if err != nil {
+			return err
+		}
+		defer ph.Close()
+		if err = show(ph); err != nil {
+			return err
+		}
+		cc := calibrate.New(bufio.NewReader(os.Stdin), ph)
+		return cc.Calibrate(pts)
 	}
-	defer ph.Close()
-	if err = show(ph); err != nil {
-		return err
-	}
-	cc := calibrate.NewCalibration(bufio.NewReader(os.Stdin), ph)
-	return cc.Calibrate()
 }
 
 func runClear(cmd *cobra.Command, _ []string) error {

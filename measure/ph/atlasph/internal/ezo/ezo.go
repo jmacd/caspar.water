@@ -131,9 +131,9 @@ func ExpandCalibrationPoints(num int) string {
 	case 1:
 		return "in-progress, next is low-point"
 	case 2:
-		return "in-progress, next is high-point"
+		return "2-point calibrated, next is high-point"
 	case 3:
-		return "calibrated"
+		return "3-point calibrated"
 	default:
 		return "unrecognized"
 	}
