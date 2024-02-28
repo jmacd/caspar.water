@@ -173,7 +173,7 @@ func (c *Calibration) Calibrate(calPoints int) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case pval := <-valueCh:
-			c.say("wait for reading to stabilize and press any key")
+			c.say("wait for reading to stabilize and press enter")
 			c.say("reading: %.2f", pval)
 		}
 		g.Go(func() error {
