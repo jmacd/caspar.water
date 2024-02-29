@@ -11,6 +11,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TODOs:
+// Remember to shut down collector.
+// Retry on error (e.g., in case another reader is active).
+// Export/import calibration.
+// Type "OK", not Enter.
+// Print time elapsed for calibration.
+
 var (
 	rootCmd = &cobra.Command{
 		Use:   "atlasph",
