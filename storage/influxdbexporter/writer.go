@@ -26,9 +26,9 @@ import (
 type influxHTTPWriter struct {
 	httpClient *http.Client
 
-	httpClientSettings confighttp.HTTPClientSettings
-	telemetry          component.TelemetrySettings
-	writeURL           string
+	httpClientConfig confighttp.ClientConfig
+	telemetry        component.TelemetrySettings
+	writeURL         string
 }
 
 func newInfluxHTTPWriter(config *Config, telemetrySettings component.TelemetrySettings) (*influxHTTPWriter, error) {
@@ -38,14 +38,14 @@ func newInfluxHTTPWriter(config *Config, telemetrySettings component.TelemetrySe
 	}
 
 	return &influxHTTPWriter{
-		httpClientSettings: config.HTTPClientSettings,
-		telemetry:          telemetrySettings,
-		writeURL:           writeURL,
+		httpClientConfig: config.ClientConfig,
+		telemetry:        telemetrySettings,
+		writeURL:         writeURL,
 	}, nil
 }
 
 func composeWriteURL(config *Config) (string, error) {
-	writeURL, err := url.Parse(config.HTTPClientSettings.Endpoint)
+	writeURL, err := url.Parse(config.ClientConfig.Endpoint)
 	if err != nil {
 		return "", err
 	}
@@ -65,10 +65,10 @@ func composeWriteURL(config *Config) (string, error) {
 	queryValues.Set("bucket", bucket)
 
 	if token != "" {
-		if config.HTTPClientSettings.Headers == nil {
-			config.HTTPClientSettings.Headers = map[string]configopaque.String{}
+		if config.ClientConfig.Headers == nil {
+			config.ClientConfig.Headers = map[string]configopaque.String{}
 		}
-		config.HTTPClientSettings.Headers["Authorization"] = "Token " + token
+		config.ClientConfig.Headers["Authorization"] = "Token " + token
 	}
 
 	writeURL.RawQuery = queryValues.Encode()
@@ -78,7 +78,7 @@ func composeWriteURL(config *Config) (string, error) {
 
 // Start implements component.StartFunc
 func (w *influxHTTPWriter) Start(_ context.Context, host component.Host) error {
-	httpClient, err := w.httpClientSettings.ToClient(host, w.telemetry)
+	httpClient, err := w.httpClientConfig.ToClient(host, w.telemetry)
 	if err != nil {
 		return err
 	}

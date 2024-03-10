@@ -1,23 +1,12 @@
 
 receivers:
-  sparkplug:
-    broker:
-      host_id: waterco
-      self_hosted: true
-      endpoint: :1883
-    metrics:
-      - pid_temperature_value
-      - well_depth_value
-      - tank_level_value
-      - chlorine_level_value
-      - concrete_tank_level_value
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'upperwell'
+        - job_name: 'pumphouse'
           scrape_interval: 30s
           static_configs:
-            - targets: ['192.168.0.80:8888']
+            - targets: ['192.168.0.60:8888']
   otlp:
     protocols:
       grpc:
@@ -44,7 +33,6 @@ service:
   pipelines:
     metrics:
       receivers:
-      - sparkplug
       - prometheus
       - otlp
       processors: []

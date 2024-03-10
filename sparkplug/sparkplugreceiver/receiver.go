@@ -72,9 +72,9 @@ func New(
 		return nil, component.ErrNilNextConsumer
 	}
 
-	if config.Broker.NetAddr.Endpoint == "" {
-		config.Broker.NetAddr.Transport = "tcp"
-		config.Broker.NetAddr.Endpoint = "localhost:1883"
+	if config.Broker.AddrConfig.Endpoint == "" {
+		config.Broker.AddrConfig.Transport = "tcp"
+		config.Broker.AddrConfig.Endpoint = "localhost:1883"
 	}
 
 	r := &sparkplugReceiver{
@@ -104,7 +104,7 @@ func (r *sparkplugReceiver) Start(ctx context.Context, host component.Host) erro
 	r.settings.Logger.Info(
 		"self-hosted broker start",
 		zap.String("host_id", r.config.Broker.HostID),
-		zap.String("endpoint", r.config.Broker.NetAddr.Endpoint),
+		zap.String("endpoint", r.config.Broker.AddrConfig.Endpoint),
 	)
 	return nil
 }
@@ -118,17 +118,17 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 	r.broker = mqtt.New()
 	r.brokerDone = make(chan error)
 
-	switch r.config.Broker.NetAddr.Transport {
+	switch r.config.Broker.AddrConfig.Transport {
 	case "tcp":
 		break
 	default:
 		return fmt.Errorf("transport unsupported: %v",
-			r.config.Broker.NetAddr.Transport)
+			r.config.Broker.AddrConfig.Transport)
 	}
 
 	tcp := listeners.NewTCP(
-		r.config.Broker.NetAddr.Endpoint,
-		r.config.Broker.NetAddr.Endpoint,
+		r.config.Broker.AddrConfig.Endpoint,
+		r.config.Broker.AddrConfig.Endpoint,
 	)
 	if err := r.broker.AddListener(tcp, &listeners.Config{
 		Auth: new(auth.Allow),
@@ -142,7 +142,7 @@ func (r *sparkplugReceiver) startBroker(context.Context) error {
 	go func() {
 		r.settings.Logger.Info(
 			"listening",
-			zap.String("endpoint", r.config.Broker.NetAddr.Endpoint),
+			zap.String("endpoint", r.config.Broker.AddrConfig.Endpoint),
 		)
 
 		r.brokerDone <- r.broker.Serve()

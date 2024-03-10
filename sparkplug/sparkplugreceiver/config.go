@@ -13,9 +13,9 @@ type Config struct {
 }
 
 type BrokerConfig struct {
-	NetAddr    confignet.NetAddr `mapstructure:",squash"`
-	SelfHosted bool              `mapstructure:"self_hosted"`
-	HostID     string            `mapstructure:"host_id"`
+	AddrConfig confignet.AddrConfig `mapstructure:",squash"`
+	SelfHosted bool                 `mapstructure:"self_hosted"`
+	HostID     string               `mapstructure:"host_id"`
 }
 
 func (c *Config) validate() error {

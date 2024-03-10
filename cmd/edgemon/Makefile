@@ -1,7 +1,7 @@
-edgemon: main.go
-	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-w -s" -o edgemon .
-	scp edgemon shell@upperwell.local:edgemon.new
-	ssh shell@upperwell.local mv edgemon.new edgemon
+all: edgemon.bbb edgemon.local
 
-# Need to run:
-#   sudo /usr/sbin/setcap cap_net_raw=+ep ./edgemon
+edgemon.bbb: main.go
+	GOOS=linux GOARCH=arm GOARM=7 go build -o edgemon.bbb .
+
+edgemon.local: main.go
+	go build -o edgemon.local .

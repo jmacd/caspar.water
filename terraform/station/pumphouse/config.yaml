@@ -1,6 +1,16 @@
 
 receivers:
   atlasph:
+  sparkplug:
+    broker:
+      host_id: waterco
+      self_hosted: true
+      endpoint: :1883
+    metrics:
+      - well_depth_value
+      - system_pressure_value
+      - chlorine_level_value
+      - concrete_tank_level_value
 
 exporters:
   otlp:
@@ -13,10 +23,12 @@ service:
     metrics:
       receivers:
       - atlasph
+      - sparkplug
       processors: []
       exporters:
       - otlp
   telemetry:
     logs:
-      level:
-        debug
+      level: debug
+    metrics:
+      level: none

@@ -1,0 +1,11 @@
+[Unit]
+Description=Caspar Water Pumphouse Edge Monitor
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/home/debian/bin/edgemon
+
+[Install]
+WantedBy=multi-user.target

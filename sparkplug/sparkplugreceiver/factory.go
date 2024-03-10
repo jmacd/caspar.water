@@ -27,7 +27,7 @@ func NewFactory() receiver.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		Broker: BrokerConfig{
-			NetAddr: confignet.NetAddr{
+			AddrConfig: confignet.AddrConfig{
 				Endpoint:  defaultBindEndpoint,
 				Transport: defaultTransport,
 			},
