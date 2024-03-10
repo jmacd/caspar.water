@@ -15,8 +15,6 @@ receivers:
 processors:
 
 exporters:
-  logging:
-    loglevel: debug
   otlp:
     endpoint: ingest.lightstep.com:443
     headers:
@@ -42,5 +40,8 @@ service:
       - influxdb
   telemetry:
     logs:
-      level:
-        debug
+      level: debug
+    metrics:
+      level: none
+
+
