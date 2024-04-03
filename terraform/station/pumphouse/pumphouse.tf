@@ -40,6 +40,11 @@ resource "null_resource" "setup-script" {
   }
 
   provisioner "file" {
+      source      = "supruglue.service"
+      destination = "/etc/systemd/system/supruglue.service"
+  }
+
+  provisioner "file" {
       source      = "../../../collector/collector.bbb"
       destination = "/home/debian/bin/collector"
   }
