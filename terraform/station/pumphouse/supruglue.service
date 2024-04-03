@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
-ExecStart=/home/debian/bin/supruglue start /home/debian/fw/simple_timer
+ExecStart=/home/debian/bin/supructl start --firmware /home/debian/fw/simple_timer
 
 [Install]
 WantedBy=multi-user.target

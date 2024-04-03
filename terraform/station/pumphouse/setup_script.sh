@@ -2,6 +2,9 @@
 
 systemctl daemon-reload
 
+# Note! Supructl and firmware are installed from supruglue repo, not included
+# in this terraform.
+
 chmod +x /home/debian/bin/collector
 chmod +x /home/debian/bin/edgemon
 chmod +x /home/debian/bin/supruglue
