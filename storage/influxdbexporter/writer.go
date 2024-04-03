@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -109,16 +110,20 @@ func mapToKVs(m pcommon.Map) []attribute.KeyValue {
 	return attrs
 }
 
-func pointValue(pt pmetric.NumberDataPoint) lineprotocol.Value {
+func pointValue(pt pmetric.NumberDataPoint) (lineprotocol.Value, error) {
 	switch pt.ValueType() {
 	case pmetric.NumberDataPointValueTypeDouble:
+		if math.IsNaN(pt.DoubleValue()) {
+			return lineprotocol.Value{}, fmt.Errorf("NaN")
+		} else if math.IsInf(pt.DoubleValue(), 0) {
+			return lineprotocol.Value{}, fmt.Errorf("Inf")
+		}
 		v, _ := lineprotocol.FloatValue(pt.DoubleValue())
-		return v
+		return v, nil
 	case pmetric.NumberDataPointValueTypeInt:
-		return lineprotocol.IntValue(pt.IntValue())
+		return lineprotocol.IntValue(pt.IntValue()), nil
 	default:
-		v, _ := lineprotocol.StringValue("undefined")
-		return v
+		return lineprotocol.Value{}, fmt.Errorf("Unknown")
 	}
 }
 
@@ -202,13 +207,17 @@ func (w *influxHTTPWriter) consumeMetrics(ctx context.Context, ld pmetric.Metric
 				eachPoint := func(pts pmetric.NumberDataPointSlice) {
 					for pi := 0; pi < pts.Len(); pi++ {
 						pt := pts.At(pi)
+						value, err := pointValue(pt)
+						if err != nil {
+							continue
+						}
 						lkey := lineKey{
 							set: joinAttrs(rattrs, sattrs, mapToKVs(pt.Attributes())),
 							ts:  pt.Timestamp(),
 						}
 						allPoints[lkey] = append(allPoints[lkey], lineValue{
 							metric: nameOf(m),
-							value:  pointValue(pt),
+							value:  value,
 						})
 					}
 				}
