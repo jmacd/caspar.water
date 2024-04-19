@@ -18,7 +18,7 @@ const (
 // NewFactory creates a factory for the sparkplug receiver.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		receiver.WithMetrics(createMetricsReceiver, component.StabilityLevelAlpha),
 	)

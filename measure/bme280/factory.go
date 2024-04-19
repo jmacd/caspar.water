@@ -16,10 +16,9 @@ const (
 // NewFactory creates a new OTLP receiver factory.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
-		receiver.WithMetrics(createMetrics, component.StabilityLevelAlpha),
-	)
+		receiver.WithMetrics(createMetrics, component.StabilityLevelAlpha))
 }
 
 // createDefaultConfig creates the default configuration for receiver.

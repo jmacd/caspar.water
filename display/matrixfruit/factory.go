@@ -30,7 +30,7 @@ const (
 
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelDevelopment),
 	)

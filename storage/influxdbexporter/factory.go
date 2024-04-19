@@ -20,7 +20,7 @@ import (
 // NewFactory creates a factory for InfluxDB exporter.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		"influxdb",
+		component.MustNewType("influxdb"),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelDevelopment),
 	)

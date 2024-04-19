@@ -69,7 +69,7 @@ func New(
 	nextConsumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	if nextConsumer == nil {
-		return nil, component.ErrNilNextConsumer
+		return nil, fmt.Errorf("invalid next consumer: nil")
 	}
 
 	if config.Broker.AddrConfig.Endpoint == "" {

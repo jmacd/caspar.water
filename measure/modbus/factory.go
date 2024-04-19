@@ -15,7 +15,7 @@ const (
 
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		DefaultConfig,
 		receiver.WithMetrics(createMetrics, component.StabilityLevelAlpha),
 	)
