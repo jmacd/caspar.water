@@ -13,10 +13,14 @@ receivers:
       - concrete_tank_level_value
 
 exporters:
-  otlp:
+  otelarrow:
     endpoint: 192.168.0.40:4317
     tls:
       insecure: true
+    timeout: 1m
+    arrow:
+      num_streams: 1
+      max_stream_lifetime: 1hr
 
 service:
   pipelines:
@@ -26,7 +30,7 @@ service:
       - sparkplug
       processors: []
       exporters:
-      - otlp
+      - otelarrow
   telemetry:
     logs:
       level: debug

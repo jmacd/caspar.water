@@ -1,6 +1,7 @@
 #!/bin/sh
 
-systemctl stop collector
+systemctl stop supruglue
 systemctl stop edgemon
+systemctl stop collector
 
 echo Teardown complete.

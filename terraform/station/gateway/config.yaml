@@ -7,7 +7,7 @@ receivers:
           scrape_interval: 30s
           static_configs:
             - targets: ['192.168.0.60:8888']
-  otlp:
+  otelarrow:
     protocols:
       grpc:
         endpoint: 192.168.0.40:4317
@@ -32,7 +32,7 @@ service:
     metrics:
       receivers:
       - prometheus
-      - otlp
+      - otelarrow
       processors: []
       exporters:
       - otlp
