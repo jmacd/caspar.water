@@ -2,7 +2,7 @@
 
 systemctl daemon-reload
 
-chmod +x /home/debian/bin/collector
+chmod +x /home/jmacd/bin/collector
 
 systemctl start collector
 

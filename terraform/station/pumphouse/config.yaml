@@ -20,13 +20,14 @@ exporters:
     timeout: 1m
     arrow:
       num_streams: 1
-      max_stream_lifetime: 1hr
+      max_stream_lifetime: 1h
 
 service:
   pipelines:
     metrics:
       receivers:
-      - atlasph
+# TODO:
+#      - atlasph
       - sparkplug
       processors: []
       exporters:

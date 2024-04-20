@@ -7,7 +7,7 @@ dist:
 
 exporters:
   - gomod: github.com/jmacd/caspar.water v0.0.0
-    import: github.com/jmacd/caspar.water/storage/fileexporter
+    import: github.com/jmacd/caspar.water/storage/jsonfileexporter
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/storage/influxdbexporter
   - gomod: github.com/jmacd/caspar.water v0.0.0
@@ -45,7 +45,7 @@ connectors:
 replaces:
   - github.com/jmacd/caspar.water => ../../
   - github.com/jmacd/caspar.water/storage/serial => ../../storage/serial
-  - github.com/jmacd/caspar.water/storage/fileexporter => ../../storage/fileexporter
+  - github.com/jmacd/caspar.water/storage/jsonfileexporter => ../../storage/jsonfileexporter
   - github.com/jmacd/caspar.water/storage/influxdbexporter => ../../storage/influxdbexporter
   - github.com/jmacd/caspar.water/measure/bme280 => ../../measure/bme280
   - github.com/jmacd/caspar.water/measure/currentloop => ../../measure/currentloop

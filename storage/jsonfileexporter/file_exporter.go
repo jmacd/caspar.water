@@ -21,12 +21,13 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Marshaler configuration used for marhsaling Protobuf to JSON.
 var metricsMarshaler = pmetric.JSONMarshaler{}
+var logsMarshaler = plog.JSONMarshaler{}
 
 // fileExporter is the implementation of file exporter that writes telemetry data to a file
 // in Protobuf-JSON format.
@@ -41,6 +42,14 @@ func (e *fileExporter) Capabilities() consumer.Capabilities {
 
 func (e *fileExporter) ConsumeMetrics(_ context.Context, md pmetric.Metrics) error {
 	buf, err := metricsMarshaler.MarshalMetrics(md)
+	if err != nil {
+		return err
+	}
+	return exportMessageAsLine(e, buf)
+}
+
+func (e *fileExporter) ConsumeLogs(_ context.Context, ld plog.Logs) error {
+	buf, err := logsMarshaler.MarshalLogs(ld)
 	if err != nil {
 		return err
 	}

@@ -21,6 +21,8 @@ exporters:
     - lightstep-access-token: ${env:LIGHTSTEP_TOKEN}
   jsonfile:
     path: "/home/data/casparwater.json"
+  jsonfile/logs:
+    path: "/home/data/systemlogs.json"
   influxdb:
     endpoint: https://casparwater.us:8086
     org: casparwater
@@ -38,6 +40,11 @@ service:
       - otlp
       - jsonfile
       - influxdb
+    logs:
+      receivers:
+      - otelarrow
+      exporters:
+      - jsonfile/logs
   telemetry:
     logs:
       level: debug
