@@ -2,7 +2,6 @@ package serialreceiver
 
 import (
 	"context"
-	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -10,7 +9,7 @@ import (
 )
 
 const (
-	typeStr = "bme280"
+	typeStr = "serial"
 )
 
 // NewFactory creates a new OTLP receiver factory.
@@ -18,26 +17,24 @@ func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		component.MustNewType(typeStr),
 		createDefaultConfig,
-		receiver.WithMetrics(createMetrics, component.StabilityLevelAlpha))
+		receiver.WithLogs(createLogs, component.StabilityLevelAlpha))
 }
 
 // createDefaultConfig creates the default configuration for receiver.
 func createDefaultConfig() component.Config {
 	return &Config{
-		Device:   "/dev/i2c",
-		I2CAddr:  0x77,
-		Prefix:   "bme280",
-		Interval: time.Minute,
+		Device: "/dev/ttyUSB0",
+		Baud:   115200,
 	}
 }
 
-// createMetrics creates a metrics receiver based on provided config.
-func createMetrics(
+// createLogs creates a metrics receiver based on provided config.
+func createLogs(
 	_ context.Context,
 	set receiver.CreateSettings,
 	cfg component.Config,
-	consumer consumer.Metrics,
-) (receiver.Metrics, error) {
+	consumer consumer.Logs,
+) (receiver.Logs, error) {
 	oCfg := cfg.(*Config)
 	return newSerialReceiver(oCfg, set, consumer)
 }

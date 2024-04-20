@@ -5,9 +5,12 @@ go 1.21
 toolchain go1.21.7
 
 require (
+	github.com/goburrow/serial v0.1.0
 	go.opentelemetry.io/collector/component v0.98.0
 	go.opentelemetry.io/collector/consumer v0.98.0
+	go.opentelemetry.io/collector/pdata v1.5.0
 	go.opentelemetry.io/collector/receiver v0.98.0
+	go.uber.org/zap v1.27.0
 )
 
 require (
@@ -24,12 +27,10 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	go.opentelemetry.io/collector/config/configtelemetry v0.98.0 // indirect
 	go.opentelemetry.io/collector/confmap v0.98.0 // indirect
-	go.opentelemetry.io/collector/pdata v1.5.0 // indirect
 	go.opentelemetry.io/otel v1.25.0 // indirect
 	go.opentelemetry.io/otel/metric v1.25.0 // indirect
 	go.opentelemetry.io/otel/trace v1.25.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect

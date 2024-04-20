@@ -26,7 +26,7 @@ service:
   pipelines:
     metrics:
       receivers:
-# TODO:
+# TODO: Atlasph won't start if not connected
 #      - atlasph
       - sparkplug
       processors: []

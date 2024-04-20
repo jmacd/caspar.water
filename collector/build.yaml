@@ -29,6 +29,8 @@ receivers:
     import: github.com/jmacd/caspar.water/sparkplug/sparkplugreceiver
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/measure/ph/atlasph
+  - gomod: github.com/jmacd/caspar.water v0.0.0
+    import: github.com/jmacd/caspar.water/storage/serialreceiver
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.98.0
   - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.98.0
   - gomod: github.com/open-telemetry/otel-arrow/collector/receiver/otelarrowreceiver v0.22.0
@@ -44,7 +46,7 @@ connectors:
 
 replaces:
   - github.com/jmacd/caspar.water => ../../
-  - github.com/jmacd/caspar.water/storage/serial => ../../storage/serial
+  - github.com/jmacd/caspar.water/storage/serialreceiver => ../../storage/serialreceiver
   - github.com/jmacd/caspar.water/storage/jsonfileexporter => ../../storage/jsonfileexporter
   - github.com/jmacd/caspar.water/storage/influxdbexporter => ../../storage/influxdbexporter
   - github.com/jmacd/caspar.water/measure/bme280 => ../../measure/bme280

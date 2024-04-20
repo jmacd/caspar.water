@@ -1,15 +1,22 @@
 package serialreceiver
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/goburrow/serial"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/receiver"
+	"go.uber.org/zap"
 )
+
+const readTimeout = 5 * time.Second
 
 // serialReceiver is the type that exposes Trace and Metrics reception.
 type serialReceiver struct {
@@ -17,15 +24,23 @@ type serialReceiver struct {
 	settings     receiver.CreateSettings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
-	serial       *Serial
-	nextConsumer consumer.Metrics
+	port         serial.Port
+	nextConsumer consumer.Logs
 }
 
 // newSerialReceiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*serialReceiver, error) {
-	serial, err := New(cfg.Device)
+func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Logs) (*serialReceiver, error) {
+	scfg := serial.Config{
+		Address:  cfg.Device,
+		BaudRate: cfg.Baud,
+		DataBits: 8,
+		StopBits: 1,
+		Parity:   "E",
+		Timeout:  readTimeout,
+	}
+	port, err := serial.Open(&scfg)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +48,7 @@ func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer co
 		cfg:          cfg,
 		settings:     set,
 		nextConsumer: nextConsumer,
-		serial:       serial,
+		port:         port,
 	}
 	return r, nil
 }
@@ -50,64 +65,43 @@ func (r *serialReceiver) Start(_ context.Context, host component.Host) error {
 func (r *serialReceiver) run(ctx context.Context) {
 	defer r.wg.Done()
 
-	// Send an initial masurement immediately.
-	r.measure()
+	rdr := bufio.NewReader(r.port)
 
-	ticker := time.NewTicker(r.cfg.Interval)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			break
 		}
-		r.measure()
+		ld := plog.NewLogs()
+		rm := ld.ResourceLogs().AppendEmpty()
+		sm := rm.ScopeLogs().AppendEmpty()
+		sm.Scope().SetName("serial")
+
+		start := time.Now()
+
+		for time.Since(start) < readTimeout {
+			str, err := rdr.ReadString('\n')
+			if len(str) != 0 {
+				ts := pcommon.NewTimestampFromTime(time.Now())
+
+				rec := sm.LogRecords().AppendEmpty()
+				rec.SetTimestamp(ts)
+				rec.Body().SetStr(str)
+			}
+			if err != nil {
+				r.settings.TelemetrySettings.Logger.Error("read serial device",
+					zap.String("device", r.cfg.Device), zap.Error(err))
+				break
+			}
+
+		}
+		if ld.LogRecordCount() == 0 {
+			continue
+		}
+		if err := r.nextConsumer.ConsumeLogs(context.Background(), ld); err != nil {
+			r.settings.TelemetrySettings.Logger.Error("write logs", zap.Error(err))
+		}
 	}
-}
-
-func (r *serialReceiver) measure() {
-	// ts := pcommon.NewTimestampFromTime(time.Now())
-	// data, err := r.bme.Read()
-	// if err != nil {
-	// 	r.settings.TelemetrySettings.Logger.Error("read serial device", zap.String("device", r.cfg.Device), zap.Error(err))
-	// 	return
-	// }
-
-	// md := pmetric.NewMetrics()
-	// rm := md.ResourceMetrics().AppendEmpty()
-	// sm := rm.ScopeMetrics().AppendEmpty()
-	// sm.Scope().SetName("serial")
-
-	// // Temperature
-	// m := sm.Metrics().AppendEmpty()
-	// m.SetName(r.cfg.Prefix + "_temperature")
-	// m.SetUnit("C")
-	// m.SetEmptyGauge()
-	// pt := m.Gauge().DataPoints().AppendEmpty()
-	// pt.SetDoubleValue(data.T)
-	// pt.SetTimestamp(ts)
-
-	// // Pressure
-	// m = sm.Metrics().AppendEmpty()
-	// m.SetName(r.cfg.Prefix + "_pressure")
-	// m.SetUnit("Pa")
-	// m.SetEmptyGauge()
-	// pt = m.Gauge().DataPoints().AppendEmpty()
-	// pt.SetDoubleValue(data.P)
-	// pt.SetTimestamp(ts)
-
-	// // Humidity
-	// m = sm.Metrics().AppendEmpty()
-	// m.SetName(r.cfg.Prefix + "_humidity")
-	// m.SetEmptyGauge()
-	// pt = m.Gauge().DataPoints().AppendEmpty()
-	// pt.SetDoubleValue(data.H)
-	// pt.SetTimestamp(ts)
-
-	// if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
-	// 	r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
-	// }
 }
 
 // Shutdown stops.
