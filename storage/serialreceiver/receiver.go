@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/goburrow/serial"
+	"go.bug.st/serial"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -32,16 +33,17 @@ type serialReceiver struct {
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
 func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Logs) (*serialReceiver, error) {
-	scfg := serial.Config{
-		Address:  cfg.Device,
+	mode := &serial.Mode{
 		BaudRate: cfg.Baud,
 		DataBits: 8,
-		StopBits: 1,
-		Parity:   "E",
-		Timeout:  readTimeout,
+		StopBits: serial.OneStopBit,
+		Parity:   serial.NoParity,
 	}
-	port, err := serial.Open(&scfg)
+	port, err := serial.Open(cfg.Device, mode)
 	if err != nil {
+		return nil, err
+	}
+	if err := port.SetReadTimeout(readTimeout); err != nil {
 		return nil, err
 	}
 	r := &serialReceiver{
@@ -57,6 +59,9 @@ func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer co
 func (r *serialReceiver) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
+	if err := r.port.Break(100 * time.Millisecond); err != nil {
+		return err
+	}
 	r.wg.Add(1)
 	go r.run(ctx)
 	return nil
@@ -71,37 +76,52 @@ func (r *serialReceiver) run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		}
-		ld := plog.NewLogs()
-		rm := ld.ResourceLogs().AppendEmpty()
-		sm := rm.ScopeLogs().AppendEmpty()
-		sm.Scope().SetName("serial")
-
-		start := time.Now()
-
-		for time.Since(start) < readTimeout {
-			str, err := rdr.ReadString('\n')
-			if len(str) != 0 {
-				ts := pcommon.NewTimestampFromTime(time.Now())
-
-				rec := sm.LogRecords().AppendEmpty()
-				rec.SetTimestamp(ts)
-				rec.Body().SetStr(str)
-			}
+		default:
+			data, err := r.read(rdr)
 			if err != nil {
-				r.settings.TelemetrySettings.Logger.Error("read serial device",
-					zap.String("device", r.cfg.Device), zap.Error(err))
-				break
+				r.settings.TelemetrySettings.Logger.Error(
+					"serial read",
+					zap.String("device", r.cfg.Device),
+					zap.Error(err),
+				)
 			}
 
-		}
-		if ld.LogRecordCount() == 0 {
-			continue
-		}
-		if err := r.nextConsumer.ConsumeLogs(context.Background(), ld); err != nil {
-			r.settings.TelemetrySettings.Logger.Error("write logs", zap.Error(err))
+			if data.LogRecordCount() == 0 {
+				continue
+			}
+
+			if err := r.nextConsumer.ConsumeLogs(ctx, data); err != nil {
+				r.settings.TelemetrySettings.Logger.Error(
+					"serial consume",
+					zap.Error(err),
+				)
+			}
 		}
 	}
+}
+
+func (r *serialReceiver) read(rdr *bufio.Reader) (plog.Logs, error) {
+	ld := plog.NewLogs()
+	rm := ld.ResourceLogs().AppendEmpty()
+	sm := rm.ScopeLogs().AppendEmpty()
+	sm.Scope().SetName("serial")
+
+	start := time.Now()
+
+	for time.Since(start) < readTimeout {
+		str, err := rdr.ReadString('\n')
+		if len(str) != 0 {
+			ts := pcommon.NewTimestampFromTime(time.Now())
+
+			rec := sm.LogRecords().AppendEmpty()
+			rec.SetTimestamp(ts)
+			rec.Body().SetStr(strings.TrimRight(str, "\r\n"))
+		}
+		if err != nil {
+			return ld, err
+		}
+	}
+	return ld, nil
 }
 
 // Shutdown stops.
@@ -110,6 +130,7 @@ func (r *serialReceiver) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("not started")
 	}
 	r.cancel()
+	_ = r.port.Close()
 	r.wg.Wait()
 	return nil
 }

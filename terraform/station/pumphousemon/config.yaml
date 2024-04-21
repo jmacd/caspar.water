@@ -6,6 +6,7 @@ receivers:
 
 exporters:
   debug:
+    verbosity: detailed
   otelarrow:
     endpoint: 192.168.0.40:4317
     tls:
@@ -22,7 +23,6 @@ service:
       - serial
       exporters:
       - otelarrow
-      - debug
   telemetry:
     logs:
       level: debug
