@@ -1,24 +1,13 @@
 
 receivers:
-  sparkplug:
-    broker:
-      host_id: waterco
-      self_hosted: true
-      endpoint: :1883
-    metrics:
-      - pid_temperature_value
-      - well_depth_value
-      - tank_level_value
-      - chlorine_level_value
-      - concrete_tank_level_value
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'upperwell'
+        - job_name: 'pumphouse'
           scrape_interval: 30s
           static_configs:
-            - targets: ['192.168.0.80:8888']
-  otlp:
+            - targets: ['192.168.0.60:8888']
+  otelarrow:
     protocols:
       grpc:
         endpoint: 192.168.0.40:4317
@@ -26,14 +15,14 @@ receivers:
 processors:
 
 exporters:
-  logging:
-    loglevel: debug
   otlp:
     endpoint: ingest.lightstep.com:443
     headers:
     - lightstep-access-token: ${env:LIGHTSTEP_TOKEN}
   jsonfile:
     path: "/home/data/casparwater.json"
+  jsonfile/logs:
+    path: "/home/data/systemlogs.json"
   influxdb:
     endpoint: https://casparwater.us:8086
     org: casparwater
@@ -44,15 +33,22 @@ service:
   pipelines:
     metrics:
       receivers:
-      - sparkplug
       - prometheus
-      - otlp
+      - otelarrow
       processors: []
       exporters:
       - otlp
       - jsonfile
       - influxdb
+    logs:
+      receivers:
+      - otelarrow
+      exporters:
+      - jsonfile/logs
   telemetry:
     logs:
-      level:
-        debug
+      level: debug
+    metrics:
+      level: none
+
+

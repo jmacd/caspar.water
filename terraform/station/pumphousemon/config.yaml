@@ -1,0 +1,30 @@
+
+receivers:
+  serial:
+    device: /dev/ttyUSB0
+    baud: 115200
+
+exporters:
+  debug:
+    verbosity: detailed
+  otelarrow:
+    endpoint: 192.168.0.40:4317
+    tls:
+      insecure: true
+    timeout: 1m
+    arrow:
+      num_streams: 1
+      max_stream_lifetime: 1h
+
+service:
+  pipelines:
+    logs:
+      receivers:
+      - serial
+      exporters:
+      - otelarrow
+  telemetry:
+    logs:
+      level: debug
+    metrics:
+      level: none

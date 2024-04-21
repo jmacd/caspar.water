@@ -20,7 +20,7 @@ import (
 // NewFactory creates a factory for InfluxDB exporter.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		"influxdb",
+		component.MustNewType("influxdb"),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelDevelopment),
 	)
@@ -28,7 +28,7 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		HTTPClientSettings: confighttp.HTTPClientSettings{
+		ClientConfig: confighttp.ClientConfig{
 			Timeout: 30 * time.Second,
 			Headers: map[string]configopaque.String{},
 		},

@@ -1,22 +1,39 @@
 
 receivers:
   atlasph:
+  sparkplug:
+    broker:
+      host_id: waterco
+      self_hosted: true
+      endpoint: :1883
+    metrics:
+      - well_depth_value
+      - system_pressure_value
+      - chlorine_level_value
+      - concrete_tank_level_value
 
 exporters:
-  otlp:
+  otelarrow:
     endpoint: 192.168.0.40:4317
     tls:
       insecure: true
+    timeout: 1m
+    arrow:
+      num_streams: 1
+      max_stream_lifetime: 1h
 
 service:
   pipelines:
     metrics:
       receivers:
-      - atlasph
+# TODO: Atlasph won't start if not connected
+#      - atlasph
+      - sparkplug
       processors: []
       exporters:
-      - otlp
+      - otelarrow
   telemetry:
     logs:
-      level:
-        debug
+      level: debug
+    metrics:
+      level: none

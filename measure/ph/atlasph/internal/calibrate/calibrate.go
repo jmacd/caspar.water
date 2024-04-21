@@ -24,7 +24,7 @@ type Interactive interface {
 
 var canceled = fmt.Errorf("operation canceled by user")
 
-func NewCalibration(rdr Interactive, ph *ezo.Ph) *Calibration {
+func New(rdr Interactive, ph *ezo.Ph) *Calibration {
 	return &Calibration{rdr: rdr, ph: ph}
 }
 
@@ -44,13 +44,13 @@ func (c *Calibration) askBool(def string) (bool, error) {
 	return strings.ToLower(lns) == "y", nil
 }
 
-func (c *Calibration) askYes(prompt string) (bool, error) {
-	fmt.Print(prompt + " [Yn] ")
+func (c *Calibration) askYes(prompt string, args ...any) (bool, error) {
+	fmt.Printf(prompt+" [Yn] ", args...)
 	return c.askBool("y")
 }
 
-func (c *Calibration) askNo(prompt string) (bool, error) {
-	fmt.Print(prompt + " [yN] ")
+func (c *Calibration) askNo(prompt string, args ...any) (bool, error) {
+	fmt.Printf(prompt+" [yN] ", args...)
 	return c.askBool("n")
 }
 
@@ -65,6 +65,14 @@ func (c *Calibration) askString(prompt, def string) (string, error) {
 		lns = def
 	}
 	return lns, nil
+}
+
+func (c *Calibration) AskTemp() (C float64, _ error) {
+	refTempStr, err := c.askString("enter the temperature to use for calibration", DefaultTemp)
+	if err != nil {
+		return 0, err
+	}
+	return parseTemp(refTempStr)
 }
 
 // parseTemp returns celsius
@@ -85,14 +93,13 @@ func parseTemp(s string) (float64, error) {
 	return (x - 32) / 1.8, nil
 }
 
-func (c *Calibration) Calibrate() error {
+func (c *Calibration) Calibrate(calPoints int) error {
 	pts, err := c.ph.CalibrationPoints()
 	if err != nil {
 		return err
 	}
-	switch pts {
-	case 3:
-		if ok, err := c.askYes("device has been calibrated; clear and continue?"); err != nil {
+	if pts >= calPoints {
+		if ok, err := c.askYes("device %d-point calibration; clear and continue?", pts); err != nil {
 			return err
 		} else if !ok {
 			return canceled
@@ -102,18 +109,15 @@ func (c *Calibration) Calibrate() error {
 			return err
 		}
 		pts = 0
-	case 2, 1:
+	}
+	if pts != 0 {
 		if ok, err := c.askNo("device has in-progress calibration points; continue?"); err != nil {
 			return err
 		} else if !ok {
 			return canceled
 		}
 	}
-	refTempStr, err := c.askString("enter the temperature to use for calibration", DefaultTemp)
-	if err != nil {
-		return err
-	}
-	refTempC, err := parseTemp(refTempStr)
+	refTempC, err := c.AskTemp()
 	if err != nil {
 		return err
 	}
@@ -126,7 +130,7 @@ func (c *Calibration) Calibrate() error {
 		if err != nil {
 			return err
 		}
-		if pts == 3 {
+		if pts == calPoints {
 			break
 		}
 		c.say("next calibration point - %s", pointName[pts])
@@ -169,7 +173,7 @@ func (c *Calibration) Calibrate() error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case pval := <-valueCh:
-			c.say("wait for reading to stabilize and press any key")
+			c.say("wait for reading to stabilize and press enter")
 			c.say("reading: %.2f", pval)
 		}
 		g.Go(func() error {

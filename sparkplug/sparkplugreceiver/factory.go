@@ -18,7 +18,7 @@ const (
 // NewFactory creates a factory for the sparkplug receiver.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		receiver.WithMetrics(createMetricsReceiver, component.StabilityLevelAlpha),
 	)
@@ -27,7 +27,7 @@ func NewFactory() receiver.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		Broker: BrokerConfig{
-			NetAddr: confignet.NetAddr{
+			AddrConfig: confignet.AddrConfig{
 				Endpoint:  defaultBindEndpoint,
 				Transport: defaultTransport,
 			},

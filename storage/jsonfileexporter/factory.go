@@ -31,9 +31,10 @@ const (
 // NewFactory creates a factory for OTLP exporter.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelAlpha),
+		exporter.WithLogs(createLogsExporter, component.StabilityLevelAlpha),
 	)
 }
 
@@ -58,6 +59,30 @@ func createMetricsExporter(
 		set,
 		cfg,
 		fe.ConsumeMetrics,
+		exporterhelper.WithStart(fe.Start),
+		exporterhelper.WithShutdown(fe.Shutdown),
+	)
+}
+
+func createLogsExporter(
+	ctx context.Context,
+	set exporter.CreateSettings,
+	cfg component.Config,
+) (exporter.Logs, error) {
+	// TODO: Danger!
+	// This shoud be using a shared component mechanism to ensure that
+	// multiple pipelines do not clobber each other.
+	// TODO: replace with https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/fileexporter
+	fe := &fileExporter{
+		logger: &lumberjack.Logger{
+			Filename: cfg.(*Config).Path,
+		},
+	}
+	return exporterhelper.NewLogsExporter(
+		ctx,
+		set,
+		cfg,
+		fe.ConsumeLogs,
 		exporterhelper.WithStart(fe.Start),
 		exporterhelper.WithShutdown(fe.Shutdown),
 	)

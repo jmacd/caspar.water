@@ -1,0 +1,11 @@
+[Unit]
+Description=Caspar Water Gateway Collector
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/home/jmacd/bin/collector.sh --config /home/jmacd/etc/config.yaml
+
+[Install]
+WantedBy=multi-user.target

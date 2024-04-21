@@ -1,0 +1,11 @@
+[Unit]
+Description=Caspar Water Pumphouse Supruglue Firmware
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/home/debian/bin/supructl start --firmware /home/debian/fw/simple_timer
+
+[Install]
+WantedBy=multi-user.target

@@ -10,8 +10,8 @@ import (
 const (
 	millis = time.Millisecond
 
-	Short = 300 * millis
-	Long  = 900 * millis
+	Short = 500 * millis  // longer than stated
+	Long  = 1100 * millis // longer than stated
 
 	StatusOK byte = 1
 )

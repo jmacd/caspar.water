@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -26,9 +27,9 @@ import (
 type influxHTTPWriter struct {
 	httpClient *http.Client
 
-	httpClientSettings confighttp.HTTPClientSettings
-	telemetry          component.TelemetrySettings
-	writeURL           string
+	httpClientConfig confighttp.ClientConfig
+	telemetry        component.TelemetrySettings
+	writeURL         string
 }
 
 func newInfluxHTTPWriter(config *Config, telemetrySettings component.TelemetrySettings) (*influxHTTPWriter, error) {
@@ -38,14 +39,14 @@ func newInfluxHTTPWriter(config *Config, telemetrySettings component.TelemetrySe
 	}
 
 	return &influxHTTPWriter{
-		httpClientSettings: config.HTTPClientSettings,
-		telemetry:          telemetrySettings,
-		writeURL:           writeURL,
+		httpClientConfig: config.ClientConfig,
+		telemetry:        telemetrySettings,
+		writeURL:         writeURL,
 	}, nil
 }
 
 func composeWriteURL(config *Config) (string, error) {
-	writeURL, err := url.Parse(config.HTTPClientSettings.Endpoint)
+	writeURL, err := url.Parse(config.ClientConfig.Endpoint)
 	if err != nil {
 		return "", err
 	}
@@ -65,10 +66,10 @@ func composeWriteURL(config *Config) (string, error) {
 	queryValues.Set("bucket", bucket)
 
 	if token != "" {
-		if config.HTTPClientSettings.Headers == nil {
-			config.HTTPClientSettings.Headers = map[string]configopaque.String{}
+		if config.ClientConfig.Headers == nil {
+			config.ClientConfig.Headers = map[string]configopaque.String{}
 		}
-		config.HTTPClientSettings.Headers["Authorization"] = "Token " + token
+		config.ClientConfig.Headers["Authorization"] = "Token " + token
 	}
 
 	writeURL.RawQuery = queryValues.Encode()
@@ -78,7 +79,7 @@ func composeWriteURL(config *Config) (string, error) {
 
 // Start implements component.StartFunc
 func (w *influxHTTPWriter) Start(_ context.Context, host component.Host) error {
-	httpClient, err := w.httpClientSettings.ToClient(host, w.telemetry)
+	httpClient, err := w.httpClientConfig.ToClient(host, w.telemetry)
 	if err != nil {
 		return err
 	}
@@ -109,16 +110,20 @@ func mapToKVs(m pcommon.Map) []attribute.KeyValue {
 	return attrs
 }
 
-func pointValue(pt pmetric.NumberDataPoint) lineprotocol.Value {
+func pointValue(pt pmetric.NumberDataPoint) (lineprotocol.Value, error) {
 	switch pt.ValueType() {
 	case pmetric.NumberDataPointValueTypeDouble:
+		if math.IsNaN(pt.DoubleValue()) {
+			return lineprotocol.Value{}, fmt.Errorf("NaN")
+		} else if math.IsInf(pt.DoubleValue(), 0) {
+			return lineprotocol.Value{}, fmt.Errorf("Inf")
+		}
 		v, _ := lineprotocol.FloatValue(pt.DoubleValue())
-		return v
+		return v, nil
 	case pmetric.NumberDataPointValueTypeInt:
-		return lineprotocol.IntValue(pt.IntValue())
+		return lineprotocol.IntValue(pt.IntValue()), nil
 	default:
-		v, _ := lineprotocol.StringValue("undefined")
-		return v
+		return lineprotocol.Value{}, fmt.Errorf("Unknown")
 	}
 }
 
@@ -202,13 +207,17 @@ func (w *influxHTTPWriter) consumeMetrics(ctx context.Context, ld pmetric.Metric
 				eachPoint := func(pts pmetric.NumberDataPointSlice) {
 					for pi := 0; pi < pts.Len(); pi++ {
 						pt := pts.At(pi)
+						value, err := pointValue(pt)
+						if err != nil {
+							continue
+						}
 						lkey := lineKey{
 							set: joinAttrs(rattrs, sattrs, mapToKVs(pt.Attributes())),
 							ts:  pt.Timestamp(),
 						}
 						allPoints[lkey] = append(allPoints[lkey], lineValue{
 							metric: nameOf(m),
-							value:  pointValue(pt),
+							value:  value,
 						})
 					}
 				}

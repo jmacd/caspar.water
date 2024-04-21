@@ -1,6 +1,6 @@
 variable "ipaddr" {
-  description = "IP address of BBB host"
-  default = "192.168.0.60"
+  description = "IP address of Linux host"
+  default = "192.168.0.40"
 }
 
 resource "null_resource" "setup-script" {
@@ -31,7 +31,7 @@ resource "null_resource" "setup-script" {
 
   provisioner "file" {
       source      = "config.yaml"
-      destination = "/home/debian/etc/config.yaml"
+      destination = "/home/jmacd/etc/config.yaml"
   }
 
   provisioner "file" {
@@ -40,23 +40,8 @@ resource "null_resource" "setup-script" {
   }
 
   provisioner "file" {
-      source      = "supruglue.service"
-      destination = "/etc/systemd/system/supruglue.service"
-  }
-
-  provisioner "file" {
-      source      = "../../../collector/collector.bbb"
-      destination = "/home/debian/bin/collector"
-  }
-
-  provisioner "file" {
-      source      = "edgemon.service"
-      destination = "/etc/systemd/system/edgemon.service"
-  }
-
-  provisioner "file" {
-      source      = "../../../cmd/edgemon/edgemon.bbb"
-      destination = "/home/debian/bin/edgemon"
+      source      = "../../../collector/collector.linux"
+      destination = "/home/jmacd/bin/collector"
   }
 
   provisioner "remote-exec" {
