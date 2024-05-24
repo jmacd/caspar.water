@@ -14,7 +14,7 @@ receivers:
 
 exporters:
   otelarrow:
-    endpoint: 192.168.0.40:4317
+    endpoint: 192.168.80.40:4317
     tls:
       insecure: true
     timeout: 1m
@@ -26,8 +26,7 @@ service:
   pipelines:
     metrics:
       receivers:
-# TODO: Atlasph won't start if not connected
-#      - atlasph
+      - atlasph
       - sparkplug
       processors: []
       exporters:

@@ -1,6 +1,6 @@
 variable "ipaddr" {
   description = "IP address of Linux host"
-  default = "192.168.0.40"
+  default = "192.168.80.40"
 }
 
 resource "null_resource" "setup-script" {

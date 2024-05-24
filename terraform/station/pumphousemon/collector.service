@@ -1,5 +1,5 @@
 [Unit]
-Description=Caspar Water Pumphouse Collector
+Description=Caspar Water Pumphouse Monitoring Collector
 After=network.target
 
 [Service]
