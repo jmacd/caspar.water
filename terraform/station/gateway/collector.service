@@ -5,6 +5,8 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
+StartLimitIntervalSec=0
+RestartSec=5
 ExecStart=/home/jmacd/bin/collector.sh --config /home/jmacd/etc/config.yaml
 
 [Install]

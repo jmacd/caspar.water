@@ -1,0 +1,63 @@
+
+receivers:
+  modbus:
+    url: "rtu:///dev/ttyUSB0"
+    prefix: "septicstation"
+    interval: "60s"
+    attributes:
+    - name: "hardware_version"
+      base: 45002
+      type: "uint16"
+      range: "holding"
+    - name: "software_version"
+      base: 45003
+      type: "uint16"
+      range: "holding"
+    - name: "serial_number"
+      base: 45004
+      type: "uint16"
+      range: "holding"
+    metrics:
+    - name: "energy_usage"
+      base: 40001
+      type: "uint32"
+      range: "holding"
+      unit: "kWh"
+      kind: counter
+    - name: "uptime"
+      base: 45007
+      type: "uint32"
+      range: "holding"
+      unit: "s"
+      kind: counter
+    - name: "peak_demand"
+      base: 40061
+      type: "float32"
+      range: "holding"
+      unit: "kW"
+      kind: gauge
+
+exporters:
+  debug:
+    verbosity: detailed
+  otelarrow:
+    endpoint: 192.168.80.40:4317
+    tls:
+      insecure: true
+    timeout: 1m
+    arrow:
+      num_streams: 1
+      max_stream_lifetime: 1h
+
+service:
+  pipelines:
+    logs:
+      receivers:
+      - modbus
+      exporters:
+      - debug
+  telemetry:
+    logs:
+      level: debug
+    metrics:
+      level: none
