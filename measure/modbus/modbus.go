@@ -144,6 +144,8 @@ func (c *modbusClient) read(f Field) (interface{}, error) {
 	switch f.Type {
 	case "uint32":
 		return c.client.ReadUint32(f.Base-1, rt)
+	case "uint16":
+		return c.client.ReadRegister(f.Base-1, rt)
 	case "float32":
 		return c.client.ReadFloat32(f.Base-1, rt)
 	case "bool":
