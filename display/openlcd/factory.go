@@ -34,7 +34,7 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, config component.Config) (exporter.Metrics, error) {
+func createMetricsExporter(ctx context.Context, set exporter.Settings, config component.Config) (exporter.Metrics, error) {
 	cfg := config.(*Config)
 	s, err := newOpenLCDExporter(cfg, set)
 	if err != nil {
@@ -43,8 +43,8 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, con
 	return exporterhelper.NewMetricsExporter(ctx, set, cfg,
 		s.pushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
-		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
+		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(configretry.BackOffConfig{Enabled: false}),
-		exporterhelper.WithQueue(exporterhelper.QueueSettings{Enabled: false}),
+		exporterhelper.WithQueue(exporterhelper.QueueConfig{Enabled: false}),
 	)
 }

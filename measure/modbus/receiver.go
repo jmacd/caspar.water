@@ -16,7 +16,7 @@ import (
 
 type modbusReceiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	client       *modbusClient
@@ -26,7 +26,7 @@ type modbusReceiver struct {
 	start map[string]pcommon.Timestamp
 }
 
-func newModbusReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*modbusReceiver, error) {
+func newModbusReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*modbusReceiver, error) {
 	client, err := New(cfg, cfg.Attributes, cfg.Metrics, set.Logger)
 	if err != nil {
 		return nil, err

@@ -45,7 +45,7 @@ var (
 
 type sparkplugReceiver struct {
 	lock         sync.Mutex
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	config       Config
 	allowMetrics map[string]bool
 	nextConsumer consumer.Metrics
@@ -64,7 +64,7 @@ var (
 
 // New creates the Sparkplug receiver with the given parameters.
 func New(
-	set receiver.CreateSettings,
+	set receiver.Settings,
 	config Config,
 	nextConsumer consumer.Metrics,
 ) (receiver.Metrics, error) {

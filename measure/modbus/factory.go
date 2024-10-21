@@ -37,7 +37,7 @@ func DefaultConfig() component.Config {
 // createMetrics creates a metrics receiver based on provided config.
 func createMetrics(
 	_ context.Context,
-	set receiver.CreateSettings,
+	set receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {

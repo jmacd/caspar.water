@@ -1,0 +1,9 @@
+server {
+    listen 80;
+    server_name septicstation;
+
+    location / {
+        proxy_pass http://192.168.70.80:2080/$uri$is_args$args;
+        proxy_set_header Host $host:$server_port;
+    }
+}

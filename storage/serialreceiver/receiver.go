@@ -31,7 +31,7 @@ type serialReceiver struct {
 // newSerialReceiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Logs) (*serialReceiver, error) {
+func newSerialReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Logs) (*serialReceiver, error) {
 	return &serialReceiver{
 		cfg:          cfg,
 		logger:       set.Logger.With(zap.String("device", cfg.Device)),
