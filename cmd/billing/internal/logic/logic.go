@@ -226,7 +226,7 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			charges[i], charges[j] = charges[j], charges[i]
 		})
 
-		marginStr := fmt.Sprintf("%.2f", savingsRate)
+		marginStr := fmt.Sprintf("%.0f%%", 100*(savingsRate-1))
 
 		// If the bill date is prior to
 		estimatedBilling := cycle.BillDate.Before(cycle.PeriodStart.Closing())

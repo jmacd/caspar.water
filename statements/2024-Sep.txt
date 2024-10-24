@@ -1,0 +1,14 @@
+This is a semi-annual statement of the cost of operations for the
+Caspar Water Company.  Listed below are total expenses for serving
+water from {{.StartFullDate}} through {{.CloseFullDate}}.
+{{ if .Estimated }}
+This is an estimated bill prepared prior to the end of a billing
+cycle; it was calculated using historical averages. {{ end }}
+
+Your bill represents {{.Percent}} of our semi-annual expenses.  This
+fraction equals your connection's weight
+({{.UserWeight }}) divided by the effective number of connections
+({{.EffectiveUserCount }}) in the system with a {{.Margin}}
+margin.  Please see the attached notice for an explanation
+of how your bill was computed.
+
