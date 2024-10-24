@@ -13,7 +13,7 @@ import (
 // Config defines configuration for the InfluxDB exporter.
 type Config struct {
 	confighttp.ClientConfig      `mapstructure:",squash"`
-	exporterhelper.QueueSettings `mapstructure:"sending_queue"`
+	exporterhelper.QueueConfig `mapstructure:"sending_queue"`
 	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 
 	// Org is the InfluxDB organization name of the destination bucket.

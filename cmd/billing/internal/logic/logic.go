@@ -226,7 +226,7 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			charges[i], charges[j] = charges[j], charges[i]
 		})
 
-		marginStr := fmt.Sprintf("%.2f", savingsRate)
+		marginStr := fmt.Sprintf("%.0f%%", 100*(savingsRate-1))
 
 		// If the bill date is prior to
 		estimatedBilling := cycle.BillDate.Before(cycle.PeriodStart.Closing())
@@ -250,6 +250,10 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 
 			acct := accts.Lookup(user.AccountName)
 			priorBalance := acct.Balance(cycle.BillDate)
+
+			// @@@ Oops. Some sort of bug is creeping with the handling of
+			// pennies and historical payments.  I'm seeing off-by $0.01 in
+			// the invoices, which I'm going to erase temporarily:
 
 			acct.EnterAmountDue(cycle.PeriodStart.Closing(), owes)
 

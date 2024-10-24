@@ -1,8 +1,26 @@
+# Note the paths in this file are relative to the mount point configured via
+# nomad.  They map to /opt/influxdb and /etc/caspar.d/influxdb.
 query-concurrency: 1
 query-queue-size: 1
-session-length: 120000
+session-length: 1200000
+
+# To update these is a headache.  Extract the p7b file from
+# the downloaded .zip, convert it to a .pem file and install it
+# for the server below.
+#
+# Also, add the root certificate (first ceritifcate, copied from
+# to a file named casparwater_us.crt in /usr/share/ca-certificates)
+# then run dpkg-reconfigure ca-certificates.
+#
+# If lucky, the new .pem can be verified, `openssl verify <file>.pem`
+#
+# And, don't use a passphrase.
 tls-cert: /etc/influxdb2/influxdb.pem
 tls-key: /etc/influxdb2/influxdb.key
+
+# This can be "debug"
+log-level: info
+
 hardening-enabled: true
 pprof-disabled: true
 metrics-disabled: true

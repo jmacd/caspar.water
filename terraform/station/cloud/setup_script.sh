@@ -74,3 +74,7 @@ mkdir -p /opt/influxdb
 		      --registry=jmacd-community \
 		      --ref=caspar_cloud_influx \
 		      -f /etc/caspar.d/influxdb/vars.hcl)
+
+
+systemctl enable nginx
+systemctl start nginx

@@ -6,11 +6,11 @@ receivers:
         - job_name: 'pumphouse'
           scrape_interval: 30s
           static_configs:
-            - targets: ['192.168.0.60:8888']
+            - targets: ['192.168.80.60:8888']
   otelarrow:
     protocols:
       grpc:
-        endpoint: 192.168.0.40:4317
+        endpoint: 192.168.80.40:4317
 
 processors:
 

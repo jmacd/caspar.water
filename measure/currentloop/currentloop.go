@@ -20,7 +20,7 @@ import (
 // loopReceiver is the type that exposes Trace and Metrics reception.
 type loopReceiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	nextConsumer consumer.Metrics
@@ -29,7 +29,7 @@ type loopReceiver struct {
 // newLoopReceiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newLoopReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*loopReceiver, error) {
+func newLoopReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*loopReceiver, error) {
 	r := &loopReceiver{
 		cfg:          cfg,
 		settings:     set,

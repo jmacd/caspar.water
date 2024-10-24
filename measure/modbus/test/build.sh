@@ -1,6 +1,6 @@
 #!/bin/sh
 
-PLAY=wellkit.local
+PLAY=septicstation.local
 
 scp -q -r -p * debian@${PLAY}:serial
 

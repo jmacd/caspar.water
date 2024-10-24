@@ -79,7 +79,7 @@ type matrixfruitExporter struct {
 // 	return ret, err
 // }
 
-func newMatrixfruitExporter(cfg *Config, set exporter.CreateSettings) (*matrixfruitExporter, error) {
+func newMatrixfruitExporter(cfg *Config, set exporter.Settings) (*matrixfruitExporter, error) {
 
 	f, err := os.OpenFile(cfg.Device, os.O_RDWR, 0)
 	if err != nil {

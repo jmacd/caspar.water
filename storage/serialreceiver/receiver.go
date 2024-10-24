@@ -22,46 +22,28 @@ const readTimeout = 5 * time.Second
 // serialReceiver is the type that exposes Trace and Metrics reception.
 type serialReceiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	logger       *zap.Logger
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
-	port         serial.Port
 	nextConsumer consumer.Logs
 }
 
 // newSerialReceiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newSerialReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Logs) (*serialReceiver, error) {
-	mode := &serial.Mode{
-		BaudRate: cfg.Baud,
-		DataBits: 8,
-		StopBits: serial.OneStopBit,
-		Parity:   serial.NoParity,
-	}
-	port, err := serial.Open(cfg.Device, mode)
-	if err != nil {
-		return nil, err
-	}
-	if err := port.SetReadTimeout(readTimeout); err != nil {
-		return nil, err
-	}
-	r := &serialReceiver{
+func newSerialReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Logs) (*serialReceiver, error) {
+	return &serialReceiver{
 		cfg:          cfg,
-		settings:     set,
+		logger:       set.Logger.With(zap.String("device", cfg.Device)),
 		nextConsumer: nextConsumer,
-		port:         port,
-	}
-	return r, nil
+	}, nil
 }
 
 // Start runs.
 func (r *serialReceiver) Start(_ context.Context, host component.Host) error {
+	// Note: do not use start context, it is canceled when start completes.
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	if err := r.port.Break(100 * time.Millisecond); err != nil {
-		return err
-	}
 	r.wg.Add(1)
 	go r.run(ctx)
 	return nil
@@ -70,8 +52,40 @@ func (r *serialReceiver) Start(_ context.Context, host component.Host) error {
 func (r *serialReceiver) run(ctx context.Context) {
 	defer r.wg.Done()
 
-	rdr := bufio.NewReader(r.port)
+	// Loop to re-open serial port
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			time.Sleep(time.Second)
+		}
+		mode := &serial.Mode{
+			BaudRate: r.cfg.Baud,
+			DataBits: 8,
+			StopBits: serial.OneStopBit,
+			Parity:   serial.NoParity,
+		}
+		port, err := serial.Open(r.cfg.Device, mode)
+		if err != nil {
+			r.logger.Error("serial open", zap.Error(err))
+			continue
+		}
+		r.runOpened(ctx, port, bufio.NewReader(port))
+	}
+}
 
+func (r *serialReceiver) runOpened(ctx context.Context, port serial.Port, rdr *bufio.Reader) {
+	defer port.Close()
+	if err := port.SetReadTimeout(readTimeout); err != nil {
+		r.logger.Error("serial setup", zap.Error(err))
+		return
+	}
+
+	if err := port.Break(100 * time.Millisecond); err != nil {
+		r.logger.Error("serial break", zap.Error(err))
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -79,9 +93,8 @@ func (r *serialReceiver) run(ctx context.Context) {
 		default:
 			data, err := r.read(rdr)
 			if err != nil {
-				r.settings.TelemetrySettings.Logger.Error(
+				r.logger.Error(
 					"serial read",
-					zap.String("device", r.cfg.Device),
 					zap.Error(err),
 				)
 			}
@@ -91,7 +104,7 @@ func (r *serialReceiver) run(ctx context.Context) {
 			}
 
 			if err := r.nextConsumer.ConsumeLogs(ctx, data); err != nil {
-				r.settings.TelemetrySettings.Logger.Error(
+				r.logger.Error(
 					"serial consume",
 					zap.Error(err),
 				)
@@ -130,7 +143,6 @@ func (r *serialReceiver) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("not started")
 	}
 	r.cancel()
-	_ = r.port.Close()
 	r.wg.Wait()
 	return nil
 }

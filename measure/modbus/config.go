@@ -19,6 +19,7 @@ type Field struct {
 type Metric struct {
 	Field `mapstructure:",squash"`
 	Unit  string `mapstructure:"unit"`
+	Kind  string `mapstructure:"kind"`
 }
 
 type Attribute struct {
@@ -96,9 +97,21 @@ func (f Field) check() error {
 		return fmt.Errorf("unknown range: %q", f.Range)
 	}
 	switch f.Type {
-	case "float32", "uint32", "bool":
+	case "float32", "uint32", "bool", "uint16":
 	default:
 		return fmt.Errorf("unknown type: %q", f.Type)
 	}
 	return nil
+}
+
+func (m Metric) check() error {
+	if err := m.Field.check(); err != nil {
+		return err
+	}
+	switch m.Kind {
+	case "counter", "gauge":
+		return nil
+	default:
+		return fmt.Errorf("unknown kind: %q", m.Kind)
+	}
 }

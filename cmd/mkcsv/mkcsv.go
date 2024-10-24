@@ -45,7 +45,8 @@ usage: %v input.json ... > output.csv`, os.Args[0])
 					continue
 				}
 
-				log.Fatalf("error in unmarshal: %q: %v", text, err)
+				log.Printf("error in unmarshal: %q: %v", text, err)
+				continue
 			}
 			items := make([][]*otlp.NumberDataPoint, len(mapMetrics))
 			for _, rm := range msg.ResourceMetrics {

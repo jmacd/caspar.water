@@ -17,7 +17,7 @@ import (
 // bme280Receiver is the type that exposes Trace and Metrics reception.
 type bme280Receiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	bme          *BME280
@@ -27,7 +27,7 @@ type bme280Receiver struct {
 // newBme280Receiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newBme280Receiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*bme280Receiver, error) {
+func newBme280Receiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*bme280Receiver, error) {
 	bme, err := New(cfg.Device, int(cfg.I2CAddr), UltraHighAccuracy)
 	if err != nil {
 		return nil, err

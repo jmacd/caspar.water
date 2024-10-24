@@ -28,7 +28,7 @@ type openLCDExporter struct {
 	olcd     *OpenLCD
 }
 
-func newOpenLCDExporter(cfg *Config, set exporter.CreateSettings) (*openLCDExporter, error) {
+func newOpenLCDExporter(cfg *Config, set exporter.Settings) (*openLCDExporter, error) {
 	f, err := os.OpenFile(cfg.Device, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open device: %s: %w", cfg.Device, err)

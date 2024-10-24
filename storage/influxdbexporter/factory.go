@@ -32,7 +32,7 @@ func createDefaultConfig() component.Config {
 			Timeout: 30 * time.Second,
 			Headers: map[string]configopaque.String{},
 		},
-		QueueSettings: exporterhelper.QueueSettings{
+		QueueConfig: exporterhelper.QueueConfig{
 			Enabled:      false,
 			NumConsumers: 1,
 			QueueSize:    0,
@@ -43,7 +43,7 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, config component.Config) (exporter.Metrics, error) {
+func createMetricsExporter(ctx context.Context, set exporter.Settings, config component.Config) (exporter.Metrics, error) {
 	cfg := config.(*Config)
 
 	writer, err := newInfluxHTTPWriter(cfg, set.TelemetrySettings)
@@ -56,7 +56,7 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings, con
 		set,
 		cfg,
 		writer.consumeMetrics,
-		exporterhelper.WithQueue(cfg.QueueSettings),
+		exporterhelper.WithQueue(cfg.QueueConfig),
 		exporterhelper.WithRetry(cfg.BackOffConfig),
 		exporterhelper.WithStart(writer.Start),
 	)

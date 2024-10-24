@@ -16,14 +16,17 @@ import (
 
 type modbusReceiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	client       *modbusClient
 	nextConsumer consumer.Metrics
+
+	lock  sync.Mutex
+	start map[string]pcommon.Timestamp
 }
 
-func newModbusReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*modbusReceiver, error) {
+func newModbusReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*modbusReceiver, error) {
 	client, err := New(cfg, cfg.Attributes, cfg.Metrics, set.Logger)
 	if err != nil {
 		return nil, err
@@ -31,6 +34,7 @@ func newModbusReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer co
 	r := &modbusReceiver{
 		cfg:          cfg,
 		settings:     set,
+		start:        map[string]pcommon.Timestamp{},
 		nextConsumer: nextConsumer,
 		client:       client,
 	}
@@ -97,9 +101,23 @@ func (r *modbusReceiver) measure(ctx context.Context) {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName(r.cfg.Prefix + "_" + ma.field.Name)
 		m.SetUnit(ma.field.Unit)
-		m.SetEmptyGauge()
-		pt := m.Gauge().DataPoints().AppendEmpty()
-		pt.SetTimestamp(ts)
+		var pt pmetric.NumberDataPoint
+		if ma.field.Kind == "gauge" {
+			m.SetEmptyGauge()
+			gp := m.Gauge()
+			pt = gp.DataPoints().AppendEmpty()
+			pt.SetTimestamp(ts)
+		} else if ma.field.Kind == "counter" {
+			m.SetEmptySum()
+			sp := m.Sum()
+			sp.SetIsMonotonic(true)
+			sp.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			pt = sp.DataPoints().AppendEmpty()
+			pt.SetTimestamp(ts)
+			pt.SetStartTimestamp(r.startFor(ma.field.Name, ts))
+		} else {
+			r.settings.TelemetrySettings.Logger.Error("unhandled metric kind")
+		}
 
 		switch t := ma.value.(type) {
 		case uint32:
@@ -114,6 +132,18 @@ func (r *modbusReceiver) measure(ctx context.Context) {
 	if err := r.nextConsumer.ConsumeMetrics(context.Background(), md); err != nil {
 		r.settings.TelemetrySettings.Logger.Error("write metrics", zap.Error(err))
 	}
+}
+
+func (r *modbusReceiver) startFor(name string, observed pcommon.Timestamp) pcommon.Timestamp {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	st, ok := r.start[name]
+	if !ok {
+		r.start[name] = observed
+		return observed
+	}
+	return st
 }
 
 // Shutdown stops.

@@ -19,7 +19,7 @@ import (
 // phReceiver is the type that exposes Trace and Metrics reception.
 type phReceiver struct {
 	cfg          *Config
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	ph           *ezo.Ph
@@ -29,7 +29,7 @@ type phReceiver struct {
 // newPhReceiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
-func newPhReceiver(cfg *Config, set receiver.CreateSettings, nextConsumer consumer.Metrics) (*phReceiver, error) {
+func newPhReceiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*phReceiver, error) {
 	dev, err := device.New(cfg.Device, int(cfg.I2CAddr))
 	if err != nil {
 		return nil, err

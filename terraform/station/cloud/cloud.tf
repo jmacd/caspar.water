@@ -70,6 +70,11 @@ resource "null_resource" "setup-script" {
       destination = "/etc/caspar.d/influxdb/config.yaml"
   }
 
+  provisioner "file" {
+      source      = "nginx.conf"
+      destination = "/etc/nginx/nginx.conf"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/setup_script.sh",

@@ -5,6 +5,8 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
+StartLimitIntervalSec=0
+RestartSec=5
 ExecStart=/home/debian/bin/supructl start --firmware /home/debian/fw/simple_timer
 
 [Install]
