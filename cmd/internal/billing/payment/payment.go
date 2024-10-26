@@ -3,8 +3,8 @@ package payment
 import (
 	"fmt"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/currency"
 )
 
 // Payment records a single user's payment.

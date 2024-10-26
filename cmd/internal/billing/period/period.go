@@ -3,7 +3,7 @@ package period
 import (
 	"fmt"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
 )
 
 // Periods are described by their start in CSV files, which must be

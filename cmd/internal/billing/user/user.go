@@ -3,9 +3,9 @@ package user
 import (
 	"fmt"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/address"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/bool"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/address"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/bool"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/period"
 )
 
 // User describes one account for payment.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/constant"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/constant"
 	"github.com/stretchr/testify/require"
 )
 

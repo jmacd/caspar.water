@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/constant"
+	"github.com/jmacd/caspar.water/cmd/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/constant"
 )
 
 type Date struct {

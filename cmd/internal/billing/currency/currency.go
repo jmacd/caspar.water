@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/Rhymond/go-money"
-	"github.com/jmacd/caspar.water/cmd/billing/internal"
+	"github.com/jmacd/caspar.water/cmd/internal/billing"
 )
 
 var dollarsAndCentsRe = regexp.MustCompile(`\$(\d+(?:,\d\d\d)*)\.(\d\d)`)

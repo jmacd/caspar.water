@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/logic"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/logic"
 	"github.com/spf13/afero"
 )
 
