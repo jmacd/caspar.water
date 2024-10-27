@@ -101,17 +101,22 @@ func main() {
 
 func (inv *Invoice) mainContent(m pdf.Maroto) {
 	var lines [][]string
+	var total currency.Amount
 
 	for _, item := range inv.Items {
 		lines = append(lines, []string{
 			item.Description,
 			item.Amount.Display(),
 		})
+		total = currency.Sum(total, item.Amount)
 	}
+	lines = append(lines, []string{"", ""})
+	lines = append(lines, []string{"Total", total.Display()})
+
 	m.Row(2, func() {
 		m.TableList([]string{
-			"Expense",
-			"Cost",
+			"Item",
+			"Amount",
 			"",
 		}, lines, invoice.TableStyle)
 	})

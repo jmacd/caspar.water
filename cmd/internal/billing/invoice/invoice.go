@@ -120,14 +120,14 @@ func MakeInvoice(
 		})
 	})
 
-	m.RegisterFooter(func() {
-		m.Row(3, func() {
-			m.Col(0, func() {
-				m.Text(bus.Contact, centerText)
+	// m.RegisterFooter(func() {
+	// 	m.Row(2, func() {
+	// 		m.Col(0, func() {
+	// 			m.Text(bus.Contact, centerText)
 
-			})
-		})
-	})
+	// 		})
+	// 	})
+	// })
 
 	m.Row(4, func() {})
 	m.Row(6, func() {
@@ -162,18 +162,20 @@ func MakeInvoice(
 		return nil, err
 	}
 
-	for _, para := range strings.Split(body, "\n\n") {
-		para = strings.TrimSpace(para)
-		para = strings.ReplaceAll(para, "\n", " ")
+	if body != "" {
+		for _, para := range strings.Split(body, "\n\n") {
+			para = strings.TrimSpace(para)
+			para = strings.ReplaceAll(para, "\n", " ")
 
-		plines := m.GetLinesHeight(para, normText, 115)
-		m.Row(float64(plines), func() {
-			m.Col(0, func() {
-				m.Text(para, normText)
+			plines := m.GetLinesHeight(para, normText, 115)
+			m.Row(float64(plines), func() {
+				m.Col(0, func() {
+					m.Text(para, normText)
+				})
 			})
-		})
+		}
+		m.Row(1, func() {})
 	}
-	m.Row(1, func() {})
 
 	mainContent(m)
 
@@ -192,5 +194,18 @@ func MakeInvoice(
 			m.Text("Thank you!", normText)
 		})
 	})
+
+	// m.RegisterFooter(func() {
+
+	// Having trouble with the footer being placed by itself on
+	// the following page.
+	m.Row(80, func() {})
+	m.Row(2, func() {
+		m.Col(0, func() {
+			m.Text(bus.Contact, centerText)
+
+		})
+	})
+	//})
 	return m, nil
 }
