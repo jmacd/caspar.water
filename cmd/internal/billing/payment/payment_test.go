@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
+	"github.com/jmacd/caspar.water/cmd/internal/billing"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/currency"
 	"github.com/stretchr/testify/require"
 )
 

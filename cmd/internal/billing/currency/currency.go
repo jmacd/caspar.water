@@ -8,7 +8,8 @@ import (
 	"strings"
 
 	"github.com/Rhymond/go-money"
-	"github.com/jmacd/caspar.water/cmd/billing/internal"
+	internal "github.com/jmacd/caspar.water/cmd/internal/billing"
+	"gopkg.in/yaml.v3"
 )
 
 var dollarsAndCentsRe = regexp.MustCompile(`\$(\d+(?:,\d\d\d)*)\.(\d\d)`)
@@ -69,6 +70,10 @@ func Difference(a, b Amount) Amount {
 	return Amount{
 		units: a.units - b.units,
 	}
+}
+
+func (a *Amount) UnmarshalYAML(node *yaml.Node) error {
+	return a.UnmarshalJSON([]byte(fmt.Sprintf("%q", node.Value)))
 }
 
 func (a *Amount) UnmarshalJSON(data []byte) error {

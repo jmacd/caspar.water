@@ -3,7 +3,7 @@ package business
 import (
 	"fmt"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/address"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/address"
 )
 
 // Business describes the billing entity and other static

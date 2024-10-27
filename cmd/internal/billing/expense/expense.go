@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/period"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/user"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/currency"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/period"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/user"
 )
 
 // Cycle describes the cost of doing business for one billing cycle.

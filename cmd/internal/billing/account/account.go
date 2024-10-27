@@ -1,10 +1,10 @@
 package account
 
 import (
-	"github.com/jmacd/caspar.water/cmd/billing/internal/csv"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/currency"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/payment"
-	"github.com/jmacd/caspar.water/cmd/billing/internal/user"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/currency"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/payment"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/user"
 )
 
 type Account struct {

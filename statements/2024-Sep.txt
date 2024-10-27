@@ -8,7 +8,6 @@ cycle; it was calculated using historical averages. {{ end }}
 Your bill represents {{.Percent}} of our semi-annual expenses.  This
 fraction equals your connection's weight
 ({{.UserWeight }}) divided by the effective number of connections
-({{.EffectiveUserCount }}) in the system with a {{.Margin}}
-margin.  Please see the attached notice for an explanation
-of how your bill was computed.
+({{.EffectiveUserCount }}) in the system plus a {{.Margin}}
+operating margin.
 
