@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"strings"
 	"text/template"
 
 	"github.com/jmacd/caspar.water/cmd/internal/billing/account"
@@ -17,12 +16,11 @@ import (
 	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/currency"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/expense"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/invoice"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/payment"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/user"
 	"github.com/jmacd/maroto/pkg/color"
-	"github.com/jmacd/maroto/pkg/consts"
 	"github.com/jmacd/maroto/pkg/pdf"
-	"github.com/jmacd/maroto/pkg/props"
 	"github.com/spf13/afero"
 )
 
@@ -45,6 +43,9 @@ type (
 	}
 
 	Vars struct {
+		tmpl  *template.Template
+		cycle expense.Cycle
+
 		// Timestamps
 		StartFullDate       string
 		StartMonthDate      string
@@ -95,6 +96,30 @@ type (
 		Cycles   []*CompanyStatement
 	}
 )
+
+var _ invoice.Document = &Vars{}
+
+func (vars *Vars) FullDate() string {
+	return vars.IssueFullDate
+}
+
+func (vars *Vars) InvoiceName() string {
+	n := vars.CloseMonthDate
+	if vars.Estimated {
+		n += "-Estimate"
+	}
+	return n
+}
+
+func (vars *Vars) BodyText() (string, error) {
+	var textBuf bytes.Buffer
+	err := vars.tmpl.Execute(&textBuf, vars)
+	if err != nil {
+		return "", err
+	}
+
+	return textBuf.String(), nil
+}
 
 func getPayment(user user.User, charges []currency.Amount, cycle expense.Cycle) (currency.Amount, float64, int, []currency.Amount) {
 	if cycle.Inactive.Contains(user) {
@@ -251,10 +276,6 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			acct := accts.Lookup(user.AccountName)
 			priorBalance := acct.Balance(cycle.BillDate)
 
-			// @@@ Oops. Some sort of bug is creeping with the handling of
-			// pennies and historical payments.  I'm seeing off-by $0.01 in
-			// the invoices, which I'm going to erase temporarily:
-
 			acct.EnterAmountDue(cycle.PeriodStart.Closing(), owes)
 
 			if estimatedBilling {
@@ -271,6 +292,9 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			}
 
 			userStmt.Vars = &Vars{
+				tmpl:  compStmt.Template,
+				cycle: cycle,
+
 				StartFullDate:       startFullDate,
 				CloseFullDate:       closeFullDate,
 				CloseMonthDate:      closeMonthDate,
@@ -305,181 +329,7 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 	return result, nil
 }
 
-func Output(result *Result) error {
-	for _, cycle := range result.Cycles {
-		for _, stmt := range cycle.Statements {
-			print, err := makeBill(result.Business, cycle.Expenses, stmt.User, stmt.Vars, cycle.Template)
-			if err != nil {
-				return err
-			}
-			if err := print.OutputFileAndClose(stmt.PdfPath); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-type lineStyle struct {
-	sz    float64
-	ht    float64
-	top   float64
-	txt   consts.Style
-	align consts.Align
-	color color.Color
-}
-
-func (style lineStyle) multiLine(m pdf.Maroto, lines []string) {
-	for _, line := range lines {
-		m.Row(style.ht, func() {
-			m.Col(0, func() {
-				m.Text(line, props.Text{
-					Size:  style.sz,
-					Top:   style.top,
-					Style: style.txt,
-					Align: style.align,
-					Color: style.color,
-				})
-			})
-		})
-	}
-}
-
-func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *Vars, tmpl *template.Template) (pdf.Maroto, error) {
-	m := pdf.NewMaroto(consts.Portrait, consts.Letter)
-	m.SetPageMargins(30, 25, 30)
-
-	const bigLine = 5
-	const smallLine = 4
-	const sepLine = 2
-
-	toStyle := lineStyle{
-		sz:    10,
-		ht:    bigLine,
-		top:   4,
-		txt:   consts.Bold,
-		align: consts.Left,
-		color: color.NewBlack(),
-	}
-
-	paymentStyle := lineStyle{
-		sz:    10,
-		ht:    bigLine,
-		top:   4,
-		align: consts.Left,
-		color: color.NewBlack(),
-	}
-
-	boldText := props.Text{
-		Top:    3,
-		Style:  consts.Bold,
-		Align:  consts.Left,
-		Family: consts.Helvetica,
-		Size:   10,
-	}
-
-	normText := props.Text{
-		Align:           consts.Left,
-		Family:          consts.Helvetica,
-		Size:            10,
-		VerticalPadding: 1,
-	}
-
-	centerText := props.Text{
-		Align:           consts.Center,
-		Family:          consts.Helvetica,
-		Size:            10,
-		VerticalPadding: 1,
-	}
-
-	rightText := props.Text{
-		Align:           consts.Right,
-		Family:          consts.Helvetica,
-		Size:            10,
-		VerticalPadding: 1,
-	}
-
-	tableStyle := props.TableList{
-		Align: consts.Right,
-		ContentProp: props.TableListContent{
-			Family: consts.Helvetica,
-			Size:   9,
-		},
-	}
-
-	m.RegisterHeader(func() {
-		m.Row(30, func() {
-			m.Col(0, func() {
-				_ = m.FileImage("assets/img/logo.jpg", props.Rect{
-					Percent: 100,
-					Center:  true,
-				})
-			})
-		})
-	})
-
-	m.RegisterFooter(func() {
-		m.Row(3, func() {
-			m.Col(0, func() {
-				m.Text(bus.Contact, centerText)
-
-			})
-		})
-	})
-
-	m.Row(4, func() {})
-	m.Row(6, func() {
-		m.Col(4, func() {
-			m.Text("To:", normText)
-		})
-		m.ColSpace(4)
-		m.Col(4, func() {
-			m.Text(vars.IssueFullDate, rightText)
-		})
-	})
-
-	toStyle.multiLine(m, append([]string{user.UserName}, user.BillingAddress.Split()...))
-	m.Row(4, func() {})
-
-	invoiceName := vars.CloseMonthDate
-	if vars.Estimated {
-		invoiceName += "-Estimate"
-	}
-
-	m.Row(8, func() {
-		m.Col(8, func() {
-			m.Text("Invoice: "+invoiceName, boldText)
-		})
-		m.Row(4, func() {})
-	})
-
-	m.Row(8, func() {
-		m.Col(12, func() {
-			m.Text("Service address: "+user.ServiceAddress.OneLine(), boldText)
-		})
-	})
-	m.Row(4, func() {})
-
-	var textBuf bytes.Buffer
-	err := tmpl.Execute(&textBuf, vars)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, para := range strings.Split(textBuf.String(), "\n\n") {
-		para = strings.TrimSpace(para)
-		para = strings.ReplaceAll(para, "\n", " ")
-
-		plines := m.GetLinesHeight(para, normText, 115)
-		m.Row(float64(plines), func() {
-			m.Col(0, func() {
-				m.Text(para, normText)
-			})
-		})
-		//m.Row(1, func() {})
-	}
-	m.Row(1, func() {})
-
+func (vars *Vars) mainContent(m pdf.Maroto) {
 	m.Row(2, func() {
 		m.TableList([]string{
 			"Expense",
@@ -488,19 +338,19 @@ func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *
 		}, [][]string{
 			{
 				"Operations",
-				cycle.Operations.Display(),
+				vars.cycle.Operations.Display(),
 			},
 			{
 				"Utilities",
-				cycle.Utilities.Display(),
+				vars.cycle.Utilities.Display(),
 			},
 			{
 				"Insurance",
-				cycle.Insurance.Display(),
+				vars.cycle.Insurance.Display(),
 			},
 			{
 				"Taxes",
-				cycle.Taxes.Display(),
+				vars.cycle.Taxes.Display(),
 			},
 			{},
 			{
@@ -528,23 +378,26 @@ func makeBill(bus business.Business, cycle expense.Cycle, user user.User, vars *
 				"Amount due",
 				vars.TotalDue,
 			},
-		}, tableStyle)
+		}, invoice.TableStyle)
 	})
+}
 
-	m.Row(2, func() {})
-	m.Row(4, func() {
-		m.Col(4, func() {
-			m.Text("Please send payment to:", normText)
-		})
-	})
-
-	paymentStyle.multiLine(m, append([]string{bus.Name}, bus.Address.Split()...))
-
-	m.Row(10, func() {})
-	m.Row(4, func() {
-		m.Col(4, func() {
-			m.Text("Thank you!", normText)
-		})
-	})
-	return m, nil
+func Output(result *Result) error {
+	for _, cycle := range result.Cycles {
+		for _, stmt := range cycle.Statements {
+			print, err := invoice.MakeInvoice(
+				result.Business,
+				stmt.User,
+				stmt.Vars,
+				stmt.Vars.mainContent,
+			)
+			if err != nil {
+				return err
+			}
+			if err := print.OutputFileAndClose(stmt.PdfPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
