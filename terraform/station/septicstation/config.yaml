@@ -4,11 +4,11 @@ receivers:
     url: "rtu:///dev/ttyUSB0"
     prefix: "septicstation"
     interval: "60s"
-    baud: 9600
+    baud: 19200
     data_bits: 8
     stop_bits: 1
-    parity: none
-    timeout: 500ms
+    parity: even
+    timeout: 200ms
     attributes:
     - name: "hardware_version"
       base: 5002

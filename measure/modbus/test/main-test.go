@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/jmacd/caspar.water/measure/modbus"
 	"go.uber.org/zap"
@@ -10,36 +11,28 @@ import (
 
 func main() {
 	logger, _ := zap.NewDevelopment()
+	cfg := modbus.Config{
+		URL:      "rtu:///dev/ttyUSB0",
+		Interval: time.Minute,
+		Baud:     9600,
+		DataBits: 8,
+		StopBits: 1,
+		Parity:   "none",
+		Timeout:  time.Second * 5,
+	}
+	
 	dev, err := modbus.New(
-		modbus.DefaultConfig().(*modbus.Config),
-		[]modbus.Attribute{
-			{
-				Field: modbus.Field{
-					Name:  "serial_number",
-					Base:  9002,
-					Type:  "uint32",
-					Range: "holding",
-				},
-			},
-		},
+		&cfg,
+		[]modbus.Attribute{},
 		[]modbus.Metric{
 			{
 				Field: modbus.Field{
-					Name:  "temperature",
-					Base:  38,
-					Type:  "float32",
+					Name:  "energy_usage",
+					Base:  1,
+					Type:  "uint32",
 					Range: "holding",
 				},
-				Unit: "C",
-			},
-			{
-				Field: modbus.Field{
-					Name:  "pressure",
-					Base:  46,
-					Type:  "float32",
-					Range: "holding",
-				},
-				Unit: "psi",
+				Unit: "kWh",
 			},
 		},
 		logger,
