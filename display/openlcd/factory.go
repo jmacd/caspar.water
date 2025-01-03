@@ -40,7 +40,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, config co
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewMetricsExporter(ctx, set, cfg,
+	return exporterhelper.NewMetrics(ctx, set, cfg,
 		s.pushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),

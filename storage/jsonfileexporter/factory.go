@@ -54,7 +54,7 @@ func createMetricsExporter(
 			Filename: cfg.(*Config).Path,
 		},
 	}
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,
@@ -78,7 +78,7 @@ func createLogsExporter(
 			Filename: cfg.(*Config).Path,
 		},
 	}
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		cfg,

@@ -19,6 +19,7 @@ import (
 type MockInteractive struct {
 	ctrl     *gomock.Controller
 	recorder *MockInteractiveMockRecorder
+	isgomock struct{}
 }
 
 // MockInteractiveMockRecorder is the mock recorder for MockInteractive.
@@ -55,10 +56,10 @@ func (mr *MockInteractiveMockRecorder) ReadLine() *gomock.Call {
 }
 
 // ReadRune mocks base method.
-func (m *MockInteractive) ReadRune() (int32, int, error) {
+func (m *MockInteractive) ReadRune() (rune, int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadRune")
-	ret0, _ := ret[0].(int32)
+	ret0, _ := ret[0].(rune)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

@@ -51,7 +51,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, config co
 		return nil, err
 	}
 
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,
