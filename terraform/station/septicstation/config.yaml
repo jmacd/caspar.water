@@ -1,5 +1,10 @@
 
 receivers:
+  bme280:
+    device: "/dev/i2c-5"
+    i2c_addr: 0x77
+    interval: "60s"
+    prefix: "septicstation"
   modbus:
     url: "rtu:///dev/ttyUSB0"
     prefix: "septicstation"
@@ -53,14 +58,30 @@ exporters:
     arrow:
       num_streams: 1
       max_stream_lifetime: 1h
+  openlcd:
+    device: "/dev/i2c-5"
+    i2c_addr: 0x72
+    run_for: 10m
+    refresh: 5s
+    staleness: 2m
+    show:
+    - metric: septicstation_temperature
+      abbrev: temp
+    - metric: septicstation_pressure
+      abbrev: atmos
+    - metric: septicstation_humidity
+      abbrev: humid
 
 service:
   pipelines:
     metrics:
       receivers:
-      - modbus
+#      - modbus
+      - bme280
       exporters:
-      - debug
+      - otelarrow
+#      - debug
+#      - openlcd
   telemetry:
     logs:
       level: debug

@@ -1,6 +1,6 @@
 variable "ipaddr" {
   description = "IP address of BBB host"
-  default = "192.168.70.70"
+  default = "192.168.70.162"
 }
 
 resource "null_resource" "setup-script" {
