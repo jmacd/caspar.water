@@ -13,7 +13,7 @@ receivers:
     data_bits: 8
     stop_bits: 1
     parity: even
-    timeout: 200ms
+    timeout: 500ms
     attributes:
     - name: "hardware_version"
       base: 5002
@@ -58,30 +58,16 @@ exporters:
     arrow:
       num_streams: 1
       max_stream_lifetime: 1h
-  openlcd:
-    device: "/dev/i2c-5"
-    i2c_addr: 0x72
-    run_for: 10m
-    refresh: 5s
-    staleness: 2m
-    show:
-    - metric: septicstation_temperature
-      abbrev: temp
-    - metric: septicstation_pressure
-      abbrev: atmos
-    - metric: septicstation_humidity
-      abbrev: humid
 
 service:
   pipelines:
     metrics:
       receivers:
-#      - modbus
+      - modbus
       - bme280
       exporters:
       - otelarrow
-#      - debug
-#      - openlcd
+      - debug
   telemetry:
     logs:
       level: debug
