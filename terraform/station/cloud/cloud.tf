@@ -26,7 +26,7 @@ resource "null_resource" "setup-script" {
   connection {
       type     = "ssh"
       user     = "root"
-      private_key="${file("/Users/josh.macdonald/.ssh/id_rsa")}"
+      private_key="${file("/Users/jmacd/.ssh/id_rsa")}"
       host     = linode_instance.debian-us-west.ip_address
   }
 
