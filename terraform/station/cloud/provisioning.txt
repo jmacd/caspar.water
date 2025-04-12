@@ -1,0 +1,23 @@
+0. Early
+
+  apt-get update
+  apt-get upgrade
+  apt install gpg
+
+1. Install Influxdb2
+
+From https://docs.influxdata.com/influxdb/v2/install/?t=Linux#choose-the-influxdata-key-pair-for-your-os-version
+
+echo "943666881a1b8d9b849b74caebf02d3465d6beb716510d86a39f6c8e8dac7515  influxdata-archive.key" | sha256sum --check - && cat influxdata-archive.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/influxdata-archive.gpg > /dev/null && echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
+
+sudo apt-get update && sudo apt-get install influxdb2
+
+2. Install certificate
+
+See update.ssl.notes.txt.
+scp casparwater_us.crt root@173.255.212.226:/usr/share/ca-certificates/
+dpkg-reconfigure ca-certificates
+
+3.
+
+

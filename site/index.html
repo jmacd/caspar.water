@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caspar Water System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            display: flex;
+            flex-wrap: wrap;
+            background-image: url('logo.jpg');
+            background-repeat: repeat;
+        }
+        header {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            max-width: 500px; /* Limit logo width */
+            height: auto;
+            margin-right: 20px;
+        }
+        .intro {
+            width: 100%;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .main-container {
+            display: flex;
+            width: 100%;
+        }
+        .nav-sidebar {
+            width: 200px;
+            margin-right: 30px;
+        }
+        .nav-item {
+            padding: 12px 15px;
+            margin-bottom: 5px;
+            background-color: rgba(240, 240, 240, 0.6);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .nav-item:hover {
+            background-color: rgba(224, 224, 224, 0.7);
+        }
+        .nav-item.active {
+            background-color: rgba(176, 176, 176, 0.7);
+            color: white;
+            font-weight: bold;
+        }
+        .content-section {
+            flex-grow: 1;
+            padding: 20px;
+            background-color: rgba(249, 249, 249, 0.7);
+            border-radius: 5px;
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .section-title {
+            color: #444;
+            margin-top: 0;
+        }
+        .section-image {
+            max-width: 100%;
+            height: auto;
+            margin: 20px 0;
+            display: block;
+        }
+        .caption {
+            font-style: italic;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <header>
+    </header>
+    
+    <div class="main-container">
+        <nav class="nav-sidebar">
+            <div class="nav-item active" data-section="history">History</div>
+            <div class="nav-item" data-section="blog">Blog</div>
+            <div class="nav-item" data-section="monitoring">Monitoring</div>
+            <div class="nav-item" data-section="software">Software</div>
+        </nav>
+        
+        <section id="history" class="content-section active">
+            <h2 class="section-title">Our History</h2>
+            <p>The Caspar Water System has a rich history dating back many years, serving the local community with reliable water service.</p>
+            <img src="old_water_map.jpg" alt="Historical Map of Caspar Water System" class="section-image">
+            <p class="caption">Historical map showing the original Caspar water distribution system.</p>
+        </section>
+        
+        <section id="blog" class="content-section">
+            <h2 class="section-title">Blog</h2>
+            <p>Recent updates and news about the Caspar Water System.</p>
+            <!-- Blog content placeholder -->
+        </section>
+        
+        <section id="monitoring" class="content-section">
+            <h2 class="section-title">Monitoring</h2>
+            <p>Information about our water monitoring system and current reports.</p>
+            <!-- Monitoring content placeholder -->
+        </section>
+        
+        <section id="software" class="content-section">
+            <h2 class="section-title">Software</h2>
+            <p>Software tools and resources related to our water system management.</p>
+            <!-- Software content placeholder -->
+        </section>
+    </div>
+    
+    <script>
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                // Remove active class from all nav items
+                document.querySelectorAll('.nav-item').forEach(navItem => {
+                    navItem.classList.remove('active');
+                });
+                
+                // Add active class to clicked nav item
+                this.classList.add('active');
+                
+                // Hide all content sections
+                document.querySelectorAll('.content-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                
+                // Show selected content section
+                const sectionId = this.getAttribute('data-section');
+                document.getElementById(sectionId).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
