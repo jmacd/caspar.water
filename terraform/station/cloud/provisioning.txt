@@ -1,4 +1,8 @@
+
+
 0. Early
+
+If you've made a new Linode, have to terraform import linode_instance.<name> linodeID
 
   apt-get update
   apt-get upgrade
@@ -19,5 +23,3 @@ scp casparwater_us.crt root@173.255.212.226:/usr/share/ca-certificates/
 dpkg-reconfigure ca-certificates
 
 3.
-
-

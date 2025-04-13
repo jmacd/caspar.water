@@ -15,19 +15,15 @@ receivers:
 processors:
 
 exporters:
-  otlp:
-    endpoint: ingest.lightstep.com:443
-    headers:
-    - lightstep-access-token: ${env:LIGHTSTEP_TOKEN}
+  influxdb:
+    endpoint: "https://casparwater.us:8086"
+    org: "casparwater"
+    bucket: "production"
+    token: "${INFLUXD_TOKEN}"
   jsonfile:
     path: "/home/data/casparwater.json"
   jsonfile/logs:
     path: "/home/data/systemlogs.json"
-  influxdb:
-    endpoint: https://casparwater.us:8086
-    org: casparwater
-    bucket: production
-    token: ${env:INFLUXD_TOKEN}
 
 service:
   pipelines:
@@ -37,7 +33,6 @@ service:
       - otelarrow
       processors: []
       exporters:
-      - otlp
       - jsonfile
       - influxdb
     logs:
