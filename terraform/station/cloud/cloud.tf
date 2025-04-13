@@ -55,10 +55,20 @@ resource "null_resource" "setup-script" {
       destination = "/var/www/html/"
   }
 
-  #provisioner "file" {
-  #    source      = "influxdb.yaml"
-  #    destination = "/etc/caspar.d/influxdb/config.yaml"
-  #}
+  provisioner "file" {
+      source      = "influxdb.toml"
+      destination = "/etc/influxdb/config.toml"
+  }
+
+  provisioner "file" {
+      source      = "casparwater_certs/casparwater_us.pem"
+      destination = "/etc/influxdb/casparwater_us.pem"
+  }
+
+  provisioner "file" {
+      source      = "casparwater_certs/casparwater_us.key"
+      destination = "/etc/influxdb/casparwater_us.key"
+  }
 
   provisioner "remote-exec" {
     inline = [
