@@ -5,81 +5,123 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Caspar Water System</title>
     <style>
+        :root {
+            --font-size: 20px;
+            --background-color: white;
+            --text-color: #222;
+            --nav-bg-color: rgba(50, 200, 250, 0.90);
+            --nav-hover-color: rgba(224, 224, 224, 0.95);
+            --nav-active-color: rgba(76, 76, 76, 0.95);
+            --nav-active-text: white;
+            --content-bg-color: rgba(50, 200, 250, 0.90);
+            --link-color: #0055bb;
+            --link-visited: #4b1584;
+            --caption-color: #444;
+        }
+        
         body {
             font-family: Arial, sans-serif;
-            max-width: 1200px;
+            font-size: var(--font-size);
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             line-height: 1.6;
             display: flex;
             flex-wrap: wrap;
-            background-image: url('logo.jpg');
+            background-image: url('img/logo.svg');
             background-repeat: repeat;
+            background-size: 1500px auto;
+            color: var(--text-color);
+            transition: all 0.3s ease;
         }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+                max-width: none;
+                width: 900px;
+                overflow-x: auto;
+            }
+            
+            .main-container {
+                flex-direction: row;
+                min-width: 900px;
+            }
+            
+            .nav-sidebar {
+                width: 200px;
+                margin-right: 30px;
+                margin-bottom: 0;
+            }
+        }
+        
         header {
             width: 100%;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             margin-bottom: 30px;
         }
-        .logo {
-            max-width: 500px; /* Limit logo width */
-            height: auto;
-            margin-right: 20px;
-        }
-        .intro {
-            width: 100%;
-            margin-bottom: 30px;
-            color: #333;
-        }
+        
         .main-container {
             display: flex;
             width: 100%;
         }
+        
         .nav-sidebar {
             width: 200px;
             margin-right: 30px;
         }
+        
         .nav-item {
             padding: 12px 15px;
             margin-bottom: 5px;
-            background-color: rgba(240, 240, 240, 0.6);
+            background-color: var(--nav-bg-color);
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
+            font-size: 1.1rem;
+            width: 170px;
+            box-sizing: border-box;
         }
+        
         .nav-item:hover {
-            background-color: rgba(224, 224, 224, 0.7);
+            background-color: var(--nav-hover-color);
         }
+        
         .nav-item.active {
-            background-color: rgba(176, 176, 176, 0.7);
-            color: white;
+            background-color: var(--nav-active-color);
+            color: var(--nav-active-text);
             font-weight: bold;
         }
+        
         .content-section {
             flex-grow: 1;
             padding: 20px;
-            background-color: rgba(249, 249, 249, 0.7);
+            background-color: var(--content-bg-color);
             border-radius: 5px;
             display: none;
+            font-size: 1.1rem;
         }
+        
         .content-section.active {
             display: block;
         }
+        
         .section-title {
-            color: #444;
+            color: var(--text-color);
             margin-top: 0;
+            font-size: 1.5rem;
         }
-        .section-image {
-            max-width: 100%;
-            height: auto;
-            margin: 20px 0;
-            display: block;
+        
+        a {
+            color: var(--link-color);
+            text-decoration: underline;
+            transition: color 0.3s ease;
         }
-        .caption {
-            font-style: italic;
-            color: #666;
-            font-size: 0.9em;
+        
+        a:visited {
+            color: var(--link-visited);
         }
     </style>
 </head>
@@ -102,6 +144,26 @@
         
         <section id="history" class="content-section active">
             <h2 class="section-title">Our History</h2>
+            <p>The Caspar Water System has roots dating back to the
+            town's origins as a lumber community in the mid-19th
+            century. Caspar grew around the Caspar Lumber Company,
+            which operated until 1955.</p>
+            
+            <p>In its heyday, Caspar was a thriving company town
+            on the Mendocino coast, with a sawmill, railway
+            system, and infrastructure to support its workers. The
+            water system developed during this period served the
+            community's growing needs.</p>
+            
+            <p>Over the decades, our water system has evolved through
+            a number ground water and surface water sources. Long-time
+            residents still recall the prominent three-level water
+            tower that once stood as a landmark in the community.</p>
+            
+            <p>When the lumber mill closed, many of the town's
+            original structures were dismantled, but the water system
+            infrastructure remained and continued to develop to serve
+            the changing community.</p>
         </section>
         
         <section id="monitoring" class="content-section">
