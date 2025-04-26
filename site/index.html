@@ -11,7 +11,7 @@
             --text-color: #222;
             --nav-bg-color: rgba(50, 200, 250, 0.90);
             --nav-hover-color: rgba(224, 224, 224, 0.95);
-            --nav-active-color: rgba(76, 76, 76, 0.95);
+            --nav-active-color: rgba(100, 100, 100, 0.95);
             --nav-active-text: white;
             --content-bg-color: rgba(50, 200, 250, 0.90);
             --link-color: #0055bb;
@@ -34,7 +34,7 @@
             color: var(--text-color);
             transition: all 0.3s ease;
         }
-        
+
         @media (max-width: 768px) {
             body {
                 padding: 10px;
@@ -46,11 +46,12 @@
             .main-container {
                 flex-direction: row;
                 min-width: 900px;
+                gap: 20px; /* Maintain the same gap in mobile view */
             }
             
             .nav-sidebar {
                 width: 200px;
-                margin-right: 30px;
+                margin-right: 0; /* Ensure no margin is used in mobile */
                 margin-bottom: 0;
             }
         }
@@ -66,11 +67,11 @@
         .main-container {
             display: flex;
             width: 100%;
+            gap: 20px; /* Fixed gap between nav and content */
         }
         
         .nav-sidebar {
-            width: 200px;
-            margin-right: 30px;
+            flex: 0 0 200px; /* Fixed width, doesn't grow or shrink */
         }
         
         .nav-item {
@@ -80,7 +81,7 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
-            font-size: 1.1rem;
+            font-size: 1.5rem;
             width: 170px;
             box-sizing: border-box;
         }
@@ -96,12 +97,14 @@
         }
         
         .content-section {
-            flex-grow: 1;
+            flex: 0 0 calc(100% - 220px); /* Fixed width calculation (100% - nav width - gap) */
             padding: 20px;
             background-color: var(--content-bg-color);
             border-radius: 5px;
             display: none;
-            font-size: 1.1rem;
+            font-size: 1.5rem;
+            box-sizing: border-box; /* Include padding in width calculation */
+            width: calc(100% - 220px); /* Explicit width for older browsers */
         }
         
         .content-section.active {
@@ -123,6 +126,15 @@
         a:visited {
             color: var(--link-visited);
         }
+        
+        .science {
+            background-color: rgba(224, 224, 224, 0.95);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 1.2em;
+        }
     </style>
 </head>
 <body>
@@ -133,6 +145,7 @@
         <nav class="nav-sidebar">
             <div class="nav-item active" data-section="history">History</div>
             <div class="nav-item" data-section="blog">Blog</div>
+            <div class="nav-item" data-section="system">System</div>
             <div class="nav-item" data-section="monitoring">Monitoring</div>
             <div class="nav-item" data-section="software">Software</div>
         </nav>
@@ -170,6 +183,55 @@
             <h2 class="section-title">Monitoring</h2>
             <p><a href="https://casparwater.us:8086">Influxdb</a></p>
             
+        </section>
+
+        <section id="system" class="content-section">
+            <h2 class="section-title">System design</h2>
+
+            <p>The Caspar Water System has been described as a
+            "chlorinator in the woods".  We use a relatively simple
+            process to provide clean and safe drinking water to our
+            community:</p>
+            
+            <ul>
+                <li><strong>Water Source:</strong> Our raw water is
+                sourced from a deep well located in the Caspar
+                area.</li>
+                <li><strong>Disinfection:</strong> The water undergoes
+                chlorination to deactivate harmful bacteria and
+                waterborn pathogens.</li>
+                <li><strong>Aeration:</strong> The water undergoes
+                aeration to raise pH. 
+                <li><strong>Storage:</strong> Treated water is stored
+                in a 10,000 gallon concrete tank.</li>
+                <li><strong>Water Quality:</strong> Our system
+                addresses two main quality concerns:
+                    <ul>
+                        <li>Raw water pH level 5.9 (slightly acidic)</li>
+                        <li>Relatively high organic iron content</li>
+                    </ul>
+                <li><strong>Gravity fed:</strong> Our water system
+                delivers water to service connections with static
+                pressures between 35psi and 60psi based on elevation.
+                </li>
+            </ul>
+
+            The aeration process works by removing carbon dioxide from
+            the water through natural offgassing of carbon dioxide,
+            it's the reverse of the process causing ocean
+            acidification.  Additional O₂ present in the water
+            disrupts the chemical equilibrium:
+
+                <div class="science">
+                  <strong>CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻</strong><br>
+		  <strong>HCO₃⁻ ⇌ HCO⁻ + O₂</strong>
+                </div>
+
+             As CO₂ is removed, fewer hydrogen ions (H⁺) are produced,
+             effectively raising the water's pH level.  Our water is
+             served with pH around 6.8 as a result of this
+             process.</li>
+
         </section>
         
         <section id="software" class="content-section">
