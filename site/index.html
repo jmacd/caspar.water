@@ -9,7 +9,7 @@
             --font-size: 20px;
             --background-color: white;
             --text-color: #222;
-            --nav-bg-color: rgba(50, 200, 250, 0.965);
+            --nav-bg-color: rgba(50, 250, 200, 0.965);
             --nav-hover-color: rgba(224, 224, 224, 0.965);
             --nav-active-color: rgba(100, 100, 100, 0.965);
             --nav-active-text: white;
@@ -135,6 +135,25 @@
             text-align: center;
             font-size: 1.2em;
         }
+        
+        .image-container {
+            float: right;
+            margin-left: 20px;
+            max-width: 500px;
+            text-align: center;
+        }
+        
+        .image-container img {
+            width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        
+        .image-caption {
+            font-size: 0.75rem;
+            color: var(--caption-color);
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -179,6 +198,16 @@
               town's origins as a lumber community in the mid-19th
               century. Caspar grew around the Caspar Lumber Company,
               which operated until 1955.</p>
+
+            <div style="float: right; margin-left: 20px; max-width: 500px; text-align: center;">
+                <a href="./img/caspar-fire-1891.jpg" target="_blank">
+                    <img src="./img/caspar-fire-1891.jpg" alt="Caspar Fire 1891" style="width: 100%; height: auto; border-radius: 5px;">
+                </a>
+                <p style="font-size: 0.75rem; color: var(--caption-color); margin-top: 5px;">
+		  This 1891 fire insurance map shows a 1½-inch fire
+                  hydrant on the modern-day Caspar Frontage Road
+                  West.</p>
+            </div>
             
           <p>In its heyday, Caspar was a thriving company town
             on the Mendocino coast, with a sawmill, railway
@@ -217,8 +246,7 @@
 	                
             <ul>
                 <li><strong>Source:</strong> Our raw water is
-                  sourced from a deep well located in the Caspar
-                  area.</li>
+                  sourced from a 188-feet deep well.</li>
                 <li><strong>Disinfection:</strong> The water undergoes
                   chlorination to deactivate harmful bacteria and
                   waterborne pathogens.</li>
@@ -340,8 +368,8 @@
 
 	  <p>We have high-resolution well depth measurements dating
 	    back to August 2022, with which we can see the history of
-	    leaks, leak repairs, faucets left running, and other fine
-	    detail about our impact on the aquifer.</p>
+	    leaks, leak repairs, faucets left running, and other kinds
+	    of fine detail about our impact on the aquifer.</p>
 
 	  <p>🚧 <a href="well_depth/index.html">Our well-depth data is now online.
 	    We are working to have it update automatically</a>. </p>
@@ -350,8 +378,77 @@
 
 	<section id="software" class="content-section">
 	  <h2 class="section-title">Software</h2>
-	  <p>Software tools and resources related to our water system management.</p>
-	  <!-- Software content placeholder -->
+
+	  <h3>Open-source</h3>
+
+	  <p>Caspar Water System thanks the authors of the many pieces
+	    of computer software/system that we depend on, including:
+
+	    <ul>
+	      <li><a href="https://www.debian.org/">Debian Linux 🐧</a>
+	      <li><a href="https://www.beagleboard.org/">Beagleboard</a>
+	      <li><a href="https://www.influxdata.com/lp/influxdb-database">InfluxDB</a>
+	      <li><a href="https://opentelemetry.io/docs/collector/">OpenTelemetry Collector</a>
+	      <li><a href="https://duckdb.org/">DuckDB</a>
+	      <li><a href="https://observablehq.com/framework/">Observable Framework</a>.
+	      <li>Many Rust and Golang libraries,
+	      especially <a href="https://github.com/mochi-mqtt/server">mochi-mqtt/server</a>,
+	      and <a href="https://github.com/simonvetter/modbus">simonvetter/modbus</a>,
+	      and the <a href="https://github.com/apache/arrow-rs">Rust Apache Arrow libraries</a>.
+	    </ul>
+	  </p>
+
+	  <p>Our source code is available under an Apache-2 license
+	    at <a href="https://github.com/jmacd/caspar.water">jmacd/caspar.water</a>,
+	    including:
+
+	    <ul>
+	      <li>Custom OpenTelemetry collector build including
+		receivers (modbus, current-loop, mqtt/sparkplug,
+		bme280, atlas pH), exporters (influxdb, LCD displays),
+		etc.
+	      <li>Billing program
+		(thanks <a href="https://github.com/johnfercher/maroto">johnfercher/maroto</a>
+		for the PDF generator library).
+	      <li>Terraform definitions for cloud and station computer
+		infrastructure (station, gateway, cloud).
+	    </ul>
+	  </p>
+	    
+	  <h3>Duckpond</h3>
+
+	  <p><a href="https://github.com/jmacd/duckpond">Duckpond</a>
+	    is a "local-first" Rust software system for managing
+	    timeseries from a variety of sources (CSV), based on
+	    DuckDB and Parquet files.  This manages a file system of
+	    timeseries data and exports to Observable Framework.
+	  </p>
+
+	  <p>🚧 Duckpond is being used to publish water monitoring data
+	    collected by
+	    the <a href="https://noyooceancollective.org/">Noyo Harbor
+	    Blue Economy</a> project as a volunteer
+	    collaboration. Includes a
+	    vendor-specific <a href="https://www.hydrovu.com">HydroVu</a>
+	    client built.</p>
+
+	  <p>🚧 Duckpond is being used to publish <a href="./well_depth/index.html">
+	      water monitoring data for Caspar Water system itself</a>.
+	  </p>
+
+	  <h3>Supruglue</h3>
+
+	  <p><a href="https://github.com/jmacd/supruglue">Supruglue</a>
+	    is a C++ real-time programming environment for the
+	    Beaglebone/Texas Instruments <em>am335x</em> PRU real-time
+	    chip aimed at being low-tech.</p>
+
+	  <p>Mmmm. Proof of concept industrial real-time timer switch
+	    (that logs to the cloud), pulse counter, UI-1203 ("Sensus
+	    protocol") reader. I would prefer to write such a thing in
+	    Rust today, and we're not certain that Texas Instruments
+	    will continue producing this chip!</p>
+
 	</section>
 
         <section id="operator" class="content-section">
@@ -383,7 +480,7 @@
 	    
             <p>Charlie Acker and Rio Russell at the Elk water district for technical guidance.</p>
 
-            <p>Rich Estabrook for aquifer testing.</p>
+            <p>Rich Estabrook for well and aquifer testing.</p>
 
 	    <p>Chris Brians for teaching us how to shovel.</p>
 
