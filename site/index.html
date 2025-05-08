@@ -4,179 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Caspar Water System</title>
-    <style>
-        :root {
-            --font-size: 20px;
-            --background-color: white;
-            --text-color: #222;
-            --nav-bg-color: rgba(50, 250, 200, 0.965);
-            --nav-hover-color: rgba(224, 224, 224, 0.965);
-            --nav-active-color: rgba(100, 100, 100, 0.965);
-            --nav-active-text: white;
-            --content-bg-color: rgba(50, 200, 250, 0.965);
-            --link-color: #0055bb;
-            --link-visited: #4b1584;
-            --caption-color: #444;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            font-size: var(--font-size);
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            display: flex;
-            flex-wrap: wrap;
-            background-image: url('img/logo.svg');
-            background-repeat: repeat;
-            background-size: 1500px auto;
-            color: var(--text-color);
-            transition: all 0.3s ease;
-        }
-
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-                max-width: none;
-                width: 900px;
-                overflow-x: auto;
-            }
-            
-            .main-container {
-                flex-direction: row;
-                min-width: 900px;
-                gap: 20px; /* Maintain the same gap in mobile view */
-            }
-            
-            .nav-sidebar {
-                width: 200px;
-                margin-right: 0; /* Ensure no margin is used in mobile */
-                margin-bottom: 0;
-            }
-        }
-        
-        header {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 30px;
-        }
-        
-        .main-container {
-            display: flex;
-            width: 100%;
-            gap: 20px; /* Fixed gap between nav and content */
-        }
-        
-        .nav-sidebar {
-            flex: 0 0 200px; /* Fixed width, doesn't grow or shrink */
-        }
-        
-        .nav-item {
-            padding: 12px 15px;
-            margin-bottom: 5px;
-            background-color: var(--nav-bg-color);
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-size: 1.5rem;
-            width: 170px;
-            box-sizing: border-box;
-        }
-        
-        .nav-item:hover {
-            background-color: var(--nav-hover-color);
-        }
-        
-        .nav-item.active {
-            background-color: var(--nav-active-color);
-            color: var(--nav-active-text);
-            font-weight: bold;
-        }
-        
-        .content-section {
-            flex: 0 0 calc(100% - 220px); /* Fixed width calculation (100% - nav width - gap) */
-            padding: 20px;
-            background-color: var(--content-bg-color);
-            border-radius: 5px;
-            display: none;
-            font-size: 1.5rem;
-            box-sizing: border-box; /* Include padding in width calculation */
-            width: calc(100% - 220px); /* Explicit width for older browsers */
-        }
-        
-        .content-section.active {
-            display: block;
-        }
-        
-        .section-title {
-            color: var(--text-color);
-            margin-top: 0;
-            font-size: 1.5rem;
-        }
-        
-        a {
-            color: var(--link-color);
-            text-decoration: underline;
-            transition: color 0.3s ease;
-        }
-        
-        a:visited {
-            color: var(--link-visited);
-        }
-        
-        .science {
-            background-color: rgba(224, 224, 224, 0.95);
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 5px;
-            text-align: center;
-            font-size: 1.2em;
-        }
-        
-        .image-container {
-            float: right;
-            margin-left: 20px;
-            max-width: 500px;
-            text-align: center;
-        }
-        
-        .image-container img {
-            width: 100%;
-            height: auto;
-            border-radius: 5px;
-        }
-        
-        .image-caption {
-            font-size: 0.75rem;
-            color: var(--caption-color);
-            margin-top: 5px;
-        }
-
-	.indented {
-	    margin-left: 50px;
-	}
-
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
     </header>
     
     <div class="main-container">
-        <nav class="nav-sidebar">
-            <div class="nav-item active" data-section="political">Political</div>
-            <div class="nav-item" data-section="blog">Blog</div>
-            <div class="nav-item" data-section="history">History</div>
-            <div class="nav-item" data-section="water">Water</div>
-            <div class="nav-item" data-section="system">System</div>
-            <div class="nav-item" data-section="monitoring">Monitoring</div>
-            <div class="nav-item" data-section="software">Software</div>
-            <div class="nav-item" data-section="operator">Operator</div>
-            <div class="nav-item" data-section="thanks">Thanks</div>
-        </nav>
+        <script id="replace-with-header-navbar">
+            fetch("./header-nav.html")
+                .then((response) => response.text())
+                .then((data) => {
+                    let old_element = document.querySelector("script#replace-with-header-navbar");
+                    let new_element = new DOMParser()
+                        .parseFromString(data, "text/html")
+                        .querySelector("nav");
+                    old_element.parentNode.replaceChild(new_element, old_element);
+                })
+                .catch((err) => console.log(err));
+        </script>
         
         <section id="political" class="content-section active">
 
