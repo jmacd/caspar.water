@@ -1,12 +1,17 @@
 Use namecheap to renew
 Will ask to renew SSL CSR
 
-openssl req -newkey rsa:2048 -keyout casparwater.key -out casparwater.csr
+openssl req -newkey rsa:2048 -keyout casparwater_us.key -out casparwater_us.csr
+Do not yse a Passphrase
+If they make you use a passphrase, remove it like "openssl rsa -in casparwater_us.key -out nopw.key"
+
 
 Will ask to update CNAME w/ special details
+(Wait...)
+
 Then will allow download
 Next
 
-openssl pkcs7 -print_certs -in certificate.p7b -out certificate.pem
+openssl pkcs7 -print_certs -in casparwater_us.p7b -out casparwater_us.pem
 
 
