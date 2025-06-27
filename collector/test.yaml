@@ -1,0 +1,49 @@
+
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'pumphouse'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['192.168.80.60:8888']
+  otelarrow:
+    protocols:
+      grpc:
+        endpoint: 192.168.80.40:4317
+
+processors:
+
+exporters:
+  influxdb:
+    endpoint: "https://casparwater.us:8086"
+    org: "casparwater"
+    bucket: "production"
+    token: "${INFLUXD_TOKEN}"
+  jsonfile:
+    path: "/home/data/casparwater.json"
+  jsonfile/logs:
+    path: "/home/data/systemlogs.json"
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+      - prometheus
+      - otelarrow
+      processors: []
+      exporters:
+      - jsonfile
+      - influxdb
+    logs:
+      receivers:
+      - otelarrow
+      exporters:
+      - jsonfile/logs
+  telemetry:
+    logs:
+      level: debug
+    metrics:
+      level: none
+
+

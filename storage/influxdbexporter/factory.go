@@ -32,11 +32,11 @@ func createDefaultConfig() component.Config {
 			Timeout: 30 * time.Second,
 			Headers: map[string]configopaque.String{},
 		},
-		QueueConfig: exporterhelper.QueueConfig{
-			Enabled:      false,
-			NumConsumers: 1,
-			QueueSize:    0,
-		},
+		// QueueConfig: exporterhelper.QueueConfig{
+		// 	Enabled:      false,
+		// 	NumConsumers: 1,
+		// 	QueueSize:    0,
+		// },
 		BackOffConfig: configretry.BackOffConfig{
 			Enabled: true,
 		},
@@ -56,7 +56,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, config co
 		set,
 		cfg,
 		writer.consumeMetrics,
-		exporterhelper.WithQueue(cfg.QueueConfig),
+		// exporterhelper.WithQueue(cfg.QueueConfig),
 		exporterhelper.WithRetry(cfg.BackOffConfig),
 		exporterhelper.WithStart(writer.Start),
 	)

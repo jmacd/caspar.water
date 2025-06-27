@@ -7,14 +7,14 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configretry"
-	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	//"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for the InfluxDB exporter.
 type Config struct {
-	confighttp.ClientConfig      `mapstructure:",squash"`
-	exporterhelper.QueueConfig `mapstructure:"sending_queue"`
-	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	confighttp.ClientConfig    `mapstructure:",squash"`
+	//exporterhelper.QueueConfig `mapstructure:"sending_queue"`
+	configretry.BackOffConfig  `mapstructure:"retry_on_failure"`
 
 	// Org is the InfluxDB organization name of the destination bucket.
 	Org string `mapstructure:"org"`
