@@ -4,6 +4,8 @@
 package influxdbexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/influxdbexporter"
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configretry"
@@ -25,5 +27,14 @@ type Config struct {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.Org == "" {
+		return fmt.Errorf("org cannot be empty")
+	}
+	if cfg.Bucket == "" {
+		return fmt.Errorf("bucket cannot be empty")
+	}
+	if cfg.Token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	return nil
 }

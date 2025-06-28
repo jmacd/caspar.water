@@ -9,7 +9,8 @@ apt-get install -y openssl
 apt-get install -y gpg
 
 # Note some manual setup for deb source
-apt-get install influxdb2
+# Note this appears to have wiped-out an existing influxdd install!
+#apt-get install influxdb2
 
 systemctl stop nginx
 systemctl enable nginx
