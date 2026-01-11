@@ -30,7 +30,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		ClientConfig: confighttp.ClientConfig{
 			Timeout: 30 * time.Second,
-			Headers: map[string]configopaque.String{},
+			Headers: configopaque.MapList{},
 		},
 		// QueueConfig: exporterhelper.QueueConfig{
 		// 	Enabled:      false,

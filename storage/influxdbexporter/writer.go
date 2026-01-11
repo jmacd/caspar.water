@@ -68,9 +68,9 @@ func composeWriteURL(config *Config) (string, error) {
 
 	if token != "" {
 		if config.ClientConfig.Headers == nil {
-			config.ClientConfig.Headers = map[string]configopaque.String{}
+			config.ClientConfig.Headers = configopaque.MapList{}
 		}
-		config.ClientConfig.Headers["Authorization"] = "Token " + token
+		config.ClientConfig.Headers.Set("Authorization", "Token " + token)
 	}
 
 	writeURL.RawQuery = queryValues.Encode()
@@ -80,7 +80,7 @@ func composeWriteURL(config *Config) (string, error) {
 
 // Start implements component.StartFunc
 func (w *influxHTTPWriter) Start(ctx context.Context, host component.Host) error {
-	httpClient, err := w.httpClientConfig.ToClient(ctx, host, w.telemetry)
+	httpClient, err := w.httpClientConfig.ToClient(ctx, host.GetExtensions(), w.telemetry)
 	if err != nil {
 		return err
 	}

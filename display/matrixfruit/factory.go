@@ -19,6 +19,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -51,6 +52,6 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, config co
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(configretry.BackOffConfig{Enabled: false}),
-		exporterhelper.WithQueue(exporterhelper.QueueConfig{Enabled: false}),
+		exporterhelper.WithQueue(configoptional.Default(exporterhelper.NewDefaultQueueConfig())),
 	)
 }
