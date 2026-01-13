@@ -88,9 +88,6 @@ func (f Field) check() error {
 	if f.Name == "" {
 		return fmt.Errorf("name is empty")
 	}
-	if f.Base < 1 || f.Base > 9999 {
-		return fmt.Errorf("0 < base < 10000")
-	}
 	switch f.Range {
 	case "coil", "discrete", "input", "holding":
 	default:
