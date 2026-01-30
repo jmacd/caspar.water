@@ -85,13 +85,13 @@ func (r *modbusReceiver) measure(ctx context.Context) {
 	attrs := sm.Scope().Attributes()
 
 	for _, ma := range data.A {
-		switch t := ma.value.(type) {
+		switch t := ma.Value.(type) {
 		case uint32:
-			attrs.PutInt(r.cfg.Prefix+"_"+ma.field.Name, int64(t))
+			attrs.PutInt(r.cfg.Prefix+"_"+ma.Field.Name, int64(t))
 		case float32:
-			attrs.PutDouble(r.cfg.Prefix+"_"+ma.field.Name, float64(t))
+			attrs.PutDouble(r.cfg.Prefix+"_"+ma.Field.Name, float64(t))
 		case string:
-			attrs.PutStr(r.cfg.Prefix+"_"+ma.field.Name, t)
+			attrs.PutStr(r.cfg.Prefix+"_"+ma.Field.Name, t)
 		default:
 			r.settings.TelemetrySettings.Logger.Error("unhandled attribute type")
 		}
@@ -99,27 +99,27 @@ func (r *modbusReceiver) measure(ctx context.Context) {
 
 	for _, ma := range data.M {
 		m := sm.Metrics().AppendEmpty()
-		m.SetName(r.cfg.Prefix + "_" + ma.field.Name)
-		m.SetUnit(ma.field.Unit)
+		m.SetName(r.cfg.Prefix + "_" + ma.Field.Name)
+		m.SetUnit(ma.Field.Unit)
 		var pt pmetric.NumberDataPoint
-		if ma.field.Kind == "gauge" {
+		if ma.Field.Kind == "gauge" {
 			m.SetEmptyGauge()
 			gp := m.Gauge()
 			pt = gp.DataPoints().AppendEmpty()
 			pt.SetTimestamp(ts)
-		} else if ma.field.Kind == "counter" {
+		} else if ma.Field.Kind == "counter" {
 			m.SetEmptySum()
 			sp := m.Sum()
 			sp.SetIsMonotonic(true)
 			sp.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 			pt = sp.DataPoints().AppendEmpty()
 			pt.SetTimestamp(ts)
-			pt.SetStartTimestamp(r.startFor(ma.field.Name, ts))
+			pt.SetStartTimestamp(r.startFor(ma.Field.Name, ts))
 		} else {
 			r.settings.TelemetrySettings.Logger.Error("unhandled metric kind")
 		}
 
-		switch t := ma.value.(type) {
+		switch t := ma.Value.(type) {
 		case uint32:
 			pt.SetIntValue(int64(t))
 		case float32:

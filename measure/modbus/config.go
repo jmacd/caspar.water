@@ -40,6 +40,14 @@ type Config struct {
 	StopBits uint          `mapstructure:"stop_bits"`
 	Parity   string        `mapstructure:"parity"`
 	Timeout  time.Duration `mapstructure:"timeout"`
+
+	// Reconnect causes a fresh TCP connection for each register read.
+	// Required for some devices (e.g., Orenco) that close connection after each request.
+	Reconnect bool `mapstructure:"reconnect"`
+
+	// ReadDelay is the delay between consecutive register reads.
+	// Some devices require gaps between requests (e.g., Orenco requires 15s).
+	ReadDelay time.Duration `mapstructure:"read_delay"`
 }
 
 var _ component.Config = (*Config)(nil)
