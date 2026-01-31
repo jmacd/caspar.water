@@ -120,12 +120,20 @@ func (r *modbusReceiver) measure(ctx context.Context) {
 		}
 
 		switch t := ma.Value.(type) {
+		case bool:
+			if t {
+				pt.SetIntValue(1)
+			} else {
+				pt.SetIntValue(0)
+			}
+		case uint16:
+			pt.SetIntValue(int64(t))
 		case uint32:
 			pt.SetIntValue(int64(t))
 		case float32:
 			pt.SetDoubleValue(float64(t))
 		default:
-			r.settings.TelemetrySettings.Logger.Error("unhandled metric type")
+			r.settings.TelemetrySettings.Logger.Error("unhandled metric type", zap.String("type", fmt.Sprintf("%T", ma.Value)))
 		}
 	}
 
