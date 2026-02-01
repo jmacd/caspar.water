@@ -18,7 +18,7 @@ import (
 const (
 	baseURL  = "http://192.168.70.237:2080"
 	username = "osi"
-	password = "2604E2DE"
+	password = ""
 	maxPages = 50
 )
 
