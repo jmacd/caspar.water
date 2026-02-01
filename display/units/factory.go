@@ -42,7 +42,7 @@ func createMetricsProcessor(
 
 	metricsProcessor := newUnitsProcessor(processorConfig)
 
-	return processorhelper.NewMetricsProcessor(
+	return processorhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,

@@ -1,65 +1,255 @@
 
 receivers:
-  modbus:
-    url: "rtu:///dev/ttyUSB0"
+  bme280:
+    device: "/dev/i2c-5"
+    i2c_addr: 0x77
+    interval: "10m"
     prefix: "septicstation"
-    interval: "60s"
-    baud: 9600
-    data_bits: 8
-    stop_bits: 1
-    parity: none
-    timeout: 500ms
-    attributes:
-    - name: "hardware_version"
-      base: 5002
-      type: "uint16"
-      range: "holding"
-    - name: "software_version"
-      base: 5003
-      type: "uint16"
-      range: "holding"
-    - name: "serial_number"
-      base: 5004
-      type: "uint16"
-      range: "holding"
+  modbus:
+    url: tcp://192.168.70.237:502
+    interval: 5m
+    timeout: 2s
+    reconnect: true       # Orenco closes connection after each request
+    read_delay: 15s       # Orenco requires 15s between register reads
+    prefix: "orenco"
     metrics:
-    - name: "energy_usage"
-      base: 1
-      type: "uint32"
-      range: "holding"
-      unit: "kWh"
-      kind: counter
-    - name: "uptime"
-      base: 5007
-      type: "uint32"
-      range: "holding"
-      unit: "s"
-      kind: counter
-    - name: "peak_demand"
-      base: 61
-      type: "float32"
-      range: "holding"
-      unit: "kW"
+    - name: RT_PumpMode
+      base: 1003             # Pt2
+      type: float32
+      range: holding
+      unit: "1"
       kind: gauge
-
+    - name: DT_PumpMode
+      base: 1009             # Pt5
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_Pump1_Amps
+      base: 1181             # Pt91
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: RT_Pump2_Amps
+      base: 1183             # Pt92
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: RT_TotalCount
+      base: 1283             # Pt142
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_TotalTime
+      base: 1285             # Pt143
+      type: float32
+      range: holding
+      unit: "Min"
+      kind: gauge
+    - name: RT_TotalFlow
+      base: 1287             # Pt144
+      type: float32
+      range: holding
+      unit: "Gals"
+      kind: gauge
+    - name: DT_Pump3_Amps
+      base: 1369             # Pt185
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: DT_Pump4_Amps
+      base: 1371             # Pt186
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: DT_TotalCount
+      base: 1443             # Pt222
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_TotalTime
+      base: 1445             # Pt223
+      type: float32
+      range: holding
+      unit: "Min"
+      kind: gauge
+    - name: DT_TotalFlow
+      base: 1447             # Pt224
+      type: float32
+      range: holding
+      unit: "Gal"
+      kind: gauge
+    - name: Zone1_CountTday
+      base: 1545             # Pt273
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone2_CountTday
+      base: 1547             # Pt274
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone3_CountTday
+      base: 1549             # Pt275
+      type: float32
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone1_TimeTday
+      base: 1553             # Pt277
+      type: float32
+      range: holding
+      unit: "Min"
+      kind: gauge
+    - name: Zone2_TimeTday
+      base: 1555             # Pt278
+      type: float32
+      range: holding
+      unit: "Min"
+      kind: gauge
+    - name: Zone3_TimeTday
+      base: 1557             # Pt279
+      type: float32
+      range: holding
+      unit: "Min"
+      kind: gauge
+    - name: RT_P1_HighAmps
+      base: 40387             # Pt387
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_P1_LowAmps
+      base: 40388             # Pt388
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_P2_HighAmps
+      base: 40389             # Pt389
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_P2_LowAmps
+      base: 40390             # Pt390
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_P3_HighAmps
+      base: 40394             # Pt394
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_P3_LowAmps
+      base: 40395             # Pt395
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_P4_HighAmps
+      base: 40396             # Pt396
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_P4_LowAmps
+      base: 40397             # Pt397
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_Pump1_CT
+      base: 2185             # Pt593
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: RT_Pump2_CT
+      base: 2187             # Pt594
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: DT_Pump3_CT
+      base: 2189             # Pt595
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: DT_Pump4_CT
+      base: 2191             # Pt596
+      type: float32
+      range: holding
+      unit: "Amps"
+      kind: gauge
+    - name: RT_Pump1
+      base: 40609             # Pt609
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: RT_Pump2
+      base: 40610             # Pt610
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_Pump3
+      base: 40611             # Pt611
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: DT_Pump4
+      base: 40612             # Pt612
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone1_Valve
+      base: 40614             # Pt614
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone2_Valve
+      base: 40615             # Pt615
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+    - name: Zone3_Valve
+      base: 40616             # Pt616
+      type: uint16
+      range: holding
+      unit: "1"
+      kind: gauge
+      
 exporters:
   debug:
     verbosity: detailed
-  otelarrow:
-    endpoint: 192.168.80.40:4317
-    tls:
-      insecure: true
-    timeout: 1m
-    arrow:
-      num_streams: 1
-      max_stream_lifetime: 1h
+  jsonfile:
+    path: "/home/data/septicstation.json"
 
 service:
   pipelines:
     metrics:
       receivers:
+      - bme280
       - modbus
       exporters:
+      - jsonfile
       - debug
   telemetry:
     logs:

@@ -29,6 +29,7 @@ func main() {
 		log.Fatalf(`program uses file inputs and standard output
 usage: %v input.json ... > output.csv`, os.Args[0])
 	}
+	fmt.Println("Timestamp, LT400.Depth.m")
 	for _, arg := range os.Args[1:] {
 		f, err := os.Open(arg)
 		if err != nil {

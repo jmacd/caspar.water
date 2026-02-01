@@ -95,12 +95,12 @@ func MakeInvoice(
 		VerticalPadding: 1,
 	}
 
-	centerText := props.Text{
-		Align:           consts.Center,
-		Family:          consts.Helvetica,
-		Size:            10,
-		VerticalPadding: 1,
-	}
+	// centerText := props.Text{
+	// 	Align:           consts.Center,
+	// 	Family:          consts.Helvetica,
+	// 	Size:            10,
+	// 	VerticalPadding: 1,
+	// }
 
 	rightText := props.Text{
 		Align:           consts.Right,
@@ -121,7 +121,7 @@ func MakeInvoice(
 	})
 
 	// m.RegisterFooter(func() {
-	// 	m.Row(2, func() {
+	// 	m.Row(0, func() {
 	// 		m.Col(0, func() {
 	// 			m.Text(bus.Contact, centerText)
 
@@ -199,13 +199,13 @@ func MakeInvoice(
 
 	// Having trouble with the footer being placed by itself on
 	// the following page.
-	m.Row(80, func() {})
-	m.Row(2, func() {
-		m.Col(0, func() {
-			m.Text(bus.Contact, centerText)
+	// m.Row(80, func() {})
+	// m.Row(2, func() {
+	// 	m.Col(0, func() {
+	// 		m.Text(bus.Contact, centerText)
 
-		})
-	})
+	// 	})
+	// })
 	//})
 	return m, nil
 }

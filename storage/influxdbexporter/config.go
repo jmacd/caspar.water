@@ -4,17 +4,19 @@
 package influxdbexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/influxdbexporter"
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configretry"
-	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	//"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for the InfluxDB exporter.
 type Config struct {
-	confighttp.ClientConfig      `mapstructure:",squash"`
-	exporterhelper.QueueConfig `mapstructure:"sending_queue"`
-	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	confighttp.ClientConfig    `mapstructure:",squash"`
+	//exporterhelper.QueueConfig `mapstructure:"sending_queue"`
+	configretry.BackOffConfig  `mapstructure:"retry_on_failure"`
 
 	// Org is the InfluxDB organization name of the destination bucket.
 	Org string `mapstructure:"org"`
@@ -25,5 +27,14 @@ type Config struct {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.Org == "" {
+		return fmt.Errorf("org cannot be empty")
+	}
+	if cfg.Bucket == "" {
+		return fmt.Errorf("bucket cannot be empty")
+	}
+	if cfg.Token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	return nil
 }

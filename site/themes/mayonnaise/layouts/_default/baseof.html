@@ -1,0 +1,66 @@
+{{ $themeStyleDefault := "light.css" -}}
+
+<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode }}">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+{{- if isset .Site.Params "onionlocation" }}
+	<meta http-equiv="onion-location" content="{{ urls.JoinPath .Site.Params.OnionLocation .RelPermalink }}">
+{{- end }}
+	<title>{{ block "title" . }}{{ .Site.Title }}{{ end }}</title>
+	<link rel="stylesheet" href="{{ "css/styles.css" | relURL }}">
+	<link id="theme_css" rel="stylesheet" href="{{ "css/themes" | relURL }}/{{ .Site.Params.ThemeStyle | default $themeStyleDefault }}">
+{{- if .Site.Params.ThemeStyleSwitcher }}
+	<script src="{{ "js/theme-switcher.js" | relURL }}"></script>
+{{- end }}
+</head>
+<body>
+	<input class="show-hide-menu-input" style="display:none;" autocomplete="off" type="checkbox" id="toggle-1">
+	<label class="overlay" for="toggle-1"></label>
+	<div class="main">
+		<header class="header">
+			<div class="header-content">
+				<div class="title">
+					<a href="{{ .Site.BaseURL }}">{{ .Site.Title }}</a>
+				</div>
+				<div>
+					<div class="header-right">
+{{- if .Site.Params.ThemeStyleSwitcher }}
+						<div id="change-theme-button" style="display:none;" class="clickable-header-label" onclick="toggle_theme()">
+							<img class="color-adapting-image" width="30" src="" alt="change theme button">
+						</div>
+{{- end }}
+						<label id="show-hide-menu-label" class="clickable-header-label" for="toggle-1">
+							<img class="color-adapting-image" width="30" src="{{ "images/hamburger.svg" | relURL }}" alt="menu button">
+						</label>
+					</div>
+{{- if .Site.Menus.main }}
+					<div class="dont-show">
+						<p>
+							Links:
+						</p>
+					</div>
+					<ul class="links">
+{{- range .Site.Menus.main.ByWeight }}
+						<li><a href="{{ .URL }}">{{ .Name }}</a></li>
+{{- end }}
+					</ul>
+{{- end }}
+				</div>
+			</div>
+		</header>
+		<main class="body">
+			<div class="body-content">
+				{{- block "main" . }}{{ end }}
+			</div>
+		</main>
+	</div>
+{{- if .Site.Params.FooterText }}
+	<hr class="dont-show">
+	<footer class="footer">
+		<p>{{ .Site.Params.FooterText | markdownify }}</p>
+	</footer>
+{{- end }}
+</body>
+</html>

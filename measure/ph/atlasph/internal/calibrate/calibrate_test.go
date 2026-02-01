@@ -27,7 +27,7 @@ func TestCalibrate(t *testing.T) {
 	require.NotNil(t, ph)
 
 	inter := mymock.NewMockInteractive(ctrl)
-	cc := NewCalibration(inter, ph)
+	cc := New(inter, ph)
 
 	gomock.InOrder(
 		// reads calibration temperature,
@@ -62,5 +62,5 @@ func TestCalibrate(t *testing.T) {
 	tdev.EXPECT().WriteSleepRead("RT,15.00", device.Long).Return(device.StatusOK, "7.25", nil).MinTimes(9)
 	tdev.EXPECT().WriteSleepRead("Slope,?", device.Short).Return(device.StatusOK, "?Slope,99.9,100.1,-0.5", nil).Times(1)
 
-	require.NoError(t, cc.Calibrate())
+	require.NoError(t, cc.Calibrate(3))
 }

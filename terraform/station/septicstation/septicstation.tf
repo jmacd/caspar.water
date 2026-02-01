@@ -1,6 +1,6 @@
 variable "ipaddr" {
   description = "IP address of BBB host"
-  default = "192.168.70.70"
+  default = "192.168.70.162"
 }
 
 resource "null_resource" "setup-script" {
@@ -8,7 +8,7 @@ resource "null_resource" "setup-script" {
   connection {
     type     = "ssh"
     user     = "root"
-    private_key ="${file("/Users/josh.macdonald/.ssh/id_rsa")}"
+    private_key ="${file("/Users/jmacd/.ssh/id_rsa")}"
     host     = "${var.ipaddr}"
   }
 

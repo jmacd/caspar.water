@@ -10,61 +10,68 @@ import (
 )
 
 type modbusClient struct {
-	cfg     *Config
-	client  *modbus.ModbusClient
-	attrs   []Attribute
-	metrics []Metric
-	logger  *zap.Logger
+	cfg          *Config
+	client       *modbus.ModbusClient
+	clientConfig *modbus.ClientConfiguration
+	attrs        []Attribute
+	metrics      []Metric
+	logger       *zap.Logger
 }
 
-type pair[T any] struct {
-	field T
-	value interface{}
+type Pair[T any] struct {
+	Field T
+	Value interface{}
 }
 
 // Measurements contains compensated measurement values.
 type Measurements struct {
-	A []pair[Attribute]
-	M []pair[Metric]
+	A []Pair[Attribute]
+	M []Pair[Metric]
 }
 
 func New(cfg *Config, attrs []Attribute, metrics []Metric, logger *zap.Logger) (*modbusClient, error) {
-	var client *modbus.ModbusClient
-	var err error
-
 	parity, err := parityFromString(cfg.Parity)
 	if err != nil {
 		return nil, err
 	}
-	client, err = modbus.NewClient(&modbus.ClientConfiguration{
+
+	clientConfig := &modbus.ClientConfiguration{
 		URL:      cfg.URL,
 		Speed:    cfg.Baud,
 		DataBits: cfg.DataBits,
 		Parity:   parity,
 		StopBits: cfg.StopBits,
 		Timeout:  cfg.Timeout,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("new client: %w", err)
-	}
-	mc := &modbusClient{
-		cfg:     cfg,
-		client:  client,
-		attrs:   attrs,
-		metrics: metrics,
-		logger:  logger,
 	}
 
-	err = client.Open()
-	if err != nil {
-		return nil, fmt.Errorf("open: %w", err)
+	mc := &modbusClient{
+		cfg:          cfg,
+		clientConfig: clientConfig,
+		attrs:        attrs,
+		metrics:      metrics,
+		logger:       logger,
+	}
+
+	// If not reconnecting per-read, open a persistent connection
+	if !cfg.Reconnect {
+		client, err := modbus.NewClient(clientConfig)
+		if err != nil {
+			return nil, fmt.Errorf("new client: %w", err)
+		}
+		if err = client.Open(); err != nil {
+			return nil, fmt.Errorf("open: %w", err)
+		}
+		mc.client = client
 	}
 
 	return mc, nil
 }
 
 func (c *modbusClient) Close() error {
-	return c.client.Close()
+	if c.client != nil {
+		return c.client.Close()
+	}
+	return nil
 }
 
 func isDone(ctx context.Context) bool {
@@ -79,13 +86,19 @@ func isDone(ctx context.Context) bool {
 func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 	var m Measurements
 
-	wholeTimeout := c.cfg.Timeout * 2 * time.Duration(len(c.attrs)+len(c.metrics))
+	// Calculate timeout based on read delay if set, otherwise use legacy 5s
+	delayPerRead := c.cfg.ReadDelay
+	if delayPerRead == 0 {
+		delayPerRead = 5 * time.Second
+	}
+	wholeTimeout := (c.cfg.Timeout + delayPerRead) * 2 * time.Duration(len(c.attrs)+len(c.metrics))
 	ctx, cancel := context.WithTimeout(ctx, wholeTimeout)
 	defer cancel()
 
+	firstRead := true
 	for _, attr := range c.attrs {
 		for !isDone(ctx) {
-			aval, err := c.read(attr.Field)
+			aval, err := c.readField(ctx, attr.Field, &firstRead)
 
 			if err != nil {
 				time.Sleep(20 * time.Millisecond)
@@ -96,9 +109,9 @@ func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 				}
 				continue
 			}
-			m.A = append(m.A, pair[Attribute]{
-				field: attr,
-				value: aval,
+			m.A = append(m.A, Pair[Attribute]{
+				Field: attr,
+				Value: aval,
 			})
 			break
 		}
@@ -106,7 +119,7 @@ func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 
 	for _, metric := range c.metrics {
 		for !isDone(ctx) {
-			aval, err := c.read(metric.Field)
+			aval, err := c.readField(ctx, metric.Field, &firstRead)
 
 			if err != nil {
 				time.Sleep(20 * time.Millisecond)
@@ -117,9 +130,9 @@ func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 				}
 				continue
 			}
-			m.M = append(m.M, pair[Metric]{
-				field: metric,
-				value: aval,
+			m.M = append(m.M, Pair[Metric]{
+				Field: metric,
+				Value: aval,
 			})
 			break
 		}
@@ -128,7 +141,43 @@ func (c *modbusClient) Read(ctx context.Context) (Measurements, error) {
 	return m, nil
 }
 
-func (c *modbusClient) read(f Field) (interface{}, error) {
+// readField reads a single field, handling reconnect and delay as configured
+func (c *modbusClient) readField(ctx context.Context, f Field, firstRead *bool) (interface{}, error) {
+	// Apply read delay (skip for first read)
+	if !*firstRead && c.cfg.ReadDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(c.cfg.ReadDelay):
+		}
+	} else if !*firstRead {
+		// Legacy behavior: 5s delay if no read_delay configured
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
+	*firstRead = false
+
+	// If reconnect mode, create fresh connection for this read
+	client := c.client
+	if c.cfg.Reconnect {
+		var err error
+		client, err = modbus.NewClient(c.clientConfig)
+		if err != nil {
+			return nil, fmt.Errorf("new client: %w", err)
+		}
+		if err = client.Open(); err != nil {
+			return nil, fmt.Errorf("open: %w", err)
+		}
+		defer client.Close()
+	}
+
+	return c.read(client, f)
+}
+
+func (c *modbusClient) read(client *modbus.ModbusClient, f Field) (interface{}, error) {
 	var rt modbus.RegType
 	switch f.Range {
 	case "coil":
@@ -143,17 +192,17 @@ func (c *modbusClient) read(f Field) (interface{}, error) {
 
 	switch f.Type {
 	case "uint32":
-		return c.client.ReadUint32(f.Base-1, rt)
+		return client.ReadUint32(f.Base-1, rt)
 	case "uint16":
-		return c.client.ReadRegister(f.Base-1, rt)
+		return client.ReadRegister(f.Base-1, rt)
 	case "float32":
-		return c.client.ReadFloat32(f.Base-1, rt)
+		return client.ReadFloat32(f.Base-1, rt)
 	case "bool":
 		switch f.Range {
 		case "coil":
-			return c.client.ReadCoil(f.Base - 1)
+			return client.ReadCoil(f.Base - 1)
 		case "discrete":
-			return c.client.ReadDiscreteInput(f.Base - 1)
+			return client.ReadDiscreteInput(f.Base - 1)
 		}
 	}
 	return nil, fmt.Errorf("unknown type/range %q/%q", f.Type, f.Range)

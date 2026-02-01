@@ -1,7 +1,7 @@
 # Invoice generator
 
-This tool is meant for irregularly-generated invoices, as opposed to
-the [billing program for recurring payments](../billing/README.md).
+This tool is meant for regularly-generated statements, as opposed to
+the [billing program for non-recurring payments](../invoice/README.md).
 
 ## Run the Caspar Water billing program
 

@@ -1,0 +1,97 @@
+@import url("light-chroma.css");
+
+a {
+	color: #0000A0;
+}
+
+.highlight > * {
+	border-color: #E0E0E0;
+}
+
+:not(pre) > code {
+	/* inline code elements */
+	background-color: rgba(25, 25, 25, 0.05);
+}
+
+a > code {
+	background-color: rgba(15, 15, 150, 0.05);
+}
+
+.section-list li > * {
+	background-color: rgba(25, 25, 25, 0.05);
+}
+
+.section-list li > a {
+	background-color: rgba(15, 15, 150, 0.05);
+}
+
+body {
+	color: #232629;
+	background-color: rgb(247, 247, 247);
+}
+
+blockquote {
+	color: #404040;
+	border-left: 0.25em solid #CCC;
+}
+
+hr {
+	border: 1px solid rgb(185, 185, 185);
+}
+
+.header {
+	background-image: url(../../images/logo.svg);
+}
+
+.links, .links li {
+	border-color: rgb(211, 211, 211);
+}
+
+.main {
+	background-color: white;
+}
+
+.footer {
+	color: #383838;
+}
+
+.table-of-contents {
+	border-color: #E0E0E0;
+	background-color: #FAFAFA;
+}
+
+.notice {
+	color: #404040;
+}
+
+.notice .notice-title {
+	color: white;
+}
+
+.notice .notice-title .notice-title-icon {
+	filter: invert(1);
+}
+
+.notice.note {
+	background-color: #E7F2FA;
+}
+
+.notice.note .notice-title {
+	background-color: #6AB0DE;
+}
+
+.notice.tip {
+	background-color: #e6f9e6;
+}
+
+.notice.tip .notice-title {
+	background-color: #77c577;
+}
+
+.notice.warning {
+	background-color: #fae2e2;
+}
+
+.notice.warning .notice-title {
+	background-color: #df6f6c;
+}
