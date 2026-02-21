@@ -9,7 +9,7 @@ posts spanning 20+ years. [One of these posts involves me](https://commandcenter
 >
 > I should say something about regular expressions in lexing and parsing.
 
-I should tell the rest of this story.
+I should tell the rest of the story.
 
 Google was preparing to release Golang version 1.0 and had begun
 promoting a release candidate internally. To be able to submit code in
@@ -23,33 +23,34 @@ in compiling SQL expressions into something that could filter and
 aggregate log events before they were recorded. It would start with a
 SQL parser, I figured, so I read Effective Go and got started.
 
-From the start, the Go toolchain included a Yacc parser generator. You
-wouldn't write a SQL parser without use of a parser generator. Surely
-not.
+From the start, the Go toolchain has included a Yacc parser
+generator. You wouldn't write a SQL parser without use of a parser
+generator. Surely.
 
 You also wouldn't review a Golang readability request that contained a
-Yacc parser generator, except if you are Rob Pike. 
+Yacc parser generator, except if you are Rob Pike, and that is how I
+got Rob as my Golang readability reviewer.
 
-My `goyacc` SQL parser definition was proper. I had implemented name
-resolution as a pass over the abstract syntax tree and was having a
-lot of fun learning Go.
+My Goyacc SQL parser definition was proper. I had implemented name
+resolution as a pass over the abstract syntax tree for the readability
+exercise, and I was having a lot of fun learning Go. I had taken a
+shortcut and caused a great offense.
 
 > Regular expressions are hard to write, hard to write well, and can
 > be expensive relative to other technologies.
 
-True.
+Translation: Regular expressions are easy to read when written well.
 
 > Lexers, on the other hand, are fairly easy to write correctly (if
 > not as compactly), and very easy to test.
 
-In other words, a proper lexer definition will take longer to write
-and be less prone to errors.
+Translation: A proper lexer definition will take longer to write and
+be better in the long run.
 
 > Standard lexing and parsing techniques are so easy to write, so
 > general, and so adaptable there's no reason to use regular
 > expressions.
 
-I have to add that standard lexing and parsing techniques can make it
+Translation: standard lexing and parsing techniques can make it
 difficult to find a code reviewer.
 
-I have a saying that the code reviewer is always right.
