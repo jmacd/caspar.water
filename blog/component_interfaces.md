@@ -13,7 +13,7 @@ by name, the _functional interface_ pattern.
 Module compatability is a problem in Golang, especially when it comes
 to interfaces. The Go team has written [guidelines for module
 compatibility](https://go.dev/blog/module-compatibility) explaining
-the challenge and listing a many best practices. 
+the challenge and listing many best practices. 
 
 > it is usually better to change your existing package in a compatible way
 
@@ -109,7 +109,7 @@ introduce new options.
 In the Go-team guidelines, they demonstrate adding a function-valued
 field,
 
-```
+```go
 type ListenConfig struct {
     Control func(network, address string, c syscall.RawConn) error
 }
@@ -131,7 +131,7 @@ functional configuration in the future,
 
 This can be done in a few ways, for example,
 
-```
+```go
 // Config is initially empty. We can add new options in the future.
 type Config struct {
     _ [0]func()
@@ -151,18 +151,18 @@ first recommended approach is,
 > old interface is used, dynamically check whether the provided type
 > is the older type or the newer type.
 
-Ignoring runtime cost, the dynamic approach still has limits,
+Ignoring runtime cost, this dynamic approach has limits,
 
 > This strategy only works when the old interface without the new
 > method can still be supported, limiting the future extensibility of
 > your module.
 
 Plan to support public interfaces indefinitely, in other words. If you
-can't do that, plan to release a new major version. If you can't do
-that, tell your users you plan to break them in case you need to add
-an interface.
+can't do that, plan to release a new major version for modifying
+interfaces. If you can't do that, tell your users your plans include a
+potential to break their build.
 
-If you can avoid this, avoid this,
+If you can avoid this, you should.
 
 > Where possible, it is better to avoid this class of problem
 > entirely. When designing constructors, for example, prefer to return
@@ -177,7 +177,7 @@ In this case, when users consume the interface but are not permitted
 to implement it, then it is safe to add interface methods without
 breaking module compatibility.
 
-```
+```go
 type Public interface {
     // A public method.
     Method()
@@ -187,22 +187,32 @@ type Public interface {
 }
 ```
 
-At this point, we have all the tools we need.
+At this point, we have every tool we need.
 
 # Functional interfaces
 
 In Java, the term _functional interface_ refers to an interface with
 exactly one abstract method. A well known example is
 `java.lang.Runnable`, with its `run()` method. Java 8 introduced the
-ability to define functional interfaces using lambda syntax, and we
-can apply the same pattern in Go.
+ability to define functional interfaces using lambda syntax,
 
-As a model interface, ima....@@@
-
+```java
+Runnable runnable = () -> {
+    System.out.println("Lambda Runnable running in a new thread.");
+};
 ```
-type Component interface {
-    // A pipeline component consumes different kinds of things. 
-    // Add new methods following the functional interface pattern.
+
+We can do the same in Go.
+
+As a model, we'll use an interface similar in spirit to an
+OpenTelemetry Collector component, a consumer of telemetry data with
+different data types for each signal. Here, the `A`, `B`, and `C`
+represent different different signals that a component can consume,
+and we are planning to add a new signal `D`.
+
+```go
+type Consumer interface {
+    // A component consumes different kinds of things. 
 
     ConsumeA(A)
     ConsumeB(B)
@@ -225,6 +235,10 @@ type Component interface {
 
 Why are there so few named patterns in Go?
 
+1. Functional options
+2. Functional interfaces
+3. Sealed interfaces
+4. Non-comparable types
 
 
 
