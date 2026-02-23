@@ -157,11 +157,6 @@ Ignoring runtime cost, this dynamic approach has limits,
 > method can still be supported, limiting the future extensibility of
 > your module.
 
-Plan to support public interfaces indefinitely, in other words. If you
-can't do that, plan to release a new major version for modifying
-interfaces. If you can't do that, tell your users your plans include a
-potential to break their build.
-
 If you can avoid this, you should.
 
 > Where possible, it is better to avoid this class of problem
@@ -202,34 +197,146 @@ Runnable runnable = () -> {
 };
 ```
 
-We can do the same in Go.
+We can do the same in Go with the use of function types.
 
 As a model, we'll use an interface similar in spirit to an
 OpenTelemetry Collector component, a consumer of telemetry data with
-different data types for each signal. Here, the `A`, `B`, and `C`
-represent different different signals that a component can consume,
-and we are planning to add a new signal `D`.
+different data types for each signal. Here, the `Alpha` and `Beta`
+represent different signals that a component can consume. Suppose we
+are planning to add a new signal `Gamma` in the future.
 
 ```go
+// Consumes different kinds of things. 
 type Consumer interface {
-    // A component consumes different kinds of things. 
+	ConsumeAlpha(context.Context, Alpha) error
+	ConsumeBeta(context.Context, Beta) error
 
-    ConsumeA(A)
-    ConsumeB(B)
-    ConsumeC(C)
-
-    // Users can't implement this directly.
-    private()
+	// Users can't implement this directly. Use New().
+	sealed()
 }
 ```
 
+For each method in the interface, define a function type named
+after the corresponding method with a "Func" suffix:
 
+```go
+// Single abstract method for ConsumeAlpha.
+type ConsumeAlphaFunc func(context.Context, Alpha) error
+```
 
+Now, give the function an implementation of the corresponding method
+and make sure to handle the `nil` case.
 
+```go
+// Functional interface for ConsumeAlpha.
+func (f ConsumeAlphaFunc) ConsumeAlpha(ctx context.Context, alpha Alpha) error {
+    if f == nil {
+        // Default behavior (e.g., this signal is not implemented).
+        return UnimplementedErr
+    }
+    return f(ctx, alpha)
+}
+```
 
+Treating the `nil` case is an important safety mechanism, it also
+follows from the "zero value is meaningful and preserves the old
+behavior" guideline. 
 
+To evolve multi-method interfaces, we will use a composition of
+functional interface types. By sealing the interface and using
+nil-safe function types to configure new, optional behavior, the
+interface compatibility problem can be solved using the guidelines for
+functions and structs that we already know.
 
+Since the interface is sealed, you control the constructor. If you did
+not plan for extensibility, you may need to introduce a new
+constructor function for extensibility. Hopefully, you planned for
+extensibility using either of the approaches described by the Go team
+(i.e., pointer-to-config-struct or functional-options, either one is a
+reasonable choice). Using the simpler approach, we might use this
+constructor signature:
 
+```go
+// Create a new consumer.
+func New(name string, config Config) Consumer { ... }
+```
+
+Now, a constructor call like:
+
+```go
+consumer.New("some-consumer", consumer.Config{
+  ConsumeAlphaFunc: func(ctx context.Context, alpha Alpha) error {
+    // Handle the Alpha signal.
+    return nil
+  }),
+  ConsumeBetaFunc: func(ctx context.Context, beta Beta) error {
+    // Handle the Beta signal.
+    return nil
+  }),
+})
+```
+
+Or, we could use the functional option pattern:
+
+```go
+consumer.New("some-consumer",
+    consumer.WithAlpha(func(ctx context.Context, alpha Alpha) error {
+        // Handle the Alpha signal.
+        return nil
+    }),
+    consumer.WithBeta(func(ctx context.Context, beta Beta) error {
+        // Handle the Beta signal.
+        return nil
+    }),
+})
+```
+
+# Implementing the functional interface pattern
+
+There are more than one ways to implement it. Here's an example
+implementation:
+
+```go
+// Configure the consumer interface.
+type Config {
+    // How to consume an Alpha.
+    ConsumeAlpha ConsumeAlphaFunc
+
+    // How to consume a Beta.
+    ConsumeBeta ConsumeBetaFunc
+}
+
+// Implementation of the sealed interface.
+type consumerImpl struct {
+    name string // and other details
+
+    ConsumeAlphaFunc // implements the ConsumeAlpha method
+    ConsumeBetaFunc  // implements the ConsumeBeta method
+}
+
+// This is a sealed interface.
+func (consumerImpl) sealed() { }
+
+// Test the interface.
+var _ Consumer = &consumerImpl{}
+
+// Create a new consumer.
+func New(name string, config Config) Consumer {
+	return &consumerImpl{
+		name:             name,
+		ConsumeAlphaFunc: config.ConsumeAlpha,
+		ConsumeBetaFunc:  config.ConsumeBeta,
+	}
+}
+```
+
+The use of a pointer implementation in this case is a matter of
+safety, because it makes the the interface value is comparable.
+
+# Open and Closed
+
+In the OpenTelemetry Collector, we have a document wrapping all of
+this up that we call our [component interface guidelines](TODO).
 
 # Patterns in Golang
 
@@ -238,9 +345,14 @@ Why are there so few named patterns in Go?
 1. Functional options
 2. Functional interfaces
 3. Sealed interfaces
-4. Non-comparable types
+4. Incomparable structs
 
+Plan to support public interfaces indefinitely, in other words. If you
+can't do that, plan to release a new major version for modifying
+interfaces. If you can't do that, tell your users your plans include a
+potential to break their build.
 
+Use different method names to achieve different defaults.
 
 
 
@@ -259,416 +371,3 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 }
 ```
 
-A function type that implements an interface. You've seen this. 
-You've used it a hundred times. But have you ever extended it?
-
-I've been working on the OpenTelemetry Collector for the past few
-years, trying to add rate-limiter and middleware extension APIs.
-Along the way I discovered that the Collector uses a generalized
-version of this pattern across its core interfaces -- and that
-nobody had written it down. After several failed attempts at
-documenting it as an RFC
-([#13263](https://github.com/open-telemetry/opentelemetry-collector/pull/13263),
-[#13902](https://github.com/open-telemetry/opentelemetry-collector/pull/13902)),
-I finally have something the maintainers are
-[accepting](https://github.com/open-telemetry/opentelemetry-collector/pull/14532):
-"Component Interface Guidelines."
-
-The pattern doesn't have a catchy name yet. I've called it
-"Functional Composition," "Functional Interface," and now
-"Component Interface Guidelines." The name isn't important. What
-matters is that it solves a real problem in Go: **how to evolve
-interfaces without breaking consumers.**
-
-## The problem
-
-Go interfaces are brittle. Add a method to an exported interface,
-and every external implementation breaks. The standard advice from
-the Go blog is: [provide constructor functions instead of
-expecting users to implement
-interfaces](https://go.dev/blog/module-compatibility#working-with-interfaces).
-
-But the Collector has dozens of extension points. Extensions
-*must* implement interfaces. Factory types *must* be constructed
-by external packages. How do you square this circle?
-
-## The pattern
-
-For every method in a public interface, declare a corresponding
-function type with the same signature. The function type
-implements the interface method, and **checks for nil to provide
-no-op behavior**.
-
-The Collector's HTTP middleware interface is the clearest example.
-It lives in
-[`extensionmiddleware`](https://github.com/open-telemetry/opentelemetry-collector/blob/main/extension/extensionmiddleware/client.go),
-and if you know `http.HandlerFunc` you already understand it.
-
-### The interface
-
-```go
-// HTTPClient is an interface for HTTP client middleware extensions.
-type HTTPClient interface {
-    GetHTTPRoundTripper(base http.RoundTripper) (http.RoundTripper, error)
-}
-```
-
-One method. It takes a base `RoundTripper` and returns a wrapped
-one -- the same shape as HTTP server middleware, but for outbound
-calls.
-
-### The function type
-
-```go
-type GetHTTPRoundTripperFunc func(base http.RoundTripper) (http.RoundTripper, error)
-
-func (f GetHTTPRoundTripperFunc) GetHTTPRoundTripper(base http.RoundTripper) (http.RoundTripper, error) {
-    if f == nil {
-        return base, nil
-    }
-    return f(base)
-}
-```
-
-That's the whole trick. A function type that implements the
-interface, with a nil check that returns a sensible default. A nil
-`GetHTTPRoundTripperFunc` passes the base `RoundTripper` through
-unchanged -- a perfect no-op.
-
-Compare this with `http.HandlerFunc` from the standard library:
-
-```go
-func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
-    f(w, r) // panics if f is nil
-}
-```
-
-No nil check. If you pass a nil `HandlerFunc`, you crash.
-
-### Using it as a building block
-
-Here is the server-side equivalent:
-
-```go
-type HTTPServer interface {
-    GetHTTPHandler(base http.Handler) (http.Handler, error)
-}
-
-type GetHTTPHandlerFunc func(base http.Handler) (http.Handler, error)
-
-func (f GetHTTPHandlerFunc) GetHTTPHandler(base http.Handler) (http.Handler, error) {
-    if f == nil {
-        return base, nil
-    }
-    return f(base)
-}
-```
-
-Same shape. And there are gRPC variants too:
-
-```go
-type GRPCClient interface {
-    GetGRPCClientOptions() ([]grpc.DialOption, error)
-}
-
-type GetGRPCClientOptionsFunc func() ([]grpc.DialOption, error)
-
-func (f GetGRPCClientOptionsFunc) GetGRPCClientOptions() ([]grpc.DialOption, error) {
-    if f == nil {
-        return nil, nil
-    }
-    return f()
-}
-```
-
-Four interfaces, four function types, all following the same
-mechanical rule: `<Method>Func` has the same signature as the
-method, implements the method, and checks for nil.
-
-### Composition through embedding
-
-Now the real leverage. A middleware extension needs to implement
-*all four* of these interfaces. In the Collector's test helpers,
-that looks like this:
-
-```go
-type baseExtension struct {
-    component.StartFunc
-    component.ShutdownFunc
-    extensionmiddleware.GetHTTPHandlerFunc
-    extensionmiddleware.GetGRPCServerOptionsFunc
-    extensionmiddleware.GetHTTPRoundTripperFunc
-    extensionmiddleware.GetGRPCClientOptionsFunc
-}
-```
-
-Each embedded function type implements one interface. If the
-field is nil, the no-op behavior kicks in. This gives you two
-constructors for free:
-
-```go
-// NewNop returns a middleware that does nothing.
-// Every method passes through or returns zero values.
-func NewNop() extension.Extension {
-    return &baseExtension{}
-}
-
-// NewErr returns a middleware where every method fails.
-func NewErr(err error) extension.Extension {
-    return &baseExtension{
-        GetHTTPRoundTripperFunc: func(http.RoundTripper) (http.RoundTripper, error) {
-            return nil, err
-        },
-        GetGRPCClientOptionsFunc: func() ([]grpc.DialOption, error) {
-            return nil, err
-        },
-        GetHTTPHandlerFunc: func(http.Handler) (http.Handler, error) {
-            return nil, err
-        },
-        GetGRPCServerOptionsFunc: func() ([]grpc.ServerOption, error) {
-            return nil, err
-        },
-    }
-}
-```
-
-`NewNop()` is literally `&baseExtension{}`. The zero value of
-every embedded function type is nil, and nil means no-op. That's
-not a coincidence; it's the point.
-
-### Consuming through type assertions
-
-On the consumer side, the Collector uses type assertions to
-discover which capabilities an extension provides:
-
-```go
-func (m Config) GetHTTPClientRoundTripper(
-    _ context.Context,
-    extensions map[component.ID]component.Component,
-) (func(http.RoundTripper) (http.RoundTripper, error), error) {
-    if ext, found := extensions[m.ID]; found {
-        if client, ok := ext.(extensionmiddleware.HTTPClient); ok {
-            return client.GetHTTPRoundTripper, nil
-        }
-        return nil, errNotHTTPClient
-    }
-    return nil, fmt.Errorf("failed to resolve middleware %q: %w", m.ID, errMiddlewareNotFound)
-}
-```
-
-An extension can implement `HTTPClient`, or `GRPCServer`, or
-both, or neither. The consumer checks at runtime. This is how
-the pattern scales to dozens of extension points without a
-combinatorial explosion of interface sets.
-
-## The rate-limiter example
-
-The middleware example is simple because each interface has a
-single method. The same pattern works for multi-method
-interfaces. Here's a sketch from the [rate-limiter extension
-draft](https://github.com/open-telemetry/opentelemetry-collector/pull/13241):
-
-```go
-// RateReservation is returned when a caller reserves throughput.
-type RateReservation interface {
-    WaitTime() time.Duration
-    Cancel()
-}
-
-type WaitTimeFunc func() time.Duration
-
-func (f WaitTimeFunc) WaitTime() time.Duration {
-    if f == nil {
-        return 0
-    }
-    return f()
-}
-
-type CancelFunc func()
-
-func (f CancelFunc) Cancel() {
-    if f == nil {
-        return
-    }
-    f()
-}
-
-type rateReservationImpl struct {
-    WaitTimeFunc
-    CancelFunc
-}
-
-func NewRateReservation(wt WaitTimeFunc, c CancelFunc) RateReservation {
-    return rateReservationImpl{WaitTimeFunc: wt, CancelFunc: c}
-}
-```
-
-A nil `WaitTimeFunc` means "don't wait." A nil `CancelFunc` means
-"nothing to cancel." A `NewRateReservation(nil, nil)` is a valid
-no-op reservation.
-
-The limiter itself follows the same shape:
-
-```go
-type RateLimiter interface {
-    ReserveRate(ctx context.Context, weight int) (RateReservation, error)
-}
-
-type ReserveRateFunc func(context.Context, int) (RateReservation, error)
-
-func (f ReserveRateFunc) ReserveRate(ctx context.Context, weight int) (RateReservation, error) {
-    if f == nil {
-        return NewRateReservation(nil, nil), nil
-    }
-    return f(ctx, weight)
-}
-
-type rateLimiterImpl struct {
-    ReserveRateFunc
-}
-
-func NewRateLimiter(f ReserveRateFunc) RateLimiter {
-    return rateLimiterImpl{ReserveRateFunc: f}
-}
-```
-
-Now you can build a real limiter by wrapping `golang.org/x/time/rate`:
-
-```go
-func NewTokenBucketLimiter(rps float64, burst int) RateLimiter {
-    limiter := rate.NewLimiter(rate.Limit(rps), burst)
-
-    return NewRateLimiter(func(ctx context.Context, weight int) (RateReservation, error) {
-        rsv := limiter.ReserveN(time.Now(), weight)
-        if !rsv.OK() {
-            return nil, errors.New("rate limit exceeded")
-        }
-        return NewRateReservation(
-            func() time.Duration { return rsv.DelayFrom(time.Now()) },
-            rsv.Cancel,
-        ), nil
-    })
-}
-```
-
-Or add logging as a decorator:
-
-```go
-func WithLogging(limiter RateLimiter, logger *slog.Logger) RateLimiter {
-    return NewRateLimiter(func(ctx context.Context, weight int) (RateReservation, error) {
-        logger.Info("rate limit check", "weight", weight)
-        return limiter.ReserveRate(ctx, weight)
-    })
-}
-```
-
-## Why this works
-
-### Sealed interfaces evolve safely
-
-Add a `private()` method to prevent external implementations:
-
-```go
-type RateLimiter interface {
-    ReserveRate(ctx context.Context, weight int) (RateReservation, error)
-    private()
-}
-
-type rateLimiterImpl struct {
-    ReserveRateFunc
-}
-
-func (rateLimiterImpl) private() {}
-```
-
-External consumers can't implement `RateLimiter` directly -- they
-must use `NewRateLimiter`. When you add a new method and its
-corresponding `<Method>Func`, the existing constructors still
-compile. They gain the new method's no-op behavior
-automatically, because uninitialized function types return zero
-values.
-
-### Open interfaces enable capability detection
-
-Not every interface should be sealed. The middleware interfaces
-are open -- external implementations are the whole purpose.
-They evolve by adding *companion interfaces* instead of methods:
-
-```go
-// Original -- remains unchanged forever.
-type GRPCClient interface {
-    GetGRPCClientOptions() ([]grpc.DialOption, error)
-}
-
-// Added later when we realized some options need context.
-type GRPCClientContext interface {
-    GetGRPCClientOptionsContext(context.Context) ([]grpc.DialOption, error)
-}
-```
-
-Consumers use type assertions to check for the new capability.
-Old implementations continue to work.
-
-### The nil-safe HandlerFunc
-
-`http.HandlerFunc` is the prototype. But Go's standard library
-stopped short:
-
-- `HandlerFunc` doesn't check for nil
-- `http.RoundTripper` doesn't have a `RoundTripperFunc`
-- `Handler.ServeHTTP` takes `*http.Request`, a concrete type
-
-This pattern fixes all three. Every function type is nil-safe.
-Every method gets a `Func` type. Every parameter is an interface.
-These constraints together enable an approach to safe
-interface evolution that the standard library doesn't provide.
-
-## References
-
-- [Component Interface Guidelines (PR #14532)](https://github.com/open-telemetry/opentelemetry-collector/pull/14532)
-- [RFC: Functional Interface pattern (PR #13902)](https://github.com/open-telemetry/opentelemetry-collector/pull/13902)
-- [Rate-limiter extension draft (PR #13241)](https://github.com/open-telemetry/opentelemetry-collector/pull/13241)
-- [Go Blog: Working with Interfaces](https://go.dev/blog/module-compatibility#working-with-interfaces)
-- [http.HandlerFunc](https://pkg.go.dev/net/http#HandlerFunc)
-- [Functional Options (Rob Pike)](https://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html)
-
-## Related patterns in other languages
-
-This pattern combines several well-known ideas under one roof.
-
-**Functional Interface / SAM type (Java).** Java 8 formalized
-the "Single Abstract Method" interface with `@FunctionalInterface`,
-letting a lambda implement a one-method interface. Each
-`<Method>Func` type here is a SAM type. But Java's version
-doesn't have nil-safe defaults.
-
-**Null Object (GoF).** The nil-checking behavior is textbook
-Null Object. `NewNop()` returning `&baseExtension{}` is a Null
-Object constructor. The classic pattern uses a dedicated subclass;
-this one uses the zero value of function types, which is more
-compact.
-
-**Default methods.** The *problem* — evolving interfaces without
-breaking implementors — is solved at the language level elsewhere:
-Java has `default` methods in interfaces (added in Java 8 for
-exactly this reason), Rust traits can provide default
-implementations, Swift has protocol extensions, Kotlin interface
-methods can have bodies, and Haskell type class methods can have
-defaults. Go has none of these, so the nil check on the function
-type is a manual encoding of what those languages provide as a
-first-class feature.
-
-**Strategy (GoF).** The interchangeable function values are
-strategies. `ReserveRateFunc` is a rate-limiting strategy. But
-"Strategy" doesn't capture the nil-safety or the
-composition-through-embedding aspect.
-
-No single name covers all of this. The closest is probably
-**nil-safe functional interface** — it's the nil check that
-distinguishes the pattern from `http.HandlerFunc` and from
-Java's `@FunctionalInterface`. The composition through embedding
-and the sealed/open evolution rules are specific to Go's type
-system: structural typing, unexported methods, and nil-safe method
-dispatch on function types. No other language needs exactly this
-pattern because no other language has exactly this set of
-constraints.
