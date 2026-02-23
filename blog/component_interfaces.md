@@ -1,12 +1,19 @@
 # Functional interface pattern in Golang
 
-Nearly every Go programmer knows the [functional option
-pattern](https://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html).
+Most Go programmers know [`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc).
 
-Most Go programmers knows about
-[`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc). In
-Java, there is a similar pattern and Go programmers ought to know this
-by name, the _functional interface_ pattern.
+```go
+// A Handler responds to an HTTP request.
+type Handler interface {
+	ServeHTTP(ResponseWriter, *Request)
+}
+
+// HandlerFunc(f) is a [Handler] that calls f.
+type HandlerFunc func(ResponseWriter, *Request)
+```
+
+In Java, there is a similar pattern and Go programmers ought to know
+this by name, the _functional interface_ pattern.
 
 # What problem does this solve?
 
@@ -81,14 +88,13 @@ functions:
 > future, you can plan ahead by making optional arguments a part of
 > the function’s signature.
 
-The Go team is opinionated over the _functional option_ pattern,
+They describe the [functional option pattern](https://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html),
 
 > Another way to provide new options in the future is the “Option
 > types” pattern, where options are passed as variadic arguments.
 
-and suggests using structs (e.g., a `*Config` struct) as the simpler
-approach, noting reasons the functional option pattern is not always
-best.
+They suggest using structs (e.g., a `*Config` struct) as the simplest
+approach, noting that both are responsible choices.
 
 # Working with structs
 
@@ -330,44 +336,88 @@ func New(name string, config Config) Consumer {
 }
 ```
 
-The use of a pointer implementation in this case is a matter of
-safety, because it makes the the interface value is comparable.
+The use of a pointer implementation (i.e., `&consumerImpl{...}) in
+this case is a matter of safety, because it makes the interface value
+comparable.
 
-# Open and Closed
+# Extension points
 
-In the OpenTelemetry Collector, we have a document wrapping all of
-this up that we call our [component interface guidelines](TODO).
+In the OpenTelemetry Collector, we have a document wrapping all of all
+of these patterns that we call our [component interface guidelines
+(wip)](https://github.com/open-telemetry/opentelemetry-collector/pull/14532),
+featuring the practices  discussed:
 
-# Patterns in Golang
+- Extensive use of the functional interface pattern
+- Functional options pattern used in top-level interfaces
+- Sealed interfaces that we can extend safely and easily.
 
-Why are there so few named patterns in Go?
+In case of v1+ modules, which are those we have declared stable,
+unsealed interfaces come with a promise of no breaking changes,
+meaning not without a major version change. While many of the core
+interfaces are sealed, extension interfaces are an important
+exception. These are stable interfaces that serve as public extension
+points.
 
-1. Functional options
-2. Functional interfaces
-3. Sealed interfaces
-4. Incomparable structs
+As an example, the Collector has [`extensionmiddleware`]() interfaces
+for implementing RPC-specific kinds of middleware. Here, we support
+gRPC and HTTP protocols, with client- and server-specific cases, a
+total of four separate unsealed interfaces. Middleware extension
+components implement some or all of these interfaces. Receiver and
+exporter components generally use one of these, configured on their
+behalf through our `configgrpc` and `confighttp` packages.
 
-Plan to support public interfaces indefinitely, in other words. If you
-can't do that, plan to release a new major version for modifying
-interfaces. If you can't do that, tell your users your plans include a
-potential to break their build.
+These interfaces will be supported at least throughout v1, and even
+though they are not sealed, we still follow the functional interface
+pattern.  This means for every public interface method name,
+`<Method>Func` type matching every public interface method by name,
+with an appropriate behavior for `nil`.
 
-Use different method names to achieve different defaults.
+This brings us back to `ServeHTTP`, which does exactly what it
+says. If the `HandlerFunc` is nil, the goroutine will panic. A more
+graceful default behavior would be to write HTTP status code 501 (not
+implemented).
 
-
-
-
-
-
-```go
-type Handler interface {
-    ServeHTTP(ResponseWriter, *Request)
-}
-
-type HandlerFunc func(ResponseWriter, *Request)
-
+```
+// ServeHTTP calls f(w, r).
+//
+// If f is nil, calls w.WriteHeader(StatusNotImplemented).
 func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
-    f(w, r)
+    if f == nil {
+        w.WriteHeader(StatusNotImplemented)
+        return
+    }
+	f(w, r)
 }
 ```
 
+# Patterns in Golang
+
+If you haven't seen it before, the functional interface pattern can be
+a real help in Go, a safe way to add optional functionality without
+changing major versions.
+
+We've covered a few other patterns that help us manage our commitment
+to module compatibility:
+
+- Functional options
+- Sealed interfaces
+- Incomparable structs.
+
+We've reiterated [guidelines for module compatibility posted on the Go
+Blog](https://go.dev/blog/module-compatibility), the foundation of our
+approach.
+
+1. The zero value for every field and function must be meaningful, with good default behavior
+2. Do not change function signatures, add new functions instead
+3. Plan for the future, either by option structs or the functional option pattern
+4. Make your structs incomparable at first, otherwise remain comparable
+5. Do not add methods to an interface, do not remove an interface
+6. Seal the interfaces that you plan to extend, provide constructor functions
+
+Library maintainers with a public-facing interfaces in Go, including
+many OpenTelemetry maintainers, are required to follow these rules if
+they want to avoid breaking the users that depend on them.
+
+If you can't follow these rules, release new major versions. If you
+can't do that, it means you're planning to break your users, and we
+don't want that. We think these patterns will help!
