@@ -1,6 +1,7 @@
 # Functional interface pattern in Golang
 
-Most Go programmers know [`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc).
+The [`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc) type
+is a function type that implements a single interface.
 
 ```go
 // A Handler responds to an HTTP request.
@@ -10,17 +11,24 @@ type Handler interface {
 
 // HandlerFunc(f) is a [Handler] that calls f.
 type HandlerFunc func(ResponseWriter, *Request)
-```
 
-In Java, there is a similar pattern and Go programmers ought to know
-this by name, the _functional interface_ pattern.
+// ServeHTTP calls f(w, r).
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) { 
+    f(w, r) 
+}
+```
+This device makes it easy to build an HTTP service interface from a
+function. Embed this type in a struct and it becomes an HTTP server.
+
+This blog post explores how this "functional interface" pattern works
+in Go and how it can help us maintain safe, stable interfaces.
 
 # What problem does this solve?
 
-Module compatability is a problem in Golang, especially when it comes
+Module compatability has been problem in Golang, especially when it comes
 to interfaces. The Go team has written [guidelines for module
 compatibility](https://go.dev/blog/module-compatibility) explaining
-the challenge and listing many best practices. 
+the challenge and listing many best practices.
 
 > it is usually better to change your existing package in a compatible way
 
@@ -41,11 +49,12 @@ This policy has a terrible impact on the Go user community! By
 transitivity, if any of your dependencies update to the latest gRPC,
 and if for any reason you must update your dependency, you are
 immediately forced to confront gRPC-Go breakage.
-
+ we
 How could the gRPC-Go team do this better? The Go team's guidelines do
 not go far enough. I'll explain.
 
 # Illustrated
+
 
 I first saw this problem working with the OpenTelemetry Collector,
 which has both component interfaces and a build process for creating
@@ -56,11 +65,9 @@ Collector](https://github.com/jmacd/caspar.water/blob/dcd1f85c9c8b7b9c96e3b6ce85
 lists over ten custom components (with an IIoT theme).
 
 The way this works, a new `go.mod` file is generated from the list of
-components and core libraries, and then `go mod tidy` was run to
+components and core libraries, and then `go mod tidy` is run to
 resolve dependencies. In practice, this means you always get the
-newest release of gRPC. Eventually, we added an option to build with
-an external `go.mod`, alleviating the problem somewhat, but until then
-every gRPC-Go breaking change led to a fire drill.
+newest release of gRPC.
 
 As an example, the [gRPC-Go 1.72.0 release
 notes](https://github.com/grpc/grpc-go/releases/tag/v1.72.0) reads:
@@ -184,7 +191,7 @@ type Public interface {
     Method()
 
     // Users can't implement this directly.
-    private()
+    sealed()
 }
 ```
 
@@ -351,6 +358,10 @@ featuring the practices  discussed:
 - Functional options pattern used in top-level interfaces
 - Sealed interfaces that we can extend safely and easily.
 
+@@@ we have our own legacy, of course; we prefer to keep unstable
+things in v0 modules, however we made a few mistakes, the guidelines
+are to help prevent more mistakes from happening in the future.
+
 In case of v1+ modules, which are those we have declared stable,
 unsealed interfaces come with a promise of no breaking changes,
 meaning not without a major version change. While many of the core
@@ -372,10 +383,10 @@ pattern.  This means for every public interface method name,
 `<Method>Func` type matching every public interface method by name,
 with an appropriate behavior for `nil`.
 
-This brings us back to `ServeHTTP`, which does exactly what it
-says. If the `HandlerFunc` is nil, the goroutine will panic. A more
-graceful default behavior would be to write HTTP status code 501 (not
-implemented).
+This brings us back to `ServeHTTP`, which does exactly what it says,
+calls `f(w, r)`. If the `HandlerFunc` is nil, the goroutine will
+panic. A more graceful default behavior would be to write HTTP status
+code 501 (not implemented).
 
 ```
 // ServeHTTP calls f(w, r).
@@ -392,9 +403,9 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 
 # Patterns in Golang
 
-If you haven't seen it before, the functional interface pattern can be
-a real help in Go, a safe way to add optional functionality without
-changing major versions.
+If you haven't seen it before, the **functional interface** pattern
+described above can be a real help in Go, a safe way to add optional
+functionality without changing major versions.
 
 We've covered a few other patterns that help us manage our commitment
 to module compatibility:
@@ -413,11 +424,12 @@ approach.
 4. Make your structs incomparable at first, otherwise remain comparable
 5. Do not add methods to an interface, do not remove an interface
 6. Seal the interfaces that you plan to extend, provide constructor functions
+7. Use the functional interface pattern with optional functions, for consistency
 
 Library maintainers with a public-facing interfaces in Go, including
 many OpenTelemetry maintainers, are required to follow these rules if
 they want to avoid breaking the users that depend on them.
 
-If you can't follow these rules, release new major versions. If you
-can't do that, it means you're planning to break your users, and we
-don't want that. We think these patterns will help!
+If you can't follow these rules, release new major versions, otherwise
+you're planning to break your users, and we don't want that. We think
+these patterns will help!
