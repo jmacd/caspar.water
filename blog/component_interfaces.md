@@ -17,16 +17,37 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
     f(w, r) 
 }
 ```
-This device makes it easy to build an HTTP service interface from a
-function. Embed this type in a struct and it becomes an HTTP server.
+
+This simple device makes it easy to build an HTTP service interface
+from a function. Embed this type in a struct and it becomes an HTTP
+server.
 
 This blog post explores how this "functional interface" pattern works
-in Go and how it can help us maintain safe, stable interfaces.
+in Go and how it can help us maintain safe and stable interfaces while
+leaving room for extensibility.
 
-# What problem does this solve?
+# What problem does this address?
 
-Module compatability has been problem in Golang, especially when it comes
-to interfaces. The Go team has written [guidelines for module
+Module compatability has been challenge for Go developers since the
+module system was introduced. Over time, we've come to understand what
+we can and can't do, when it comes to evolving our software. Today, we
+have tools such as `gorelease` that can warn developers when they make
+changes that break module compatibility.
+
+When a major Go library makes a module-incompatible change, it creates
+a problem across the ecosystem for other libraries that depend on
+it. As soon as an incompatible release appears, the `go get` tool is
+likely to find and apply it, generally in cases where the
+incompatibility has no impact. This is good security practice, too,
+and how the module system is meant to work.
+
+However, when a common library with an incompatible release is first
+picked up by other common libraries, then the problem begins. Users
+that depend on both libraries are forced to address the
+incompatibility, somehow, if they want to update any of the common
+libraries.
+
+The Go team has written [guidelines for module
 compatibility](https://go.dev/blog/module-compatibility) explaining
 the challenge and listing many best practices.
 
