@@ -1,7 +1,7 @@
 # Functional interface pattern in Golang
 
 The [`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc) type
-is a function type that implements a single interface.
+is a function type that implements a single interface method.
 
 ```go
 // A Handler responds to an HTTP request.
@@ -18,13 +18,14 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 }
 ```
 
-This simple device makes it easy to build an HTTP service interface
-from a function. Embed this type in a struct and it becomes an HTTP
-server.
+This device makes it easy to build an HTTP service from a function
+literal. Embed this type in a struct and it becomes part of an HTTP
+service.
 
-This blog post explores how this "functional interface" pattern works
-in Go and how it can help us maintain safe and stable interfaces while
-leaving room for extensibility.
+This blog post explores how the "functional interface" pattern works
+in Go and how it can help us maintain safe and stable interfaces, in
+particular when we want to leave room for optional functionality in
+the future.
 
 # What problem does this address?
 
@@ -37,33 +38,36 @@ changes that break module compatibility.
 When a major Go library makes a module-incompatible change, it creates
 a problem across the ecosystem for other libraries that depend on
 it. As soon as an incompatible release appears, the `go get` tool is
-likely to find and apply it, generally in cases where the
-incompatibility has no impact. This is good security practice, too,
-and how the module system is meant to work.
+likely to find and apply it.
 
-However, when a common library with an incompatible release is first
-picked up by other common libraries, then the problem begins. Users
-that depend on both libraries are forced to address the
-incompatibility, somehow, if they want to update any of the common
-libraries.
+When a common library with an incompatible release is first picked up
+by other common libraries, then the problem begins. At that point,
+users that depend on both libraries are forced to address the
+incompatibility before they can update any of their common libraries.
 
-The Go team has written [guidelines for module
-compatibility](https://go.dev/blog/module-compatibility) explaining
+This is the Go module system serving its function, which rests on
+assertions about semantic version numbers and module
+compatibility. The problem is, incompatible changes in a common
+library have a wide impact. An earlier post on this blog covered
+[guidelines for module
+compatibility](https://go.dev/blog/module-compatibility), explaining
 the challenge and listing many best practices.
 
-> it is usually better to change your existing package in a compatible way
+For the module system to work correctly, we must not make breaking
+changes unless without a new major version number. Changing the major
+version, however, can leave users behind. When we follow the rules for
+module compatibility without changing the major version number, we
+make it easy to upgrade our dependencies.
 
-For the module system to work correctly, you must not make breaking
-changes unless you increment the major version. Changing the major
-version, however, can leave users behind.
+As a security concern, we should always be able to upgrade a
+dependency quickly. A security incident combined with an incompatible
+change puts users into a difficult emergency.
 
-> breaking changes to a v1+ module must happen as part of a major version bump
+# Illustrated
 
-If you've worked in Go long enough, you've probably worked with the
-gRPC-Go library. If you're lucky, you've never experienced one of
-their breaking changes, but it's a fact of life for many Go
-developers. The gRPC-Go team will break experimental or deprecated
-interfaces to avoid changing the major version [**as a
+
+The gRPC-Go team will break experimental or deprecated interfaces to
+avoid changing the major version [**as a
 policy**](https://github.com/grpc/grpc-go/blob/master/Documentation/versioning.md#versioning-policy).
 
 This policy has a terrible impact on the Go user community! By
@@ -73,8 +77,6 @@ immediately forced to confront gRPC-Go breakage.
  we
 How could the gRPC-Go team do this better? The Go team's guidelines do
 not go far enough. I'll explain.
-
-# Illustrated
 
 
 I first saw this problem working with the OpenTelemetry Collector,
