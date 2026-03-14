@@ -1,44 +1,85 @@
 # Functional interface pattern in Golang
 
-Nearly every Go programmer knows the [functional option
-pattern](https://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html).
+The [`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc) type
+is a function type that implements a single interface method.
 
-Most Go programmers knows about
-[`http.HandlerFunc`](https://pkg.go.dev/net/http#HandlerFunc). In
-Java, there is a similar pattern and Go programmers ought to know this
-by name, the _functional interface_ pattern.
+```go
+// A Handler responds to an HTTP request.
+type Handler interface {
+	ServeHTTP(ResponseWriter, *Request)
+}
 
-# What problem does this solve?
+// HandlerFunc(f) is a [Handler] that calls f.
+type HandlerFunc func(ResponseWriter, *Request)
 
-Module compatability is a problem in Golang, especially when it comes
-to interfaces. The Go team has written [guidelines for module
-compatibility](https://go.dev/blog/module-compatibility) explaining
-the challenge and listing many best practices. 
+// ServeHTTP calls f(w, r).
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) { 
+    f(w, r) 
+}
+```
 
-> it is usually better to change your existing package in a compatible way
+This device makes it easy to build an HTTP service from a function
+literal. Embed this type in a struct and it becomes part of an HTTP
+service.
 
-For the module system to work correctly, you must not make breaking
-changes unless you increment the major version. Changing the major
-version, however, can leave users behind.
+This blog post explores how the "functional interface" pattern works
+in Go and how it can help us maintain safe and stable interfaces, in
+particular when we want to leave room for optional functionality in
+the future.
 
-> breaking changes to a v1+ module must happen as part of a major version bump
+# What problem does this address?
 
-If you've worked in Go long enough, you've probably worked with the
-gRPC-Go library. If you're lucky, you've never experienced one of
-their breaking changes, but it's a fact of life for many Go
-developers. The gRPC-Go team will break experimental or deprecated
-interfaces to avoid changing the major version [**as a
+Module compatability has been challenge for Go developers since the
+module system was introduced. Over time, we've come to understand what
+we can and can't do, when it comes to evolving our software. Today, we
+have tools such as `gorelease` that can warn developers when they make
+changes that break module compatibility.
+
+When a major Go library makes a module-incompatible change, it creates
+a problem across the ecosystem for other libraries that depend on
+it. As soon as an incompatible release appears, the `go get` tool is
+likely to find and apply it.
+
+When a common library with an incompatible release is first picked up
+by other common libraries, then the problem begins. At that point,
+users that depend on both libraries are forced to address the
+incompatibility before they can update any of their common libraries.
+
+This is the Go module system serving its function, which rests on
+assertions about semantic version numbers and module
+compatibility. The problem is, incompatible changes in a common
+library have a wide impact. An earlier post on this blog covered
+[guidelines for module
+compatibility](https://go.dev/blog/module-compatibility), explaining
+the challenge and listing many best practices.
+
+For the module system to work correctly, we must not make breaking
+changes unless without a new major version number. Changing the major
+version, however, can leave users behind. When we follow the rules for
+module compatibility without changing the major version number, we
+make it easy to upgrade our dependencies.
+
+As a security concern, we should always be able to upgrade a
+dependency quickly. A security incident combined with an incompatible
+change puts users into a difficult emergency.
+
+# Illustrated
+
+
+
+
+The gRPC-Go team will break experimental or deprecated interfaces to
+avoid changing the major version [**as a
 policy**](https://github.com/grpc/grpc-go/blob/master/Documentation/versioning.md#versioning-policy).
 
 This policy has a terrible impact on the Go user community! By
 transitivity, if any of your dependencies update to the latest gRPC,
 and if for any reason you must update your dependency, you are
 immediately forced to confront gRPC-Go breakage.
-
+ we
 How could the gRPC-Go team do this better? The Go team's guidelines do
 not go far enough. I'll explain.
 
-# Illustrated
 
 I first saw this problem working with the OpenTelemetry Collector,
 which has both component interfaces and a build process for creating
@@ -49,11 +90,9 @@ Collector](https://github.com/jmacd/caspar.water/blob/dcd1f85c9c8b7b9c96e3b6ce85
 lists over ten custom components (with an IIoT theme).
 
 The way this works, a new `go.mod` file is generated from the list of
-components and core libraries, and then `go mod tidy` was run to
+components and core libraries, and then `go mod tidy` is run to
 resolve dependencies. In practice, this means you always get the
-newest release of gRPC. Eventually, we added an option to build with
-an external `go.mod`, alleviating the problem somewhat, but until then
-every gRPC-Go breaking change led to a fire drill.
+newest release of gRPC.
 
 As an example, the [gRPC-Go 1.72.0 release
 notes](https://github.com/grpc/grpc-go/releases/tag/v1.72.0) reads:
@@ -81,14 +120,13 @@ functions:
 > future, you can plan ahead by making optional arguments a part of
 > the function’s signature.
 
-The Go team is opinionated over the _functional option_ pattern,
+They describe the [functional option pattern](https://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html),
 
 > Another way to provide new options in the future is the “Option
 > types” pattern, where options are passed as variadic arguments.
 
-and suggests using structs (e.g., a `*Config` struct) as the simpler
-approach, noting reasons the functional option pattern is not always
-best.
+They suggest using structs (e.g., a `*Config` struct) as the simplest
+approach, noting that both are responsible choices.
 
 # Working with structs
 
@@ -178,7 +216,7 @@ type Public interface {
     Method()
 
     // Users can't implement this directly.
-    private()
+    sealed()
 }
 ```
 
@@ -330,44 +368,93 @@ func New(name string, config Config) Consumer {
 }
 ```
 
-The use of a pointer implementation in this case is a matter of
-safety, because it makes the the interface value is comparable.
+The use of a pointer implementation (i.e., `&consumerImpl{...}) in
+this case is a matter of safety, because it makes the interface value
+comparable.
 
-# Open and Closed
+# Extension points
 
-In the OpenTelemetry Collector, we have a document wrapping all of
-this up that we call our [component interface guidelines](TODO).
+In the OpenTelemetry Collector, we have a document wrapping all of all
+of these patterns that we call our [component interface guidelines
+(wip)](https://github.com/open-telemetry/opentelemetry-collector/pull/14532),
+featuring the practices  discussed:
 
-# Patterns in Golang
+- Extensive use of the functional interface pattern
+- Functional options pattern used in top-level interfaces
+- Sealed interfaces that we can extend safely and easily.
 
-Why are there so few named patterns in Go?
+@@@ we have our own legacy, of course; we prefer to keep unstable
+things in v0 modules, however we made a few mistakes, the guidelines
+are to help prevent more mistakes from happening in the future.
 
-1. Functional options
-2. Functional interfaces
-3. Sealed interfaces
-4. Incomparable structs
+In case of v1+ modules, which are those we have declared stable,
+unsealed interfaces come with a promise of no breaking changes,
+meaning not without a major version change. While many of the core
+interfaces are sealed, extension interfaces are an important
+exception. These are stable interfaces that serve as public extension
+points.
 
-Plan to support public interfaces indefinitely, in other words. If you
-can't do that, plan to release a new major version for modifying
-interfaces. If you can't do that, tell your users your plans include a
-potential to break their build.
+As an example, the Collector has [`extensionmiddleware`]() interfaces
+for implementing RPC-specific kinds of middleware. Here, we support
+gRPC and HTTP protocols, with client- and server-specific cases, a
+total of four separate unsealed interfaces. Middleware extension
+components implement some or all of these interfaces. Receiver and
+exporter components generally use one of these, configured on their
+behalf through our `configgrpc` and `confighttp` packages.
 
-Use different method names to achieve different defaults.
+These interfaces will be supported at least throughout v1, and even
+though they are not sealed, we still follow the functional interface
+pattern.  This means for every public interface method name,
+`<Method>Func` type matching every public interface method by name,
+with an appropriate behavior for `nil`.
 
+This brings us back to `ServeHTTP`, which does exactly what it says,
+calls `f(w, r)`. If the `HandlerFunc` is nil, the goroutine will
+panic. A more graceful default behavior would be to write HTTP status
+code 501 (not implemented).
 
-
-
-
-
-```go
-type Handler interface {
-    ServeHTTP(ResponseWriter, *Request)
-}
-
-type HandlerFunc func(ResponseWriter, *Request)
-
+```
+// ServeHTTP calls f(w, r).
+//
+// If f is nil, calls w.WriteHeader(StatusNotImplemented).
 func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
-    f(w, r)
+    if f == nil {
+        w.WriteHeader(StatusNotImplemented)
+        return
+    }
+	f(w, r)
 }
 ```
 
+# Patterns in Golang
+
+If you haven't seen it before, the **functional interface** pattern
+described above can be a real help in Go, a safe way to add optional
+functionality without changing major versions.
+
+We've covered a few other patterns that help us manage our commitment
+to module compatibility:
+
+- Functional options
+- Sealed interfaces
+- Incomparable structs.
+
+We've reiterated [guidelines for module compatibility posted on the Go
+Blog](https://go.dev/blog/module-compatibility), the foundation of our
+approach.
+
+1. The zero value for every field and function must be meaningful, with good default behavior
+2. Do not change function signatures, add new functions instead
+3. Plan for the future, either by option structs or the functional option pattern
+4. Make your structs incomparable at first, otherwise remain comparable
+5. Do not add methods to an interface, do not remove an interface
+6. Seal the interfaces that you plan to extend, provide constructor functions
+7. Use the functional interface pattern with optional functions, for consistency
+
+Library maintainers with a public-facing interfaces in Go, including
+many OpenTelemetry maintainers, are required to follow these rules if
+they want to avoid breaking the users that depend on them.
+
+If you can't follow these rules, release new major versions, otherwise
+you're planning to break your users, and we don't want that. We think
+these patterns will help!
