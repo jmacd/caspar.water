@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Features</name>
+    <Style id="icon-1899-0288D1-nodesc-normal">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="icon-1899-0288D1-nodesc-highlight">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="icon-1899-0288D1-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1899-0288D1-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1899-0288D1-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1899-1A237E-nodesc-normal">
+      <IconStyle>
+        <color>ff7e231a</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="icon-1899-1A237E-nodesc-highlight">
+      <IconStyle>
+        <color>ff7e231a</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+        <hotSpot x="32" xunits="pixels" y="64" yunits="insetPixels"/>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="icon-1899-1A237E-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1899-1A237E-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1899-1A237E-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="line-0288D1-4488-nodesc-normal">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>4.488</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="line-0288D1-4488-nodesc-highlight">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>6.732</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="line-0288D1-4488-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#line-0288D1-4488-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#line-0288D1-4488-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="line-0288D1-6038-normal">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>6.038</width>
+      </LineStyle>
+    </Style>
+    <Style id="line-0288D1-6038-highlight">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>9.057</width>
+      </LineStyle>
+    </Style>
+    <StyleMap id="line-0288D1-6038">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#line-0288D1-6038-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#line-0288D1-6038-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="line-0288D1-6619-nodesc-normal">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>6.619</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="line-0288D1-6619-nodesc-highlight">
+      <LineStyle>
+        <color>ffd18802</color>
+        <width>9.9285</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="line-0288D1-6619-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#line-0288D1-6619-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#line-0288D1-6619-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Placemark>
+      <name>Water main</name>
+      <styleUrl>#line-0288D1-6619-nodesc</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          -123.8027644,39.3642384,0
+          -123.8085018,39.3640445,0
+          -123.8085018,39.3642223,0
+          -123.8093949,39.3642094,0
+          -123.8093439,39.363354,0
+          -123.8141076,39.3633,0
+          -123.8149809,39.3676865,0
+        </coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark>
+      <name>Upper well site</name>
+      <styleUrl>#icon-1899-1A237E-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8026266,39.3643023,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Line 3</name>
+      <description><![CDATA[2" PVC to 1 1/8" PVC; two service connections]]></description>
+      <styleUrl>#line-0288D1-6038</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          -123.8101121,39.3645544,0
+          -123.8099029,39.3645524,0
+          -123.809868,39.3645233,0
+          -123.8098573,39.3642164,0
+          -123.8093654,39.3642094,0
+        </coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark>
+      <name>14951 County Road 410D</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8098738,39.3644034,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>14975 County Road 410D</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8101165,39.3645631,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>45000 Caspar Frontage Road West</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8094122,39.3640032,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>45100 Caspar Frontage Road West</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8093784,39.3637302,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>45120 Caspar Frontage Road West</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8103623,39.3633334,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>45200 Caspar Frontage Road West</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8140791,39.3633184,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>14880 Caspar Road</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8143392,39.3635486,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Service to 14880</name>
+      <styleUrl>#line-0288D1-4488-nodesc</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          -123.8143382,39.3635661,0
+          -123.8144026,39.363931,0
+          -123.8142282,39.3639414,0
+        </coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark>
+      <name>Post Office</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8142016,39.3638828,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Black Bear</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8142633,39.3641545,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Caspar Inn</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8142919,39.3642741,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Caspar Community</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8144924,39.3653685,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>14081 Caspar Road</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8145555,39.3656735,0
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>15101 Caspar Road</name>
+      <styleUrl>#icon-1899-0288D1-nodesc</styleUrl>
+      <Point>
+        <coordinates>
+          -123.8147384,39.3665019,0
+        </coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>
