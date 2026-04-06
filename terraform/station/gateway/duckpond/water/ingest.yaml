@@ -1,0 +1,3 @@
+archived_pattern: /data/casparwater-*.json
+active_pattern: /data/casparwater.json
+pond_path: /ingest

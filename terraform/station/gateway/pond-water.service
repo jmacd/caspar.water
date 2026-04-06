@@ -1,0 +1,9 @@
+[Unit]
+Description=DuckPond water ingestion and R2 backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/jmacd/duckpond/water/run.sh
+Environment=HOME=/home/jmacd

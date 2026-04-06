@@ -1,0 +1,9 @@
+[Unit]
+Description=DuckPond noyo HydroVu collection and R2 backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/jmacd/duckpond/noyo/run.sh
+Environment=HOME=/home/jmacd
