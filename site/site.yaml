@@ -1,0 +1,80 @@
+factory: sitegen
+
+site:
+  title: "Caspar Water"
+  base_url: "/"
+  site_url: "https://casparwater.us"
+  github_url: "https://github.com/jmacd/duckpond"
+
+content:
+  - name: "pages"
+    pattern: "/content/*.md"
+
+exports:
+  - name: "metrics"
+    pattern: "/reduced/*/*/*.series"
+  - name: "analysis"
+    pattern: "/analysis/*"
+
+routes:
+  - name: "home"
+    type: static
+    slug: ""
+    page: "/templates/index.md"
+    routes:
+      - name: "pages"
+        type: content
+        slug: ""
+        content: "pages"
+      - name: "data"
+        type: static
+        slug: "data"
+        routes:
+          - name: "metric-detail"
+            type: template
+            slug: "$0"
+            page: "/templates/data.md"
+            export: "metrics"
+      - name: "analysis"
+        type: static
+        slug: "analysis"
+        routes:
+          - name: "analysis-detail"
+            type: template
+            slug: "$0"
+            page: "/templates/analysis.md"
+            export: "analysis"
+
+partials:
+  sidebar: "/templates/sidebar.md"
+
+static:
+  - pattern: "/img/*"
+
+theme:
+  bg-image: "url('/img/logo.svg')"
+
+sidebar:
+  - "Political"
+  - "Blog"
+  - "History"
+  - "Water"
+  - label: "System"
+    children:
+      - label: "Pump Cycles"
+        href: "/analysis/pump-cycles.html"
+  - label: "Monitoring"
+    children:
+      - label: "Well Depth"
+        href: "/data/well-depth.html"
+      - label: "Tank Level"
+        href: "/data/tank-level.html"
+      - label: "System Pressure"
+        href: "/data/system-pressure.html"
+      - label: "Chlorine Level"
+        href: "/data/chlorine-level.html"
+      - label: "pH"
+        href: "/data/ph.html"
+  - "Software"
+  - "Operator"
+  - "Thanks"

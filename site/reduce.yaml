@@ -1,0 +1,108 @@
+# Temporal-reduce configuration for Caspar Water metrics (remote deployment).
+#
+# This version reads from the ingested oteljson series at /ingest/casparwater*.json
+# (populated by logfile-ingest from the rotating logs on the remote host).
+# The glob pattern matches both the active file and all archived rotations.
+#
+# Dynamic-dir containing five temporal-reduce factories, one per instrument:
+#   - Well depth (Opto 22 / GRV-R7)
+#   - Tank level (concrete storage tank)
+#   - System pressure (main distribution pressure)
+#   - Chlorine level (chlorine tank inventory)
+#   - pH (Atlas Scientific pH probe)
+
+entries:
+  # -- Well Depth ---------------------------------------------------------------
+  - name: "well-depth"
+    factory: "temporal-reduce"
+    config:
+      in_pattern: "oteljson:///ingest/casparwater*.json"
+      out_pattern: "data"
+      time_column: "timestamp"
+      resolutions: [1m, 10m, 1h, 6h, 1d]
+      aggregations:
+        - type: "avg"
+          columns:
+            - "well_depth_value"
+        - type: "min"
+          columns:
+            - "well_depth_value"
+        - type: "max"
+          columns:
+            - "well_depth_value"
+
+  # -- Tank Level ---------------------------------------------------------------
+  - name: "tank-level"
+    factory: "temporal-reduce"
+    config:
+      in_pattern: "oteljson:///ingest/casparwater*.json"
+      out_pattern: "data"
+      time_column: "timestamp"
+      resolutions: [1m, 10m, 1h, 6h, 1d]
+      aggregations:
+        - type: "avg"
+          columns:
+            - "concrete_tank_level_value"
+        - type: "min"
+          columns:
+            - "concrete_tank_level_value"
+        - type: "max"
+          columns:
+            - "concrete_tank_level_value"
+
+  # -- System Pressure ----------------------------------------------------------
+  - name: "system-pressure"
+    factory: "temporal-reduce"
+    config:
+      in_pattern: "oteljson:///ingest/casparwater*.json"
+      out_pattern: "data"
+      time_column: "timestamp"
+      resolutions: [1m, 10m, 1h, 6h, 1d]
+      aggregations:
+        - type: "avg"
+          columns:
+            - "system_pressure_value"
+        - type: "min"
+          columns:
+            - "system_pressure_value"
+        - type: "max"
+          columns:
+            - "system_pressure_value"
+
+  # -- Chlorine Level -----------------------------------------------------------
+  - name: "chlorine-level"
+    factory: "temporal-reduce"
+    config:
+      in_pattern: "oteljson:///ingest/casparwater*.json"
+      out_pattern: "data"
+      time_column: "timestamp"
+      resolutions: [1m, 10m, 1h, 6h, 1d]
+      aggregations:
+        - type: "avg"
+          columns:
+            - "chlorine_level_value"
+        - type: "min"
+          columns:
+            - "chlorine_level_value"
+        - type: "max"
+          columns:
+            - "chlorine_level_value"
+
+  # -- pH -----------------------------------------------------------------------
+  - name: "ph"
+    factory: "temporal-reduce"
+    config:
+      in_pattern: "oteljson:///ingest/casparwater*.json"
+      out_pattern: "data"
+      time_column: "timestamp"
+      resolutions: [1m, 10m, 1h, 6h, 1d]
+      aggregations:
+        - type: "avg"
+          columns:
+            - "atlasph_ph"
+        - type: "min"
+          columns:
+            - "atlasph_ph"
+        - type: "max"
+          columns:
+            - "atlasph_ph"
