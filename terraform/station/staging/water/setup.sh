@@ -9,9 +9,6 @@ SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 EXE="${SCRIPTS}/pond.sh"
 VOLUME=pond-water-staging
 
-# Ensure MinIO bucket exists
-mc mb --ignore-existing local/water-staging
-
 # Create podman volume if needed
 if ! podman volume exists "${VOLUME}" 2>/dev/null; then
     echo "Creating podman volume: ${VOLUME}"

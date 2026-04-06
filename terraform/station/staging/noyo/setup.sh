@@ -9,9 +9,6 @@ SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 EXE="${SCRIPTS}/pond.sh"
 VOLUME=pond-noyo-staging
 
-# Ensure MinIO bucket exists
-mc mb --ignore-existing local/noyo-staging
-
 # Create podman volume if needed
 if ! podman volume exists "${VOLUME}" 2>/dev/null; then
     echo "Creating podman volume: ${VOLUME}"
