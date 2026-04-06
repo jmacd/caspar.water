@@ -36,6 +36,18 @@ resource "null_resource" "setup-script" {
   }
 
   provisioner "file" {
+      source      = "teardown_script.sh"
+      destination = "/tmp/teardown_script.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/teardown_script.sh",
+      "/tmp/teardown_script.sh",
+    ]
+  }
+
+  provisioner "file" {
       source      = "casparwater_certs/casparwater_us.key"
       destination = "/etc/casparwater/casparwater_us.key"
   }
@@ -50,24 +62,33 @@ resource "null_resource" "setup-script" {
       destination = "/etc/nginx/sites-enabled/casparwater"
   }
 
+  # Duckpond scripts and configs
+  provisioner "file" {
+      source      = "duckpond/"
+      destination = "/home/jmacd/duckpond"
+  }
+
+  # Site content (templates, content pages, images)
   provisioner "file" {
       source      = "../../../site/"
-      destination = "/var/www/html/"
+      destination = "/home/jmacd/duckpond/site"
+  }
+
+  # Systemd user units for duckpond timer
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /home/jmacd/.config/systemd/user",
+    ]
   }
 
   provisioner "file" {
-      source      = "influxdb.toml"
-      destination = "/etc/influxdb/config.toml"
+      source      = "pond-site.service"
+      destination = "/home/jmacd/.config/systemd/user/pond-site.service"
   }
 
   provisioner "file" {
-      source      = "casparwater_certs/casparwater_us.pem"
-      destination = "/etc/influxdb/casparwater_us.pem"
-  }
-
-  provisioner "file" {
-      source      = "casparwater_certs/casparwater_us.key"
-      destination = "/etc/influxdb/casparwater_us.key"
+      source      = "pond-site.timer"
+      destination = "/home/jmacd/.config/systemd/user/pond-site.timer"
   }
 
   provisioner "remote-exec" {

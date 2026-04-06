@@ -1,21 +1,27 @@
 #!/bin/sh
 
-apt-get update -y
-apt-get upgrade -y
+# Install podman if not present
+if ! command -v podman >/dev/null 2>&1; then
+    apt-get update -y
+    apt-get install -y podman
+fi
 
-apt-get install -y software-properties-common
+# Enable lingering for user timers
+loginctl enable-linger jmacd
 
-apt-get install -y openssl
-apt-get install -y gpg
+# Make duckpond scripts executable
+chmod +x /home/jmacd/duckpond/*.sh
 
-# Note some manual setup for deb source
-# Note this appears to have wiped-out an existing influxdd install!
-#apt-get install influxdb2
+# Set up duckpond site pond
+su - jmacd -c "/home/jmacd/duckpond/setup.sh"
 
-systemctl stop nginx
+# Start services
+systemctl daemon-reload
 systemctl enable nginx
 systemctl start nginx
 
-systemctl stop influxdb
-systemctl enable influxdb
-systemctl start influxdb
+# Start duckpond timer
+systemctl --user -M jmacd@ daemon-reload
+systemctl --user -M jmacd@ enable --now pond-site.timer
+
+echo Setup complete.

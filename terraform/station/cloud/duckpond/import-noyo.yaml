@@ -1,0 +1,8 @@
+region: "auto"
+url: "s3://noyo-pond"
+endpoint: "{{ env(name='R2_ENDPOINT') }}"
+access_key: "{{ env(name='R2_KEY') }}"
+secret_key: "{{ env(name='R2_SECRET') }}"
+import:
+  source_path: "/**"
+  local_path: "/sources/noyo"
