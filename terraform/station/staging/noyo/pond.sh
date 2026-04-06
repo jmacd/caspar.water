@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 # pond.sh -- Podman wrapper for the noyo staging pond on watershop.
-#
-# Runs the duckpond CLI inside a container with:
-#   - Named volume "pond-noyo-staging" for pond storage
-#   - Bind mount of the noyo config directory
-#   - HydroVu and MinIO credentials
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 STAGING_DIR=$(dirname "$SCRIPTS")

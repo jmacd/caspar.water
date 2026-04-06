@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
 # pond.sh -- Podman wrapper for the site staging pond on watershop.
-#
-# Runs the duckpond CLI inside a container with:
-#   - Named volume "pond-site-staging" for pond storage
-#   - Bind mount of the repo site/ directory and config directory
-#   - MinIO credentials for cross-pond import
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 STAGING_DIR=$(dirname "$SCRIPTS")
-REPO_ROOT=$(dirname "$(dirname "$(dirname "$STAGING_DIR")")")
 
 source "$STAGING_DIR/env.sh"
 
@@ -16,7 +10,7 @@ VOLUME=pond-site-staging
 
 podman run --pull=newer -ti --rm \
     -v "${VOLUME}:/pond" \
-    -v "${REPO_ROOT}/site:/root/site:ro" \
+    -v "${STAGING_DIR}/site-content:/root/site:ro" \
     -v "${SCRIPTS}:/root/config:ro" \
     -e POND=/pond \
     -e R2_ENDPOINT="${MINIO_ENDPOINT}" \

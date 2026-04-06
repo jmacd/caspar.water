@@ -4,25 +4,20 @@ set -ex
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 STAGING_DIR=$(dirname "$SCRIPTS")
-EXE="${SCRIPTS}/pond.sh"
+
+source "$STAGING_DIR/env.sh"
 
 OUTDIR="${STAGING_DIR}/dist"
+VOLUME=pond-site-staging
 
 # Clear and recreate output dir
 rm -rf "${OUTDIR}"
 mkdir -p "${OUTDIR}"
 
-# Run sitegen build — output goes to bind-mounted dist/
-# We need to re-run with an extra mount for the output directory
-REPO_ROOT=$(dirname "$(dirname "$(dirname "$STAGING_DIR")")")
-
-source "$STAGING_DIR/env.sh"
-
-VOLUME=pond-site-staging
-
+# Run sitegen with output mount
 podman run --pull=newer -ti --rm \
     -v "${VOLUME}:/pond" \
-    -v "${REPO_ROOT}/site:/root/site:ro" \
+    -v "${STAGING_DIR}/site-content:/root/site:ro" \
     -v "${SCRIPTS}:/root/config:ro" \
     -v "${OUTDIR}:/output" \
     -e POND=/pond \

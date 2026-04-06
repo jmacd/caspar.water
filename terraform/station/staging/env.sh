@@ -1,8 +1,8 @@
 #!/bin/bash
-# Shared environment for staging on watershop.casparwater.us.
+# Shared environment for staging on watershop.casparwater.us (ARM).
 # Sourced by other scripts, not run directly.
 
-export IMAGE=ghcr.io/jmacd/duckpond/duckpond:latest-amd64
+export IMAGE=ghcr.io/jmacd/duckpond/duckpond:latest-arm64
 export MINIO_ENDPOINT=http://localhost:9000
 export MINIO_ACCESS_KEY=caspar
 export MINIO_SECRET_KEY=watertown

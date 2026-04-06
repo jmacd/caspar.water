@@ -23,14 +23,13 @@ end-to-end before deploying to production gateway and cloud machines.
 ## Quick Start
 
 ```bash
+cd terraform/station/staging
+tofu init    # or terraform init
+tofu apply   # pushes configs to watershop, runs teardown + setup
+
+# Then SSH in to run the pipeline and preview
 ssh jmacd@watershop.casparwater.us
-cd ~/caspar.water/terraform/station/staging
-
-# First time / full reset
-./teardown-all.sh
-./setup-all.sh
-
-# Run full pipeline
+cd staging
 ./run-all.sh
 
 # Preview the site
