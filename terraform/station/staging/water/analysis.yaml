@@ -1,0 +1,251 @@
+# Pump cycle analysis configuration for Caspar Water well depth data.
+#
+# Dynamic-dir containing sql-derived-series factories that detect pump
+# on/off cycles from well_depth_value and produce aligned datasets for
+# Horner plot analysis, drawdown/recovery overlay charts, and duty cycle
+# monitoring.
+#
+# The pump cycle detection uses a simple depth threshold (42m):
+#   - Below 42m = pump is on (drawdown phase)
+#   - Above 42m = pump is off (recovery phase)
+#   - Each crossing below 42m starts a new "pump event"
+#
+# Static water level is ~44m; pumping quickly drops below 40m.
+# The 42m threshold cleanly separates pump-on from pump-off with no
+# debounce issues.
+#
+# For LOCAL/REMOTE POND with full OtelJSON data in /ingest/:
+#   pond mknod dynamic-dir /analysis --config-path analysis-remote.yaml
+#
+# For HOSTMOUNT with sample data, see analysis.yaml instead.
+
+entries:
+  # -- Pump Cycles ---------------------------------------------------------------
+  #
+  # Produces one row per 30-second sample with pump event context:
+  #   pump_event_id  - integer identifying each pump cycle (draw + recovery)
+  #   month          - month of year (1-12) for seasonal coloring
+  #   elapsed_s      - seconds since the start of this pump event
+  #   drawdown       - meters of drawdown from starting depth (positive = dropping)
+  #   depth          - raw well depth in meters
+  #   phase          - 'draw' or 'recovery'
+  #
+  # Capped at 2 hours (7200s) per event to exclude long static periods.
+  # Minimum event duration filtering happens at the chart/consumer level.
+  #
+  - name: "pump-cycles"
+    factory: "sql-derived-series"
+    config:
+      patterns:
+        source: "oteljson:///ingest/casparwater*.json"
+      query: >-
+        WITH raw AS (
+          SELECT timestamp, well_depth_value as depth
+          FROM source WHERE well_depth_value IS NOT NULL
+            AND well_depth_value > 10
+            AND well_depth_value < 60
+        ),
+        classified AS (
+          SELECT timestamp, depth,
+            CASE WHEN depth < 42.0 THEN true ELSE false END as is_draw,
+            LAG(CASE WHEN depth < 42.0 THEN true ELSE false END)
+              OVER (ORDER BY timestamp) as was_draw,
+            LAG(timestamp) OVER (ORDER BY timestamp) as prev_timestamp
+          FROM raw
+        ),
+        with_pump_start AS (
+          SELECT timestamp, depth, is_draw,
+            CASE WHEN is_draw = true AND (was_draw = false OR was_draw IS NULL)
+              THEN 1 ELSE 0
+            END as pump_start,
+            AVG(depth) OVER (
+              ORDER BY timestamp ROWS BETWEEN 20 PRECEDING AND 10 PRECEDING
+            ) as lookback_avg,
+            CASE WHEN is_draw = true AND (was_draw = false OR was_draw IS NULL)
+              THEN EXTRACT(EPOCH FROM (timestamp - prev_timestamp))
+              ELSE NULL
+            END as gap_at_start
+          FROM classified
+        ),
+        with_event_id AS (
+          SELECT timestamp, depth, is_draw,
+            SUM(pump_start) OVER (ORDER BY timestamp ROWS UNBOUNDED PRECEDING)
+              as pump_event_id,
+            CASE WHEN pump_start = 1 THEN lookback_avg ELSE NULL END as static_at_start,
+            gap_at_start
+          FROM with_pump_start
+        ),
+        filtered AS (
+          SELECT * FROM with_event_id WHERE pump_event_id > 0
+        ),
+        with_meta AS (
+          SELECT timestamp, depth, is_draw, pump_event_id,
+            FIRST_VALUE(timestamp) OVER (
+              PARTITION BY pump_event_id ORDER BY timestamp
+            ) as event_start,
+            MAX(static_at_start) OVER (
+              PARTITION BY pump_event_id
+            ) as static_depth,
+            MAX(gap_at_start) OVER (
+              PARTITION BY pump_event_id
+            ) as start_gap_s
+          FROM filtered
+        ),
+        long_enough AS (
+          SELECT pump_event_id
+          FROM with_meta
+          WHERE is_draw = true
+          GROUP BY pump_event_id
+          HAVING COUNT(*) >= 40
+        ),
+        clean_start AS (
+          SELECT pump_event_id
+          FROM with_meta
+          WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) < 60
+          GROUP BY pump_event_id
+          HAVING MIN(depth) >= 40.0
+        ),
+        real_drawdown AS (
+          SELECT pump_event_id
+          FROM with_meta
+          GROUP BY pump_event_id
+          HAVING MAX(static_depth) - MIN(depth) >= 1.5
+        ),
+        not_stale AS (
+          SELECT pump_event_id
+          FROM with_meta
+          GROUP BY pump_event_id
+          HAVING MAX(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start)) < 30
+                   THEN depth END)
+               - MIN(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start))
+                   BETWEEN 270 AND 330 THEN depth END) >= 0.3
+        )
+        SELECT
+          timestamp,
+          CAST(m.pump_event_id AS INT) as pump_event_id,
+          CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
+          EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
+          depth,
+          static_depth,
+          CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
+        FROM with_meta m
+        INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
+        INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
+        INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
+        INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
+        WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
+          AND static_depth BETWEEN 40.0 AND 50.0
+          AND (start_gap_s IS NULL OR start_gap_s < 300)
+        ORDER BY timestamp
+
+  # -- Cycle Summary -------------------------------------------------------------
+  #
+  # One row per pump event with aggregate stats for filtering and analysis:
+  #   pump_event_id  - matches pump-cycles table
+  #   event_start    - timestamp of cycle start
+  #   month          - month of year for seasonal grouping
+  #   draw_duration_s     - seconds spent in drawdown phase
+  #   recovery_duration_s - seconds until depth returns above threshold
+  #   total_duration_s    - total event duration (capped at 7200s)
+  #   max_drawdown        - peak drawdown in meters
+  #   depth_at_start      - well depth at cycle start
+  #   min_depth           - minimum depth reached during pumping
+  #   num_points          - number of data points in this cycle
+  #
+  - name: "cycle-summary"
+    factory: "sql-derived-series"
+    config:
+      patterns:
+        source: "oteljson:///ingest/casparwater*.json"
+      query: >-
+        WITH raw AS (
+          SELECT timestamp, well_depth_value as depth
+          FROM source WHERE well_depth_value IS NOT NULL
+        ),
+        classified AS (
+          SELECT timestamp, depth,
+            CASE WHEN depth < 42.0 THEN true ELSE false END as is_draw,
+            LAG(CASE WHEN depth < 42.0 THEN true ELSE false END)
+              OVER (ORDER BY timestamp) as was_draw,
+            LAG(timestamp) OVER (ORDER BY timestamp) as prev_timestamp
+          FROM raw
+        ),
+        with_pump_start AS (
+          SELECT timestamp, depth, is_draw,
+            CASE WHEN is_draw = true AND (was_draw = false OR was_draw IS NULL)
+              THEN 1 ELSE 0
+            END as pump_start,
+            AVG(depth) OVER (
+              ORDER BY timestamp ROWS BETWEEN 20 PRECEDING AND 10 PRECEDING
+            ) as lookback_avg,
+            CASE WHEN is_draw = true AND (was_draw = false OR was_draw IS NULL)
+              THEN EXTRACT(EPOCH FROM (timestamp - prev_timestamp))
+              ELSE NULL
+            END as gap_at_start
+          FROM classified
+        ),
+        with_event_id AS (
+          SELECT timestamp, depth, is_draw,
+            SUM(pump_start) OVER (ORDER BY timestamp ROWS UNBOUNDED PRECEDING)
+              as pump_event_id,
+            CASE WHEN pump_start = 1 THEN lookback_avg ELSE NULL END as static_at_start,
+            gap_at_start
+          FROM with_pump_start
+        ),
+        filtered AS (
+          SELECT * FROM with_event_id WHERE pump_event_id > 0
+        ),
+        with_meta AS (
+          SELECT timestamp, depth, is_draw, pump_event_id,
+            FIRST_VALUE(timestamp) OVER (
+              PARTITION BY pump_event_id ORDER BY timestamp
+            ) as event_start,
+            FIRST_VALUE(depth) OVER (
+              PARTITION BY pump_event_id ORDER BY timestamp
+            ) as depth_at_start,
+            MAX(static_at_start) OVER (
+              PARTITION BY pump_event_id
+            ) as static_depth,
+            MAX(gap_at_start) OVER (
+              PARTITION BY pump_event_id
+            ) as start_gap_s
+          FROM filtered
+        ),
+        capped AS (
+          SELECT * FROM with_meta
+          WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
+            AND static_depth BETWEEN 40.0 AND 50.0
+            AND (start_gap_s IS NULL OR start_gap_s < 300)
+        ),
+        per_event AS (
+          SELECT
+            CAST(pump_event_id AS INT) as pump_event_id,
+            MIN(timestamp) as timestamp,
+            CAST(EXTRACT(MONTH FROM MIN(event_start)) AS INT) as month,
+            CAST(EXTRACT(DOY FROM MIN(event_start)) AS INT) as day_of_year,
+            SUM(CASE WHEN is_draw THEN 1 ELSE 0 END) * 30.0 as draw_duration_s,
+            SUM(CASE WHEN NOT is_draw THEN 1 ELSE 0 END) * 30.0 as recovery_duration_s,
+            COUNT(*) * 30.0 as total_duration_s,
+            MAX(depth_at_start - depth) as max_drawdown,
+            MIN(depth_at_start) as depth_at_start,
+            MIN(static_depth) as static_depth,
+            MIN(depth) as min_depth,
+            CAST(COUNT(*) AS INT) as num_points
+          FROM capped
+          GROUP BY pump_event_id
+          HAVING SUM(CASE WHEN is_draw THEN 1 ELSE 0 END) >= 40
+        ),
+        with_interval AS (
+          SELECT pe.*,
+            EXTRACT(EPOCH FROM (
+              LEAD(pe.timestamp) OVER (ORDER BY pe.timestamp) - pe.timestamp
+            )) as inter_pump_s
+          FROM per_event pe
+        )
+        SELECT wi.*,
+          CASE WHEN inter_pump_s > 0
+            THEN draw_duration_s / inter_pump_s
+            ELSE NULL
+          END as duty_cycle
+        FROM with_interval wi
+        ORDER BY timestamp

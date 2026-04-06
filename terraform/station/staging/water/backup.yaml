@@ -1,0 +1,8 @@
+compression_level: 3
+region: "us-east-1"
+url: "s3://water-staging"
+allow_http: true
+
+endpoint: "{{ env(name='R2_ENDPOINT') }}"
+access_key: "{{ env(name='R2_KEY') }}"
+secret_key: "{{ env(name='R2_SECRET') }}"
