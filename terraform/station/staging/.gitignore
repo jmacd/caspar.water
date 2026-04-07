@@ -1,2 +1,5 @@
 dist/
 deploy.env
+water/pond/
+noyo/pond/
+site/pond/

@@ -3,6 +3,6 @@ region: "us-east-1"
 url: "s3://water-staging"
 allow_http: true
 
-endpoint: "{{ env(name='R2_ENDPOINT') }}"
-access_key: "{{ env(name='R2_KEY') }}"
-secret_key: "{{ env(name='R2_SECRET') }}"
+endpoint: "${env:R2_ENDPOINT}"
+access_key: "${env:R2_KEY}"
+secret_key: "${env:R2_SECRET}"

@@ -1,7 +1,7 @@
 hydrovu_path: "/hydrovu"
 max_points_per_run: 10000
-client_id: "{{ env(name='HYDRO_KEY_ID') }}"
-client_secret: "{{ env(name='HYDRO_KEY_VALUE') }}"
+client_id: "${env:HYDRO_KEY_ID}"
+client_secret: "${env:HYDRO_KEY_VALUE}"
 
 # Instrument names are device-centric, not site-centric.
 # Instruments move between sites; combine.yaml maps instruments → sites

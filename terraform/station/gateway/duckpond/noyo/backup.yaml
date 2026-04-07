@@ -2,6 +2,6 @@ compression_level: 3
 region: "auto"
 url: "s3://noyo-pond"
 
-endpoint: "{{ env(name='R2_ENDPOINT') }}"
-access_key: "{{ env(name='R2_KEY') }}"
-secret_key: "{{ env(name='R2_SECRET') }}"
+endpoint: "${env:R2_ENDPOINT}"
+access_key: "${env:R2_KEY}"
+secret_key: "${env:R2_SECRET}"

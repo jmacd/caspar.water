@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# teardown.sh -- Stop and remove the noyo staging pond.
+# teardown.sh -- Remove the noyo staging pond.
 set -ex
 
-VOLUME=pond-noyo-staging
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 
-echo "Removing podman volume: ${VOLUME}"
-podman volume rm "${VOLUME}" 2>/dev/null || true
+echo "Removing noyo pond directory"
+rm -rf "${SCRIPTS}/pond"
 
 echo "Noyo staging teardown complete."

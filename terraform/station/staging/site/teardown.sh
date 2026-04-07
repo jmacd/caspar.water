@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# teardown.sh -- Stop and remove the site staging pond.
+# teardown.sh -- Remove the site staging pond.
 set -ex
 
-VOLUME=pond-site-staging
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 
-echo "Removing podman volume: ${VOLUME}"
-podman volume rm "${VOLUME}" 2>/dev/null || true
+echo "Removing site pond directory"
+rm -rf "${SCRIPTS}/pond"
 
 echo "Site staging teardown complete."

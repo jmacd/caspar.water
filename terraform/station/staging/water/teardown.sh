@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# teardown.sh -- Stop and remove the water staging pond.
+# teardown.sh -- Remove the water staging pond.
 set -ex
 
-VOLUME=pond-water-staging
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 
-echo "Removing podman volume: ${VOLUME}"
-podman volume rm "${VOLUME}" 2>/dev/null || true
+echo "Removing water pond directory"
+rm -rf "${SCRIPTS}/pond"
 
 echo "Water staging teardown complete."
