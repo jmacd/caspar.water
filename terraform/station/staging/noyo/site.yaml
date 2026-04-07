@@ -1,0 +1,88 @@
+factory: sitegen
+
+site:
+  title: "Noyo Harbor Blue Economy"
+  base_url: "/noyo-harbor/"
+  github_url: "https://github.com/jmacd/noyo-blue-econ"
+
+exports:
+  - name: "params"
+    pattern: "/reduced/single_param/*/*.series"
+  - name: "sites"
+    pattern: "/reduced/single_site/*/*.series"
+
+routes:
+  - name: "home"
+    type: static
+    slug: ""
+    page: "/system/site/index.md"
+  - name: "params"
+    type: static
+    slug: "params"
+    page: "/system/site/params.md"
+    routes:
+      - name: "param-detail"
+        type: template
+        slug: "$0"
+        page: "/system/site/data.md"
+        export: "params"
+  - name: "sites"
+    type: static
+    slug: "sites"
+    page: "/system/site/sites.md"
+    routes:
+      - name: "site-detail"
+        type: template
+        slug: "$0"
+        page: "/system/site/data.md"
+        export: "sites"
+
+partials:
+  sidebar: "/system/site/sidebar.md"
+
+sidebar:
+  - label: "Home"
+    href: "/noyo-harbor/"
+  - label: "Parameters"
+    href: "/noyo-harbor/params/index.html"
+    children:
+      - label: "Dissolved Oxygen"
+        href: "/noyo-harbor/params/DO.html"
+      - label: "Salinity"
+        href: "/noyo-harbor/params/Salinity.html"
+      - label: "Temperature"
+        href: "/noyo-harbor/params/Temperature.html"
+      - label: "Tide"
+        href: "/noyo-harbor/params/Tide.html"
+  - label: "Sites"
+    href: "/noyo-harbor/sites/index.html"
+    children:
+      - label: "B-Dock"
+        href: "/noyo-harbor/sites/BDock.html"
+      - label: "Field Station"
+        href: "/noyo-harbor/sites/FieldStation.html"
+      - label: "Princess Seafood"
+        href: "/noyo-harbor/sites/Princess.html"
+      - label: "Silver"
+        href: "/noyo-harbor/sites/Silver.html"
+
+static_assets: []
+
+# Noyo Center for Marine Science theme
+# Deep navy + ocean teal palette inspired by noyocenter.org
+theme:
+  accent: "#0f3460"
+  accent-light: "#1a6985"
+  accent-wash: "#e8f4f8"
+  bg: "#f5f7fa"
+  bg-sidebar: "#edf2f7"
+  bg-card: "#f7fafc"
+  bg-hover: "#e2e8f0"
+  border: "#cbd5e0"
+  border-light: "#e2e8f0"
+  nav-btn: "rgba(26, 105, 133, 0.85)"
+  nav-btn-hover: "rgba(26, 105, 133, 0.65)"
+  nav-btn-active: "rgba(15, 52, 96, 0.9)"
+  nav-sub-btn: "rgba(26, 105, 133, 0.5)"
+  nav-sub-btn-hover: "rgba(26, 105, 133, 0.35)"
+  nav-sub-btn-active: "rgba(15, 52, 96, 0.85)"

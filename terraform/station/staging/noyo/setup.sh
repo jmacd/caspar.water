@@ -27,6 +27,13 @@ ${EXE} mknod dynamic-dir /combined --config-path "${SCRIPTS}/combine.yaml"
 ${EXE} mknod dynamic-dir /singled --config-path "${SCRIPTS}/single.yaml"
 ${EXE} mknod dynamic-dir /reduced --config-path "${SCRIPTS}/reduce.yaml"
 
+# Copy archived laketech Excel data and site content from noyo-blue-econ
+NOYO_ROOT=$(cd "${SCRIPTS}/../../../../noyo-blue-econ" && pwd)
+${EXE} mkdir -p /laketech
+${EXE} copy "host://${NOYO_ROOT}/laketech" /laketech/data
+${EXE} copy "host://${NOYO_ROOT}/site" /system/site
+${EXE} mknod sitegen /system/etc/90-sitegen --config-path "${SCRIPTS}/site.yaml"
+
 echo
 echo "=== Noyo staging pond setup complete ==="
 echo "Next: ./noyo/run.sh    # collect from HydroVu + backup"
