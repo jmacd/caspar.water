@@ -7,7 +7,7 @@ STAGING_DIR=$(dirname "$SCRIPTS")
 EXE="${SCRIPTS}/pond.sh"
 
 export RUST_BACKTRACE=1
-export POND_MAX_ALLOC_MB=1000
+export POND_MAX_ALLOC_MB=3000
 
 OUTDIR="${STAGING_DIR}/dist"
 
