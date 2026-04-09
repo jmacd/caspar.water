@@ -2,7 +2,7 @@ factory: sitegen
 
 site:
   title: "Caspar Water"
-  base_url: "/"
+  base_url: "/staging/"
   site_url: "https://casparwater.us"
   github_url: "https://github.com/jmacd/duckpond"
 
@@ -23,7 +23,7 @@ subsites:
   - name: "noyo"
     path: "/sources/noyo"
     config: "/system/etc/90-sitegen"
-    base_url: "/noyo-harbor/"
+    base_url: "/staging/noyo-harbor/"
 
 routes:
   - name: "home"
@@ -61,7 +61,7 @@ static:
   - pattern: "/img/*"
 
 theme:
-  bg-image: "url('/img/logo.svg')"
+  bg-image: "url('/staging/img/logo.svg')"
 
 sidebar:
   - "Political"
@@ -71,21 +71,21 @@ sidebar:
   - label: "System"
     children:
       - label: "Pump Cycles"
-        href: "/analysis/pump-cycles.html"
+        href: "/staging/analysis/pump-cycles.html"
   - label: "Monitoring"
     children:
       - label: "Well Depth"
-        href: "/data/well-depth.html"
+        href: "/staging/data/well-depth.html"
       - label: "Tank Level"
-        href: "/data/tank-level.html"
+        href: "/staging/data/tank-level.html"
       - label: "System Pressure"
-        href: "/data/system-pressure.html"
+        href: "/staging/data/system-pressure.html"
       - label: "Chlorine Level"
-        href: "/data/chlorine-level.html"
+        href: "/staging/data/chlorine-level.html"
       - label: "pH"
-        href: "/data/ph.html"
+        href: "/staging/data/ph.html"
   - label: "Noyo Harbor"
-    href: "/noyo-harbor/"
+    href: "/staging/noyo-harbor/"
   - "Software"
   - "Operator"
   - "Thanks"
