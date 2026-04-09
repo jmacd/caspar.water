@@ -70,6 +70,12 @@ resource "null_resource" "staging" {
     destination = "/home/${var.user}/staging/site-content"
   }
 
+  # Nginx site config
+  provisioner "file" {
+    source      = "nginx-staging.conf"
+    destination = "/home/${var.user}/staging/nginx-staging.conf"
+  }
+
   # Make scripts executable and run setup
   provisioner "remote-exec" {
     inline = [
@@ -77,6 +83,9 @@ resource "null_resource" "staging" {
       "chmod +x /home/${var.user}/staging/water/*.sh",
       "chmod +x /home/${var.user}/staging/noyo/*.sh",
       "chmod +x /home/${var.user}/staging/site/*.sh",
+      "sudo cp /home/${var.user}/staging/nginx-staging.conf /etc/nginx/sites-available/staging",
+      "sudo ln -sf /etc/nginx/sites-available/staging /etc/nginx/sites-enabled/default",
+      "sudo nginx -t && sudo nginx -s reload",
       "/home/${var.user}/staging/teardown-all.sh || true",
       "/home/${var.user}/staging/setup-all.sh",
     ]
