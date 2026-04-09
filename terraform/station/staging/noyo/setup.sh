@@ -19,19 +19,20 @@ ${EXE} init
 ${EXE} mkdir -p /system/run
 ${EXE} mkdir -p /system/etc
 
-# Install factory nodes
+# Copy archived data and site content from noyo-blue-econ
+NOYO_ROOT=$(cd "${SCRIPTS}/../../../../noyo-blue-econ" && pwd)
+${EXE} mkdir -p /laketech
+${EXE} copy "host://${NOYO_ROOT}/laketech" /laketech/data
+${EXE} copy "host://${NOYO_ROOT}/hydrovu" /hydrovu
+${EXE} copy "host://${NOYO_ROOT}/site" /system/site
+
+# Install factory nodes (after copy so mknod hydrovu finds /hydrovu)
 ${EXE} mknod remote /system/run/1-backup --config-path "${SCRIPTS}/backup.yaml"
 ${EXE} mknod hydrovu /system/etc/20-hydrovu --config-path "${SCRIPTS}/hydrovu.yaml"
 ${EXE} mknod column-rename /system/etc/10-hrename --config-path "${SCRIPTS}/hrename.yaml"
 ${EXE} mknod dynamic-dir /combined --config-path "${SCRIPTS}/combine.yaml"
 ${EXE} mknod dynamic-dir /singled --config-path "${SCRIPTS}/single.yaml"
 ${EXE} mknod dynamic-dir /reduced --config-path "${SCRIPTS}/reduce.yaml"
-
-# Copy archived laketech Excel data and site content from noyo-blue-econ
-NOYO_ROOT=$(cd "${SCRIPTS}/../../../../noyo-blue-econ" && pwd)
-${EXE} mkdir -p /laketech
-${EXE} copy "host://${NOYO_ROOT}/laketech" /laketech/data
-${EXE} copy "host://${NOYO_ROOT}/site" /system/site
 ${EXE} mknod sitegen /system/etc/90-sitegen --config-path "${SCRIPTS}/site.yaml"
 
 echo
