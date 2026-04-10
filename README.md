@@ -27,6 +27,7 @@ Gateway (linux.local)             Cloud (Linode / casparwater.us)
 | Directory | Description |
 |-----------|-------------|
 | `site/` | Caspar Water website: content pages, blog, templates, images, duckpond configs |
+| `local/` | Local site generation for content/style development |
 | `cmd/` | OpenTelemetry collector custom components |
 | `collector/` | Compiled collector binary |
 | `terraform/station/gateway/` | Gateway provisioning (collector + duckpond water/noyo) |
@@ -58,6 +59,9 @@ Gateway (linux.local)             Cloud (Linode / casparwater.us)
 
 | I want to... | Do this |
 |---|---|
+| Iterate on content/style locally | `cd local && ./setup.sh && ./sync.sh && ./generate.sh && ./serve.sh` |
+| Refresh after editing site content | `cd local && ./refresh.sh` |
+| Re-sync data from staging | `cd local && ./sync.sh && ./generate.sh` |
 | Test full pipeline before prod | `cd terraform/station/staging && ./setup-all.sh && ./run-all.sh` |
 | Deploy to gateway | `cd terraform/station/gateway && terraform apply` |
 | Deploy to cloud | `cd terraform/station/cloud && terraform apply` |

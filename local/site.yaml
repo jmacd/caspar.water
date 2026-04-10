@@ -12,9 +12,15 @@ content:
 
 exports:
   - name: "metrics"
-    pattern: "/reduced/*/*/*.series"
+    pattern: "/sources/water/reduced/*/*/*.series"
   - name: "analysis"
-    pattern: "/analysis/*"
+    pattern: "/sources/water/analysis/*"
+
+subsites:
+  - name: "noyo"
+    path: "/sources/noyo"
+    config: "/system/etc/90-sitegen"
+    base_url: "/noyo-harbor/"
 
 routes:
   - name: "home"
@@ -51,6 +57,9 @@ partials:
 static:
   - pattern: "/img/*"
 
+theme:
+  bg-image: "none"
+
 sidebar:
   - "Political"
   - "Blog"
@@ -72,6 +81,8 @@ sidebar:
         href: "/data/chlorine-level.html"
       - label: "pH"
         href: "/data/ph.html"
+  - label: "Noyo Harbor"
+    href: "/noyo-harbor/"
   - "Software"
   - "Operator"
   - "Thanks"
