@@ -62,18 +62,6 @@ resource "null_resource" "setup-script" {
       destination = "/etc/nginx/sites-enabled/casparwater"
   }
 
-  # Duckpond scripts and configs
-  provisioner "file" {
-      source      = "duckpond/"
-      destination = "/home/jmacd/duckpond"
-  }
-
-  # Site content (templates, content pages, images)
-  provisioner "file" {
-      source      = "../../../site/"
-      destination = "/home/jmacd/duckpond/site"
-  }
-
   # Systemd user units for duckpond timer
   provisioner "remote-exec" {
     inline = [
