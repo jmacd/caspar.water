@@ -1,0 +1,6 @@
+[submodule "noyo-blue-econ"]
+	path = noyo-blue-econ
+	url = git@github.com:jmacd/noyo-blue-econ.git
+[submodule "duckpond"]
+	path = duckpond
+	url = git@github.com:jmacd/duckpond.git
