@@ -1,0 +1,3 @@
+archived_pattern: ${env:DATA_DIR:-/data}/casparwater-*.json
+active_pattern: ${env:DATA_DIR:-/data}/casparwater.json
+pond_path: /ingest
