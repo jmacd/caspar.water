@@ -4,7 +4,8 @@
 set -ex
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
-SITE_DIR=$(cd "${SCRIPTS}/../site" && pwd)
+REPO_ROOT=$(cd "${SCRIPTS}/.." && pwd)
+SITE_DIR="${REPO_ROOT}/site"
 
 source "$SCRIPTS/env.sh"
 
@@ -34,7 +35,7 @@ copy_dir_files "${SITE_DIR}/templates" /templates
 copy_dir_files "${SITE_DIR}/img" /img
 
 # Re-install sitegen config (picks up site.yaml changes)
-"${POND_BIN}" mknod sitegen /system/etc/90-sitegen --config-path "${SCRIPTS}/site.yaml" --overwrite
+"${POND_BIN}" mknod sitegen /system/etc/90-sitegen --config-path "${SITE_DIR}/site.yaml" --overwrite
 
 # Regenerate
 export RUST_BACKTRACE=1

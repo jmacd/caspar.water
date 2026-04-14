@@ -3,12 +3,20 @@
 # Sourced by other scripts, not run directly.
 
 LOCAL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-export DUCKPOND_ROOT=$(cd "${LOCAL_DIR}/../duckpond" && pwd)
+REPO_ROOT=$(cd "${LOCAL_DIR}/.." && pwd)
+export DUCKPOND_ROOT="${REPO_ROOT}/duckpond"
 export CARGO="cargo run --release -p cmd --"
 
 # Staging MinIO (cross-pond import source)
-export R2_ENDPOINT="${R2_ENDPOINT:-http://watershop.casparwater.us:9000}"
-export R2_KEY="${R2_KEY:-caspar}"
-export R2_SECRET="${R2_SECRET:-watertown}"
+export S3_ENDPOINT="${S3_ENDPOINT:-http://watershop.casparwater.us:9000}"
+export S3_REGION="${S3_REGION:-us-east-1}"
+export S3_ACCESS_KEY="${S3_ACCESS_KEY:-caspar}"
+export S3_SECRET_KEY="${S3_SECRET_KEY:-watertown}"
+export S3_ALLOW_HTTP=true
+
+# Staging bucket URLs
+export WATER_S3_URL="${WATER_S3_URL:-s3://water-staging}"
+export NOYO_S3_URL="${NOYO_S3_URL:-s3://noyo-staging}"
+export SEPTIC_S3_URL="${SEPTIC_S3_URL:-s3://septic-staging}"
 
 export RUST_LOG=info

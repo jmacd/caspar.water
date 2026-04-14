@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync.sh -- Pull data from water and noyo staging ponds via MinIO.
+# sync.sh -- Pull data from water, noyo, and septic staging ponds via MinIO.
 set -ex
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
@@ -11,6 +11,10 @@ ${EXE} run /system/etc/10-water pull
 echo ""
 echo "--- Importing noyo data ---"
 ${EXE} run /system/etc/11-noyo pull
+
+echo ""
+echo "--- Importing septic data ---"
+${EXE} run /system/etc/12-septic pull
 
 echo ""
 echo "=== Import complete ==="
