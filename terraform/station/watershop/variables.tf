@@ -56,3 +56,8 @@ variable "water_data_dir" {
 variable "septic_data_dir" {
   default = "/home/shared/septic/data"
 }
+
+# Noyo archive data (laketech HTML, hydrovu exports)
+variable "noyo_archive_dir" {
+  default = "/home/shared/noyo/archive/data"
+}

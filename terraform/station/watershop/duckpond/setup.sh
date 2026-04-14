@@ -27,6 +27,16 @@ ${EXE} "${INSTANCE}" mkdir -p /system/run
 
 case "${TYPE}" in
     noyo)
+        # Copy historical data from NFS archive
+        if [ -n "${NOYO_ARCHIVE_DIR}" ]; then
+            ${EXE} "${INSTANCE}" mkdir -p /laketech
+            ${EXE} "${INSTANCE}" copy "host://${NOYO_ARCHIVE_DIR}/laketech" /laketech/data
+            if [ -d "${NOYO_ARCHIVE_DIR}/hydrovu" ]; then
+                ${EXE} "${INSTANCE}" copy "host://${NOYO_ARCHIVE_DIR}/hydrovu" /hydrovu
+            fi
+        fi
+        # Copy site content
+        ${EXE} "${INSTANCE}" copy host:///config/noyo/site /system/site
         ${EXE} "${INSTANCE}" mknod remote /system/run/1-backup --config-path /config/backup.yaml
         ${EXE} "${INSTANCE}" mknod hydrovu /system/etc/20-hydrovu --config-path /config/noyo/hydrovu.yaml
         ${EXE} "${INSTANCE}" mknod column-rename /system/etc/10-hrename --config-path /config/noyo/hrename.yaml
@@ -45,10 +55,13 @@ case "${TYPE}" in
         ;;
     septic)
         ${EXE} "${INSTANCE}" mkdir -p /ingest
+        ${EXE} "${INSTANCE}" mkdir -p /etc
+        # Copy site content
+        ${EXE} "${INSTANCE}" copy host:///config/septic/site /etc/site
         ${EXE} "${INSTANCE}" mknod logfile-ingest /etc/ingest --config-path /config/septic/ingest.yaml
         ${EXE} "${INSTANCE}" mknod remote /system/run/1-backup --config-path /config/backup.yaml
         ${EXE} "${INSTANCE}" mknod dynamic-dir /reduced --config-path /config/septic/reduce.yaml
-        ${EXE} "${INSTANCE}" mknod sitegen /system/etc/90-sitegen --config-path /config/septic/site.yaml
+        ${EXE} "${INSTANCE}" mknod sitegen /etc/site.yaml --config-path /config/septic/site.yaml
         ;;
     site)
         ${EXE} "${INSTANCE}" mkdir -p /sources

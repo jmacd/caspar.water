@@ -23,12 +23,12 @@ locals {
     noyo-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://noyo-staging"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}"
     }
     noyo-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://noyo-pond"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}"
     }
     water-staging = {
       s3         = local.staging_s3

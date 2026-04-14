@@ -47,4 +47,9 @@ if [ -n "${DATA_DIR}" ]; then
     PODMAN_ARGS+=(-v "${DATA_DIR}:/data:ro")
 fi
 
+# Mount noyo archive if set
+if [ -n "${NOYO_ARCHIVE_DIR}" ]; then
+    PODMAN_ARGS+=(-v "${NOYO_ARCHIVE_DIR}:${NOYO_ARCHIVE_DIR}:ro")
+fi
+
 exec podman "${PODMAN_ARGS[@]}" "${IMAGE}" "$@"
