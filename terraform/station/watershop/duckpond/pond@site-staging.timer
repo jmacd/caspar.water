@@ -1,0 +1,9 @@
+[Unit]
+Description=DuckPond site-staging (every 15min)
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target

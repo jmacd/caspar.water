@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# run.sh -- Run a duckpond instance (called by systemd timer).
+#
+# Usage: run.sh <instance>
+set -ex
+
+INSTANCE=$1
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
+EXE="${SCRIPTS}/pond.sh"
+
+# Extract pond type from instance name (e.g., noyo-staging → noyo)
+TYPE="${INSTANCE%-staging}"
+TYPE="${TYPE%-prod}"
+
+case "${TYPE}" in
+    noyo)
+        ${EXE} "${INSTANCE}" run /system/etc/20-hydrovu collect
+        ${EXE} "${INSTANCE}" run /system/run/1-backup push
+        ;;
+    water)
+        ${EXE} "${INSTANCE}" run /etc/ingest
+        ${EXE} "${INSTANCE}" run /system/run/1-backup push
+        ;;
+    septic)
+        ${EXE} "${INSTANCE}" run /etc/ingest
+        ${EXE} "${INSTANCE}" run /system/run/1-backup push
+        ;;
+    site)
+        ${EXE} "${INSTANCE}" run /system/etc/10-water pull
+        ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
+        ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
+        # Build site into a bind-mounted host directory
+        DEPLOY_BASE="${SCRIPTS}/www"
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
+        mkdir -p "${DEPLOY_DIR}"
+        ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build /build \
+            -v "${DEPLOY_DIR}:/build"
+        ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
+        # Clean old builds (keep last 3)
+        ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf
+        ;;
+    *)
+        echo "ERROR: Unknown pond type '${TYPE}' for instance '${INSTANCE}'"
+        exit 1
+        ;;
+esac

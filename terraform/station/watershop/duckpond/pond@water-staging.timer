@@ -1,0 +1,9 @@
+[Unit]
+Description=DuckPond water-staging (every 10min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target
