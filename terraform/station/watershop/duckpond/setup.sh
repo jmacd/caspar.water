@@ -14,12 +14,14 @@ TYPE="${TYPE%-prod}"
 
 echo "=== Setting up ${INSTANCE} (type: ${TYPE}) ==="
 
-# Initialize pond (skip if volume already has data)
+# Skip setup entirely if volume already exists (setup is one-time)
 if podman volume exists "pond-${INSTANCE}" 2>/dev/null; then
-    echo "Volume pond-${INSTANCE} already exists, skipping init"
-else
-    ${EXE} "${INSTANCE}" init
+    echo "Volume pond-${INSTANCE} already exists, skipping setup"
+    exit 0
 fi
+
+# Initialize pond
+${EXE} "${INSTANCE}" init
 
 # Common directories
 ${EXE} "${INSTANCE}" mkdir -p /system/etc
@@ -48,8 +50,6 @@ case "${TYPE}" in
     water)
         ${EXE} "${INSTANCE}" mkdir -p /ingest
         ${EXE} "${INSTANCE}" mkdir -p /etc
-        # Copy site content
-        ${EXE} "${INSTANCE}" copy host:///config/water/site /site
         ${EXE} "${INSTANCE}" mknod logfile-ingest /etc/ingest --config-path /config/water/ingest.yaml
         ${EXE} "${INSTANCE}" mknod remote /system/run/1-backup --config-path /config/backup.yaml
         ${EXE} "${INSTANCE}" mknod dynamic-dir /reduced --config-path /config/water/reduce.yaml

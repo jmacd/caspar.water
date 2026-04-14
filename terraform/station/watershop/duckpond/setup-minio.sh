@@ -8,6 +8,12 @@ set -ex
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPTS}/env/water-staging.env"
 
+if ! command -v mc &>/dev/null; then
+    echo "WARNING: mc (MinIO Client) not found, skipping bucket creation"
+    echo "Install mc and run this script manually, or create buckets via MinIO console"
+    exit 0
+fi
+
 ALIAS="local"
 
 # Configure mc alias for local MinIO
