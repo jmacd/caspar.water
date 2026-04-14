@@ -47,6 +47,9 @@ case "${TYPE}" in
         ;;
     water)
         ${EXE} "${INSTANCE}" mkdir -p /ingest
+        ${EXE} "${INSTANCE}" mkdir -p /etc
+        # Copy site content
+        ${EXE} "${INSTANCE}" copy host:///config/water/site /site
         ${EXE} "${INSTANCE}" mknod logfile-ingest /etc/ingest --config-path /config/water/ingest.yaml
         ${EXE} "${INSTANCE}" mknod remote /system/run/1-backup --config-path /config/backup.yaml
         ${EXE} "${INSTANCE}" mknod dynamic-dir /reduced --config-path /config/water/reduce.yaml

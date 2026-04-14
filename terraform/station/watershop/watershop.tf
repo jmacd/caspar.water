@@ -85,18 +85,21 @@ resource "null_resource" "watershop" {
   depends_on = [local_file.env_files]
 
   connection {
-    type        = "ssh"
-    user        = var.user
-    private_key = file(pathexpand(var.ssh_key))
-    host        = var.host
+    type  = "ssh"
+    user  = var.user
+    agent = true
+    host  = var.host
   }
 
-  # Create directory structure (preserve podman volumes)
+  # Clean and create directory structure (preserve podman volumes)
   provisioner "remote-exec" {
     inline = [
       "rm -rf ${local.base_dir}/config ${local.base_dir}/site ${local.base_dir}/env",
       "rm -f ${local.base_dir}/*.sh ${local.base_dir}/pond@*",
-      "mkdir -p ${local.base_dir}/env ${local.base_dir}/www",
+      "mkdir -p ${local.base_dir}/config",
+      "mkdir -p ${local.base_dir}/site",
+      "mkdir -p ${local.base_dir}/env",
+      "mkdir -p ${local.base_dir}/www",
       "mkdir -p ${local.home}/.config/systemd/user",
     ]
   }
@@ -135,6 +138,9 @@ resource "null_resource" "watershop" {
         # Make scripts executable
         "chmod +x ${local.base_dir}/*.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
+
+        # Create MinIO buckets for staging
+        "${local.base_dir}/setup-minio.sh",
 
         # Install systemd units
         "cp ${local.base_dir}/pond@.service ${local.home}/.config/systemd/user/",

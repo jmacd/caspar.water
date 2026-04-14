@@ -10,7 +10,7 @@ variable "user" {
 
 variable "ssh_key" {
   description = "Path to SSH private key"
-  default     = "~/.ssh/id_ed25519"
+  default     = "~/.ssh/id_rsa"
 }
 
 # MinIO (local to watershop, used by staging instances)
