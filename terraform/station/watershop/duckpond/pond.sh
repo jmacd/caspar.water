@@ -35,6 +35,7 @@ VOLUME="${POND_VOLUME:-pond-${INSTANCE}}"
 # Base podman args
 PODMAN_ARGS=(
     run ${PULL} --rm
+    --network=host
     --env-file "${ENV_FILE}"
     -e POND=/pond
     -v "${VOLUME}:/pond"
