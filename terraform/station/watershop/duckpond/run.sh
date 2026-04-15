@@ -29,13 +29,12 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /system/etc/10-water pull
         ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
         ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
-        # Build site into a bind-mounted host directory
+        # Build site — pond.sh mounts www/ at /www
         DEPLOY_BASE="${SCRIPTS}/www"
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"
-        ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build /build \
-            -v "${DEPLOY_DIR}:/build"
+        SITE_BUILD_DIR="${DEPLOY_DIR}" ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build /www
         ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
         # Clean old builds (keep last 3)
         ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf

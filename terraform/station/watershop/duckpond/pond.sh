@@ -53,4 +53,9 @@ if [ -n "${NOYO_ARCHIVE_DIR}" ]; then
     PODMAN_ARGS+=(-v "${NOYO_ARCHIVE_DIR}:${NOYO_ARCHIVE_DIR}:ro")
 fi
 
+# Mount site build output directory if set
+if [ -n "${SITE_BUILD_DIR}" ]; then
+    PODMAN_ARGS+=(-v "${SITE_BUILD_DIR}:/www")
+fi
+
 exec podman "${PODMAN_ARGS[@]}" "${IMAGE}" "$@"
