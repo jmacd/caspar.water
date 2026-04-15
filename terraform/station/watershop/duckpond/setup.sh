@@ -7,6 +7,12 @@ set -ex
 INSTANCE=$1
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 EXE="${SCRIPTS}/pond.sh"
+ENV_FILE="${SCRIPTS}/env/${INSTANCE}.env"
+
+# Source env file for setup-time variables (e.g., NOYO_ARCHIVE_DIR)
+if [ -f "${ENV_FILE}" ]; then
+    source "${ENV_FILE}"
+fi
 
 # Extract pond type from instance name (e.g., noyo-staging → noyo)
 TYPE="${INSTANCE%-staging}"
