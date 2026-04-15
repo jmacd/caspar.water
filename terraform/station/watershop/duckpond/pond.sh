@@ -25,7 +25,7 @@ if [[ "${INSTANCE}" == *-staging ]]; then
     IMAGE="ghcr.io/jmacd/duckpond/duckpond:latest-arm64"
     PULL="--pull=newer"
 else
-    IMAGE="ghcr.io/jmacd/duckpond/duckpond:v${VERSION}-arm64"
+    IMAGE="ghcr.io/jmacd/duckpond/duckpond:${VERSION}-arm64"
     PULL="--pull=missing"
 fi
 
