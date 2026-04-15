@@ -24,7 +24,7 @@ hydrovu_key_value = ""
 
 # NFS mount paths (septic and water data sources)
 water_data_dir  = "/home/shared/water/archive/data"
-septic_data_dir = "/home/shared/septic/data"
+septic_data_dir = "/home/shared/septic/archive/data"
 
 # Noyo archive data (laketech HTML, archived HydroVu exports)
 noyo_archive_dir = "/home/shared/noyo/archive/data"
