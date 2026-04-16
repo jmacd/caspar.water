@@ -69,7 +69,7 @@ static:
   - pattern: "/img/*"
 
 theme:
-  bg-image: "url('${env:SITE_BASE_URL:-/}img/logo.svg')"
+  bg-image: "none"
 
 sidebar:
   - "Political"
