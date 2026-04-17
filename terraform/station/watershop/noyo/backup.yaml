@@ -1,8 +1,0 @@
-compression_level: 3
-region: "us-east-1"
-url: "s3://noyo-staging"
-allow_http: true
-
-endpoint: "${env:R2_ENDPOINT}"
-access_key: "${env:R2_KEY}"
-secret_key: "${env:R2_SECRET}"
