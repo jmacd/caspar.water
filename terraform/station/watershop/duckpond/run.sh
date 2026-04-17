@@ -15,15 +15,12 @@ TYPE="${TYPE%-prod}"
 case "${TYPE}" in
     noyo)
         ${EXE} "${INSTANCE}" run /system/etc/20-hydrovu collect
-        ${EXE} "${INSTANCE}" run /system/run/1-backup push
         ;;
     water)
         ${EXE} "${INSTANCE}" run /etc/ingest
-        ${EXE} "${INSTANCE}" run /system/run/1-backup push
         ;;
     septic)
         ${EXE} "${INSTANCE}" run /etc/ingest
-        ${EXE} "${INSTANCE}" run /system/run/1-backup push
         ;;
     site)
         ${EXE} "${INSTANCE}" run /system/etc/10-water pull
