@@ -1,0 +1,9 @@
+version: v1
+kind: mkdir
+metadata:
+  path: /system/etc
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /sources

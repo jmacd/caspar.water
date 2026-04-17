@@ -1,0 +1,6 @@
+version: v1
+kind: copy
+metadata:
+  path: /content
+spec:
+  source: "host:///${env:SITE_DIR}/content"

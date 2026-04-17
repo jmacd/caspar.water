@@ -2,15 +2,17 @@
 # setup.sh -- Initialize the local site pond for content development.
 #
 # Creates a local site pond, copies site content, and installs
-# import remotes + sitegen using shared configs from site/.
+# import remotes + sitegen using declarative apply configs.
 set -e
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "${SCRIPTS}/.." && pwd)
-SITE_DIR="${REPO_ROOT}/site"
 EXE="${SCRIPTS}/pond.sh"
 
 source "$SCRIPTS/env.sh"
+
+# Export SITE_DIR for ${env:SITE_DIR} expansion in apply configs
+export SITE_DIR="${REPO_ROOT}/site"
 
 set -x
 
@@ -18,22 +20,8 @@ set -x
 rm -rf "${SCRIPTS}/pond"
 ${EXE} init
 
-# Create directory structure
-${EXE} mkdir -p /system/etc
-${EXE} mkdir -p /sources
-
-# Copy site content and templates into the pond
-${EXE} copy "host:///${SITE_DIR}/content" /content
-${EXE} copy "host:///${SITE_DIR}/templates" /templates
-${EXE} copy "host:///${SITE_DIR}/img" /img
-
-# Install import factories (pull from staging MinIO)
-${EXE} mknod remote /system/etc/10-water --config-path "${SITE_DIR}/import-water.yaml"
-${EXE} mknod remote /system/etc/11-noyo --config-path "${SITE_DIR}/import-noyo.yaml"
-${EXE} mknod remote /system/etc/12-septic --config-path "${SITE_DIR}/import-septic.yaml"
-
-# Install combined sitegen
-${EXE} mknod sitegen /system/etc/90-sitegen --config-path "${SITE_DIR}/site.yaml"
+# Apply all configs: dirs, copies, factories
+${EXE} apply -f "${SCRIPTS}"/apply/*.yaml
 
 echo
 echo "=== Local site pond setup complete ==="

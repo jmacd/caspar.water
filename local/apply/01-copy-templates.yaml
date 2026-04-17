@@ -1,0 +1,6 @@
+version: v1
+kind: copy
+metadata:
+  path: /templates
+spec:
+  source: "host:///${env:SITE_DIR}/templates"

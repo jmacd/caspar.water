@@ -1,0 +1,6 @@
+version: v1
+kind: copy
+metadata:
+  path: /img
+spec:
+  source: "host:///${env:SITE_DIR}/img"
