@@ -15,7 +15,7 @@ fi
 ${EXE} init
 
 # Apply all configs: dirs, copies, import remotes, sitegen
-${EXE} apply -f "${SCRIPTS}/apply.yaml"
+${EXE} apply -f "${SCRIPTS}/site.yaml"
 
 echo
 echo "=== Cloud site pond setup complete ==="

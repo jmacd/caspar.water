@@ -69,7 +69,7 @@ spec:
 ENDCFG
 
 # Apply static configs + dynamic import configs in one transaction
-${EXE} apply -f "${SCRIPTS}/apply.yaml" "${DYNAMIC_CFG}"
+${EXE} apply -f "${SCRIPTS}/site.yaml" "${DYNAMIC_CFG}"
 
 rm -f "${DYNAMIC_CFG}"
 

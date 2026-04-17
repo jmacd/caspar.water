@@ -15,7 +15,7 @@ fi
 ${EXE} init
 
 # Apply all configs: dirs + factory nodes
-${EXE} apply -f "${SCRIPTS}/apply.yaml"
+${EXE} apply -f "${SCRIPTS}/noyo.yaml"
 
 echo
 echo "=== Noyo pond setup complete ==="

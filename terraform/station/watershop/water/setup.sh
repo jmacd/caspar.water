@@ -19,7 +19,7 @@ rm -rf "${SCRIPTS}/pond"
 ${EXE} init
 
 # Apply all configs: dirs, copies, factory nodes
-${EXE} apply -f "${SCRIPTS}/apply.yaml"
+${EXE} apply -f "${SCRIPTS}/water.yaml"
 
 echo
 echo "=== Water staging pond setup complete ==="
