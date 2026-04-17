@@ -14,17 +14,8 @@ fi
 
 ${EXE} init
 
-# Create directory structure
-${EXE} mkdir -p /system/run
-${EXE} mkdir -p /system/etc
-
-# Install factory nodes
-${EXE} mknod remote /system/run/1-backup --config-path /root/config/backup.yaml
-${EXE} mknod hydrovu /system/etc/20-hydrovu --config-path /root/config/hydrovu.yaml
-${EXE} mknod column-rename /system/etc/10-hrename --config-path /root/config/hrename.yaml
-${EXE} mknod dynamic-dir /combined --config-path /root/config/combine.yaml
-${EXE} mknod dynamic-dir /singled --config-path /root/config/single.yaml
-${EXE} mknod dynamic-dir /reduced --config-path /root/config/reduce.yaml
+# Apply all configs: dirs + factory nodes
+${EXE} apply -f "${SCRIPTS}/apply.yaml"
 
 echo
 echo "=== Noyo pond setup complete ==="
