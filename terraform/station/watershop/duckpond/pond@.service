@@ -1,9 +1,0 @@
-[Unit]
-Description=DuckPond %i
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/home/jmacd/duckpond/run.sh %i
-Environment=HOME=/home/jmacd
