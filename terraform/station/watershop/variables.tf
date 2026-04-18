@@ -13,9 +13,9 @@ variable "ssh_key" {
   default     = "~/.ssh/id_rsa"
 }
 
-# MinIO (local to watershop, used by staging instances)
+# MinIO (on watershop, used by staging instances)
 variable "minio_endpoint" {
-  default = "http://localhost:9000"
+  default = "http://watershop.casparwater.us:9000"
 }
 
 variable "minio_access_key" {

@@ -37,13 +37,7 @@ for ENV_FILE in "$@"; do
         continue
     fi
 
-    # When running locally, replace localhost with the actual host
-    ENDPOINT="${S3_ENDPOINT}"
-    if [[ "${ENDPOINT}" == *"localhost"* ]]; then
-        ENDPOINT="${ENDPOINT//localhost/${DUCKPOND_S3_HOST:-watershop.casparwater.us}}"
-    fi
-
-    echo "Erasing ${S3_URL} via ${ENDPOINT}..."
+    echo "Erasing ${S3_URL} via ${S3_ENDPOINT}..."
 
     ALLOW_HTTP_FLAG=""
     if [ "${S3_ALLOW_HTTP}" = "true" ]; then
@@ -51,7 +45,7 @@ for ENV_FILE in "$@"; do
     fi
 
     "${POND}" emergency erase-bucket "${S3_URL}" \
-        --endpoint "${ENDPOINT}" \
+        --endpoint "${S3_ENDPOINT}" \
         --region "${S3_REGION}" \
         --access-key "${S3_ACCESS_KEY}" \
         --secret-key "${S3_SECRET_KEY}" \
