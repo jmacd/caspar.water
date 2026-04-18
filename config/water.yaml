@@ -52,7 +52,6 @@ metadata:
 spec:
   factory: remote
   config:
-    compression_level: 3
     region: "${env:S3_REGION}"
     url: "${env:S3_URL}"
     endpoint: "${env:S3_ENDPOINT}"
