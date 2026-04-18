@@ -367,7 +367,6 @@ spec:
           - label: "Silver"
             href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
     
-    static_assets: []
     
     # Noyo Center for Marine Science theme
     # Deep navy + ocean teal palette inspired by noyocenter.org

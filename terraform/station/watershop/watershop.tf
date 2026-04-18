@@ -80,6 +80,7 @@ resource "local_file" "env_files" {
     "S3_ACCESS_KEY=${each.value.s3.access_key}",
     "S3_SECRET_KEY=${each.value.s3.secret_key}",
     "S3_ALLOW_HTTP=${each.value.s3.allow_http}",
+    "SITE_DIR=/site",
     each.value.extra_env,
     "RUST_LOG=info",
     "",

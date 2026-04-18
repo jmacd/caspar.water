@@ -283,7 +283,6 @@ spec:
           - label: "BME280"
             href: "${env:SITE_BASE_URL:-/}data/environment.html"
     
-    static_assets: []
     
     # Industrial/utility theme — muted greens and grays
     theme:
