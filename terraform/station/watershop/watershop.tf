@@ -149,7 +149,7 @@ resource "null_resource" "watershop" {
         "${local.base_dir}/setup-minio.sh",
 
         # Install systemd units
-        "cp ${local.base_dir}/pond@.service ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/pond@*.timer ${local.home}/.config/systemd/user/",
         "systemctl --user daemon-reload",
       ],
