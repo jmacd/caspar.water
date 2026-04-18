@@ -36,7 +36,8 @@ TYPE="${TYPE%-prod}"
 
 # Determine S3 config based on staging vs prod
 if [[ "${INSTANCE}" == *-staging ]]; then
-    ENDPOINT="${minio_endpoint:-http://watershop.casparwater.us:9000}"
+    # Use external MinIO address (tfvars has localhost for on-machine use)
+    ENDPOINT="http://watershop.casparwater.us:9000"
     ACCESS_KEY="${minio_access_key}"
     SECRET_KEY="${minio_secret_key}"
     ALLOW_HTTP="--allow-http"
