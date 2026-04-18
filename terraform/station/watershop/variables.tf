@@ -61,3 +61,15 @@ variable "septic_data_dir" {
 variable "noyo_archive_dir" {
   default = "/home/shared/noyo/archive/data"
 }
+
+variable "deploy_staging" {
+  description = "Deploy staging instances"
+  type        = bool
+  default     = true
+}
+
+variable "deploy_production" {
+  description = "Deploy production instances"
+  type        = bool
+  default     = false
+}

@@ -57,8 +57,13 @@ locals {
     }
   }
 
-  # All instance names for iteration
-  instance_names = keys(local.instances)
+  # All instance names for iteration, filtered by deploy flags
+  instance_names = [for name in keys(local.instances) :
+    name if (
+      (var.deploy_staging && endswith(name, "-staging")) ||
+      (var.deploy_production && endswith(name, "-prod"))
+    )
+  ]
 }
 
 # Generate env files locally for upload
