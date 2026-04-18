@@ -3,14 +3,8 @@
 #
 # Usage: reset.sh <instance>
 #
-# Destroys the podman volume, re-creates the pond, and applies
-# the canonical config. After reset, the first backup push will
-# fail if the S3 bucket still contains data from the old pond.
-#
-# To clean a MinIO staging bucket:
-#   mc rb --force local/<bucket> && mc mb local/<bucket>
-#
-# Cloud buckets (R2, etc.) should be cleaned via their web console.
+# Destroys the podman volume, erases the S3 backup bucket,
+# re-creates the pond, and applies the canonical config.
 set -ex
 
 INSTANCE=$1
@@ -40,6 +34,18 @@ echo "=== Resetting ${INSTANCE} (type: ${TYPE}, volume: ${VOLUME}) ==="
 # Stop the timer during reset
 systemctl --user stop "pond@${INSTANCE}.timer" 2>/dev/null || true
 
+# Erase the S3 backup bucket (if S3_URL is set)
+if [ -n "${S3_URL}" ]; then
+    ${EXE} "${INSTANCE}" emergency erase-bucket "${S3_URL}" \
+        --endpoint "${S3_ENDPOINT}" \
+        --region "${S3_REGION}" \
+        --access-key "${S3_ACCESS_KEY}" \
+        --secret-key "${S3_SECRET_KEY}" \
+        ${S3_ALLOW_HTTP:+--allow-http} \
+        --dangerous \
+        || echo "  (S3 erase skipped or bucket empty)"
+fi
+
 # Wipe the podman volume
 if podman volume exists "${VOLUME}" 2>/dev/null; then
     podman volume rm "${VOLUME}"
@@ -54,8 +60,3 @@ systemctl --user start "pond@${INSTANCE}.timer" 2>/dev/null || true
 
 echo ""
 echo "=== ${INSTANCE} reset complete ==="
-if [ -n "${S3_URL}" ]; then
-    BUCKET="${S3_URL#s3://}"
-    echo "NOTE: Clean the S3 bucket '${BUCKET}' before the first backup push."
-    echo "  MinIO: mc rb --force local/${BUCKET} && mc mb local/${BUCKET}"
-fi
