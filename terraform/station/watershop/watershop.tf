@@ -168,12 +168,6 @@ resource "null_resource" "watershop" {
     destination = "${local.base_dir}/timers"
   }
 
-  # Push setup-minio script
-  provisioner "file" {
-    source      = "setup-minio.sh"
-    destination = "${local.base_dir}/setup-minio.sh"
-  }
-
   # Set up systemd and initialize ponds
   provisioner "remote-exec" {
     inline = concat(
@@ -183,11 +177,7 @@ resource "null_resource" "watershop" {
 
         # Make scripts executable
         "chmod +x ${local.base_dir}/config/scripts/*.sh",
-        "chmod +x ${local.base_dir}/setup-minio.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
-
-        # Create MinIO buckets for staging
-        "${local.base_dir}/setup-minio.sh",
 
         # Install systemd units
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
