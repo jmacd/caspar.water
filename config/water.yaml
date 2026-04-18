@@ -14,6 +14,27 @@ metadata:
   path: /etc
 ---
 version: v1
+kind: copy
+metadata:
+  path: /content
+spec:
+  source: "host:///${env:SITE_DIR}/content"
+---
+version: v1
+kind: copy
+metadata:
+  path: /templates
+spec:
+  source: "host:///${env:SITE_DIR}/templates"
+---
+version: v1
+kind: copy
+metadata:
+  path: /img
+spec:
+  source: "host:///${env:SITE_DIR}/img"
+---
+version: v1
 kind: mknod
 metadata:
   path: /etc/ingest

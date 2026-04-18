@@ -9,6 +9,13 @@ metadata:
   path: /system/etc
 ---
 version: v1
+kind: copy
+metadata:
+  path: /system/site
+spec:
+  source: "host:///${env:NOYO_SITE_DIR}"
+---
+version: v1
 kind: mknod
 metadata:
   path: /system/run/1-backup
