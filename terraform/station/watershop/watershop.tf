@@ -142,6 +142,7 @@ resource "null_resource" "watershop" {
         "sudo loginctl enable-linger ${var.user}",
 
         # Make scripts executable
+        "chmod +x ${local.base_dir}/config/scripts/*.sh",
         "chmod +x ${local.base_dir}/*.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
 
@@ -162,10 +163,10 @@ resource "null_resource" "watershop" {
       ],
       # Initialize and apply config for each instance
       [for name in local.instance_names :
-        "${local.base_dir}/pond.sh ${name} init 2>/dev/null || true"
+        "${local.base_dir}/config/scripts/pond.sh ${name} init 2>/dev/null || true"
       ],
       [for name in local.instance_names :
-        "${local.base_dir}/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
       ],
       # Enable and start all timers
       [for name in local.instance_names :

@@ -6,9 +6,10 @@ set -ex
 
 INSTANCE=$1
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
+BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
 EXE="${SCRIPTS}/pond.sh"
 
-# Extract pond type from instance name (e.g., noyo-staging → noyo)
+# Extract pond type from instance name (e.g., noyo-staging -> noyo)
 TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 
@@ -26,8 +27,8 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /system/etc/10-water pull
         ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
         ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
-        # Build site — pond.sh mounts www/ at /www
-        DEPLOY_BASE="${SCRIPTS}/www"
+        # Build site with atomic deploy
+        DEPLOY_BASE="${BASE_DIR}/www"
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"

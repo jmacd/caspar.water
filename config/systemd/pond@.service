@@ -5,5 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/jmacd/duckpond/run.sh %i
+ExecStart=/home/jmacd/duckpond/config/scripts/run.sh %i
 Environment=HOME=/home/jmacd
