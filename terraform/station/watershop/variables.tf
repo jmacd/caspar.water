@@ -73,3 +73,9 @@ variable "deploy_production" {
   type        = bool
   default     = false
 }
+
+variable "reset_instances" {
+  description = "Instances to wipe and re-initialize (volumes + S3 buckets destroyed)"
+  type        = list(string)
+  default     = []
+}

@@ -152,6 +152,13 @@ resource "null_resource" "watershop" {
         "cp ${local.base_dir}/pond@*.timer ${local.home}/.config/systemd/user/",
         "systemctl --user daemon-reload",
       ],
+      # Reset specified instances: stop timer, remove volume
+      [for name in var.reset_instances :
+        "systemctl --user stop pond@${name}.timer 2>/dev/null || true"
+      ],
+      [for name in var.reset_instances :
+        "podman volume rm pond-${name} 2>/dev/null || true"
+      ],
       # Initialize and apply config for each instance
       [for name in local.instance_names :
         "${local.base_dir}/pond.sh ${name} init 2>/dev/null || true"
