@@ -1,9 +1,0 @@
-[Unit]
-Description=DuckPond septic-prod (every 10min)
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=10min
-
-[Install]
-WantedBy=timers.target

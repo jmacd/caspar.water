@@ -1,9 +1,0 @@
-[Unit]
-Description=DuckPond noyo-prod (every 30min)
-
-[Timer]
-OnBootSec=6min
-OnUnitActiveSec=30min
-
-[Install]
-WantedBy=timers.target

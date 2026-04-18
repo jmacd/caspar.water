@@ -23,36 +23,50 @@ locals {
     noyo-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://noyo-staging"
+      interval   = "30min"
+      boot_delay = "5min"
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nNOYO_SITE_DIR=/config/noyo/site"
     }
     noyo-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://noyo-pond"
+      interval   = "30min"
+      boot_delay = "6min"
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nNOYO_SITE_DIR=/config/noyo/site"
     }
     water-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://water-staging"
+      interval   = "10min"
+      boot_delay = "2min"
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://water-pond"
+      interval   = "10min"
+      boot_delay = "3min"
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     septic-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://septic-staging"
+      interval   = "10min"
+      boot_delay = "4min"
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://septic-pond"
+      interval   = "10min"
+      boot_delay = "5min"
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     site-staging = {
       s3         = local.staging_s3
       s3_url     = ""
+      interval   = "15min"
+      boot_delay = "7min"
       extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/"
     }
   }
@@ -87,8 +101,27 @@ resource "local_file" "env_files" {
   ])
 }
 
+# Generate timer files locally for upload
+resource "local_file" "timer_files" {
+  for_each = local.instances
+
+  filename        = "${path.module}/timers/pond@${each.key}.timer"
+  file_permission = "0644"
+  content = <<-EOT
+[Unit]
+Description=DuckPond ${each.key} (every ${each.value.interval})
+
+[Timer]
+OnBootSec=${each.value.boot_delay}
+OnUnitActiveSec=${each.value.interval}
+
+[Install]
+WantedBy=timers.target
+EOT
+}
+
 resource "null_resource" "watershop" {
-  depends_on = [local_file.env_files]
+  depends_on = [local_file.env_files, local_file.timer_files]
 
   connection {
     type  = "ssh"
@@ -100,11 +133,12 @@ resource "null_resource" "watershop" {
   # Clean and create directory structure (preserve podman volumes)
   provisioner "remote-exec" {
     inline = [
-      "rm -rf ${local.base_dir}/config ${local.base_dir}/site ${local.base_dir}/env",
-      "rm -f ${local.base_dir}/*.sh ${local.base_dir}/pond@*",
+      "rm -rf ${local.base_dir}/config ${local.base_dir}/site ${local.base_dir}/env ${local.base_dir}/timers",
+      "rm -f ${local.base_dir}/*.sh",
       "mkdir -p ${local.base_dir}/config",
       "mkdir -p ${local.base_dir}/site",
       "mkdir -p ${local.base_dir}/env",
+      "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/www",
       "mkdir -p ${local.home}/.config/systemd/user",
     ]
@@ -116,22 +150,28 @@ resource "null_resource" "watershop" {
     destination = "${local.base_dir}/config"
   }
 
-  # Push site content and configs
+  # Push site content
   provisioner "file" {
     source      = "../../../site/"
     destination = "${local.base_dir}/site"
-  }
-
-  # Push duckpond scripts and systemd units
-  provisioner "file" {
-    source      = "duckpond/"
-    destination = local.base_dir
   }
 
   # Push generated env files
   provisioner "file" {
     source      = "${path.module}/env/"
     destination = "${local.base_dir}/env"
+  }
+
+  # Push generated timer files
+  provisioner "file" {
+    source      = "${path.module}/timers/"
+    destination = "${local.base_dir}/timers"
+  }
+
+  # Push setup-minio script
+  provisioner "file" {
+    source      = "setup-minio.sh"
+    destination = "${local.base_dir}/setup-minio.sh"
   }
 
   # Set up systemd and initialize ponds
@@ -143,7 +183,7 @@ resource "null_resource" "watershop" {
 
         # Make scripts executable
         "chmod +x ${local.base_dir}/config/scripts/*.sh",
-        "chmod +x ${local.base_dir}/*.sh",
+        "chmod +x ${local.base_dir}/setup-minio.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
 
         # Create MinIO buckets for staging
@@ -151,7 +191,7 @@ resource "null_resource" "watershop" {
 
         # Install systemd units
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
-        "cp ${local.base_dir}/pond@*.timer ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/",
         "systemctl --user daemon-reload",
       ],
       # Reset specified instances: stop timer, remove volume
