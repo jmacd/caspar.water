@@ -9,6 +9,18 @@ metadata:
   path: /system/etc
 ---
 version: v1
+kind: mkdir
+metadata:
+  path: /laketech
+---
+version: v1
+kind: copy
+metadata:
+  path: /laketech/data
+spec:
+  source: "host:///${env:NOYO_ARCHIVE_DIR}/laketech"
+---
+version: v1
 kind: copy
 metadata:
   path: /system/site
