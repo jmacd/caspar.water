@@ -14,8 +14,8 @@ fi
 
 ${EXE} init
 
-# Apply all configs: dirs, copies, factory nodes
-${EXE} apply -f "${SCRIPTS}/water.yaml"
+# Apply canonical config + copy site content
+${EXE} apply -f /config/water.yaml
 
 echo
 echo "=== Water pond setup complete ==="

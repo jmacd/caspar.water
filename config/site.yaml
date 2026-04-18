@@ -39,13 +39,10 @@ spec:
     
     site:
       title: "Caspar Water"
-      base_url: "/staging/"
+      base_url: "${env:SITE_BASE_URL:-/}"
       site_url: "https://casparwater.us"
       github_url: "https://github.com/jmacd/duckpond"
     
-    # The water site is the primary site, rendered at /
-    # Content and templates come from the water pond import at /sources/water/
-    # plus the local copies at /content/ and /templates/
     content:
       - name: "pages"
         pattern: "/content/*.md"
@@ -55,12 +52,14 @@ spec:
         pattern: "/sources/water/reduced/*/*/*.series"
       - name: "analysis"
         pattern: "/sources/water/analysis/*"
+      - name: "septic-metrics"
+        pattern: "/sources/septic/reduced/*/*/*.series"
     
     subsites:
       - name: "noyo"
         path: "/sources/noyo"
         config: "/system/etc/90-sitegen"
-        base_url: "/staging/noyo-harbor/"
+        base_url: "${env:SITE_BASE_URL:-/}noyo-harbor/"
     
     routes:
       - name: "home"
@@ -90,6 +89,15 @@ spec:
                 slug: "$0"
                 page: "/templates/analysis.md"
                 export: "analysis"
+          - name: "septic"
+            type: static
+            slug: "septic"
+            routes:
+              - name: "septic-detail"
+                type: template
+                slug: "$0"
+                page: "/templates/data.md"
+                export: "septic-metrics"
     
     partials:
       sidebar: "/templates/sidebar.md"
@@ -98,7 +106,7 @@ spec:
       - pattern: "/img/*"
     
     theme:
-      bg-image: "url('/staging/img/logo.svg')"
+      bg-image: "none"
     
     sidebar:
       - "Political"
@@ -108,21 +116,29 @@ spec:
       - label: "System"
         children:
           - label: "Pump Cycles"
-            href: "/staging/analysis/pump-cycles.html"
+            href: "${env:SITE_BASE_URL:-/}analysis/pump-cycles.html"
       - label: "Monitoring"
         children:
           - label: "Well Depth"
-            href: "/staging/data/well-depth.html"
+            href: "${env:SITE_BASE_URL:-/}data/well-depth.html"
           - label: "Tank Level"
-            href: "/staging/data/tank-level.html"
+            href: "${env:SITE_BASE_URL:-/}data/tank-level.html"
           - label: "System Pressure"
-            href: "/staging/data/system-pressure.html"
+            href: "${env:SITE_BASE_URL:-/}data/system-pressure.html"
           - label: "Chlorine Level"
-            href: "/staging/data/chlorine-level.html"
+            href: "${env:SITE_BASE_URL:-/}data/chlorine-level.html"
           - label: "pH"
-            href: "/staging/data/ph.html"
+            href: "${env:SITE_BASE_URL:-/}data/ph.html"
+      - label: "Septic"
+        children:
+          - label: "Pump Amps"
+            href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
+          - label: "Cycle Times"
+            href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
+          - label: "Environment"
+            href: "${env:SITE_BASE_URL:-/}septic/environment.html"
       - label: "Noyo Harbor"
-        href: "/staging/noyo-harbor/"
+        href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
       - "Software"
       - "Operator"
       - "Thanks"

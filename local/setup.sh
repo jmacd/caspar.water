@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh -- Initialize the local site pond for content development.
 #
-# Creates a local site pond, copies site content, and installs
-# import remotes + sitegen using declarative apply configs.
+# Uses the canonical config/site.yaml plus local import configs.
 set -e
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
@@ -20,8 +19,8 @@ set -x
 rm -rf "${SCRIPTS}/pond"
 ${EXE} init
 
-# Apply all configs: dirs, copies, factories
-${EXE} apply -f "${SCRIPTS}"/apply/*.yaml
+# Apply canonical site config + local import configs
+${EXE} apply -f "${REPO_ROOT}/config/site.yaml" "${SCRIPTS}"/apply/*.yaml
 
 echo
 echo "=== Local site pond setup complete ==="

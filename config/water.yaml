@@ -9,25 +9,9 @@ metadata:
   path: /system/run
 ---
 version: v1
-kind: copy
+kind: mkdir
 metadata:
-  path: /content
-spec:
-  source: "host:///root/site/content"
----
-version: v1
-kind: copy
-metadata:
-  path: /templates
-spec:
-  source: "host:///root/site/templates"
----
-version: v1
-kind: copy
-metadata:
-  path: /img
-spec:
-  source: "host:///root/site/img"
+  path: /etc
 ---
 version: v1
 kind: mknod
@@ -48,12 +32,12 @@ spec:
   factory: remote
   config:
     compression_level: 3
-    region: "auto"
-    url: "s3://water-pond"
-    
-    endpoint: "${env:R2_ENDPOINT}"
-    access_key: "${env:R2_KEY}"
-    secret_key: "${env:R2_SECRET}"
+    region: "${env:S3_REGION}"
+    url: "${env:S3_URL}"
+    endpoint: "${env:S3_ENDPOINT}"
+    access_key: "${env:S3_ACCESS_KEY}"
+    secret_key: "${env:S3_SECRET_KEY}"
+    allow_http: ${env:S3_ALLOW_HTTP:-false}
 ---
 version: v1
 kind: mknod
@@ -62,11 +46,7 @@ metadata:
 spec:
   factory: dynamic-dir
   config:
-    # Temporal-reduce configuration for Caspar Water metrics (remote deployment).
-    #
-    # This version reads from the ingested oteljson series at /ingest/casparwater*.json
-    # (populated by logfile-ingest from the rotating logs on the remote host).
-    # The glob pattern matches both the active file and all archived rotations.
+    # Temporal-reduce configuration for Caspar Water metrics.
     #
     # Dynamic-dir containing five temporal-reduce factories, one per instrument:
     #   - Well depth (Opto 22 / GRV-R7)
@@ -74,6 +54,19 @@ spec:
     #   - System pressure (main distribution pressure)
     #   - Chlorine level (chlorine tank inventory)
     #   - pH (Atlas Scientific pH probe)
+    #
+    # Reads from the ingested oteljson series at /ingest/casparwater*.json
+    # (populated by logfile-ingest from rotating logs).
+    # The glob pattern matches both the active file and all archived rotations.
+    #
+    # Each entry produces a five-level tree:
+    #   <name>/data/res=1m.series
+    #   <name>/data/res=10m.series
+    #   <name>/data/res=1h.series
+    #   <name>/data/res=6h.series
+    #   <name>/data/res=1d.series
+    #
+    # The sitegen export pattern "/reduced/*/*/*.series" matches this structure.
     
     entries:
       # -- Well Depth ---------------------------------------------------------------
@@ -450,23 +443,15 @@ spec:
     
     exports:
       - name: "metrics"
-        pattern: "/sources/water/reduced/*/*/*.series"
+        pattern: "/reduced/*/*/*.series"
       - name: "analysis"
-        pattern: "/sources/water/analysis/*"
-      - name: "septic-metrics"
-        pattern: "/sources/septic/reduced/*/*/*.series"
-    
-    subsites:
-      - name: "noyo"
-        path: "/sources/noyo"
-        config: "/system/etc/90-sitegen"
-        base_url: "${env:SITE_BASE_URL:-/}noyo-harbor/"
+        pattern: "/analysis/*"
     
     routes:
       - name: "home"
         type: static
         slug: ""
-        page: "/templates/index.md"
+        page: "/site/index.md"
         routes:
           - name: "pages"
             type: content
@@ -479,7 +464,7 @@ spec:
               - name: "metric-detail"
                 type: template
                 slug: "$0"
-                page: "/templates/data.md"
+                page: "/site/data.md"
                 export: "metrics"
           - name: "analysis"
             type: static
@@ -488,26 +473,17 @@ spec:
               - name: "analysis-detail"
                 type: template
                 slug: "$0"
-                page: "/templates/analysis.md"
+                page: "/site/analysis.md"
                 export: "analysis"
-          - name: "septic"
-            type: static
-            slug: "septic"
-            routes:
-              - name: "septic-detail"
-                type: template
-                slug: "$0"
-                page: "/templates/data.md"
-                export: "septic-metrics"
     
     partials:
-      sidebar: "/templates/sidebar.md"
+      sidebar: "/site/sidebar.md"
     
     static:
       - pattern: "/img/*"
     
     theme:
-      bg-image: "none"
+      bg-image: "url('${env:SITE_BASE_URL:-/}img/logo.svg')"
     
     sidebar:
       - "Political"
@@ -530,16 +506,6 @@ spec:
             href: "${env:SITE_BASE_URL:-/}data/chlorine-level.html"
           - label: "pH"
             href: "${env:SITE_BASE_URL:-/}data/ph.html"
-      - label: "Septic"
-        children:
-          - label: "Pump Amps"
-            href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
-          - label: "Cycle Times"
-            href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
-          - label: "Environment"
-            href: "${env:SITE_BASE_URL:-/}septic/environment.html"
-      - label: "Noyo Harbor"
-        href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
       - "Software"
       - "Operator"
       - "Thanks"

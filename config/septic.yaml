@@ -1,0 +1,305 @@
+version: v1
+kind: mkdir
+metadata:
+  path: /ingest
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /system/run
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /etc
+---
+version: v1
+kind: mknod
+metadata:
+  path: /etc/ingest
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: /data/septicstation-*.json
+    active_pattern: /data/septicstation.json
+    pond_path: /ingest
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/run/1-backup
+spec:
+  factory: remote
+  config:
+    compression_level: 3
+    region: "${env:S3_REGION}"
+    url: "${env:S3_URL}"
+    endpoint: "${env:S3_ENDPOINT}"
+    access_key: "${env:S3_ACCESS_KEY}"
+    secret_key: "${env:S3_SECRET_KEY}"
+    allow_http: ${env:S3_ALLOW_HTTP:-false}
+---
+version: v1
+kind: mknod
+metadata:
+  path: /reduced
+spec:
+  factory: dynamic-dir
+  config:
+    # Six temporal-reduce groups covering all 25 active Modbus/BME280 variables.
+    #
+    # Resolutions: 1h for detail, 6h/1d for mid-range, 1w for full-range overview.
+    # The 1w resolution lets sitegen cover multi-year spans in ≤2 partition files,
+    # avoiding the "cannot cover max_width" warning on the coarsest zoom level.
+    #
+    # Early log entries had mangled column names (double-underscore prefix) from a
+    # misconfigured otelcol; those are inactive and excluded here.
+    
+    entries:
+      # ── Pump Amps ────────────────────────────────────────────────────────────
+      - name: "pumps"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "orenco_RT_Pump1_Amps"
+                - "orenco_RT_Pump2_Amps"
+                - "orenco_DT_Pump3_Amps"
+                - "orenco_DT_Pump4_Amps"
+            - type: "min"
+              columns:
+                - "orenco_RT_Pump1_Amps"
+                - "orenco_RT_Pump2_Amps"
+                - "orenco_DT_Pump3_Amps"
+                - "orenco_DT_Pump4_Amps"
+            - type: "max"
+              columns:
+                - "orenco_RT_Pump1_Amps"
+                - "orenco_RT_Pump2_Amps"
+                - "orenco_DT_Pump3_Amps"
+                - "orenco_DT_Pump4_Amps"
+    
+      # ── Pump Cycle Times ────────────────────────────────────────────────────
+      - name: "cycle-times"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "orenco_RT_Pump1_CT"
+                - "orenco_RT_Pump2_CT"
+                - "orenco_DT_Pump3_CT"
+                - "orenco_DT_Pump4_CT"
+            - type: "min"
+              columns:
+                - "orenco_RT_Pump1_CT"
+                - "orenco_RT_Pump2_CT"
+                - "orenco_DT_Pump3_CT"
+                - "orenco_DT_Pump4_CT"
+            - type: "max"
+              columns:
+                - "orenco_RT_Pump1_CT"
+                - "orenco_RT_Pump2_CT"
+                - "orenco_DT_Pump3_CT"
+                - "orenco_DT_Pump4_CT"
+    
+      # ── Pump Modes ──────────────────────────────────────────────────────────
+      - name: "pump-modes"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "orenco_RT_PumpMode"
+                - "orenco_DT_PumpMode"
+            - type: "min"
+              columns:
+                - "orenco_RT_PumpMode"
+                - "orenco_DT_PumpMode"
+            - type: "max"
+              columns:
+                - "orenco_RT_PumpMode"
+                - "orenco_DT_PumpMode"
+    
+      # ── Flow Totals ─────────────────────────────────────────────────────────
+      - name: "flow-totals"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "orenco_RT_TotalCount"
+                - "orenco_RT_TotalFlow"
+                - "orenco_RT_TotalTime"
+                - "orenco_DT_TotalCount"
+                - "orenco_DT_TotalFlow"
+                - "orenco_DT_TotalTime"
+            - type: "min"
+              columns:
+                - "orenco_RT_TotalCount"
+                - "orenco_RT_TotalFlow"
+                - "orenco_RT_TotalTime"
+                - "orenco_DT_TotalCount"
+                - "orenco_DT_TotalFlow"
+                - "orenco_DT_TotalTime"
+            - type: "max"
+              columns:
+                - "orenco_RT_TotalCount"
+                - "orenco_RT_TotalFlow"
+                - "orenco_RT_TotalTime"
+                - "orenco_DT_TotalCount"
+                - "orenco_DT_TotalFlow"
+                - "orenco_DT_TotalTime"
+    
+      # ── Dose Zones ──────────────────────────────────────────────────────────
+      - name: "dose-zones"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "orenco_Zone1_CountTday"
+                - "orenco_Zone1_TimeTday"
+                - "orenco_Zone2_CountTday"
+                - "orenco_Zone2_TimeTday"
+                - "orenco_Zone3_CountTday"
+                - "orenco_Zone3_TimeTday"
+            - type: "min"
+              columns:
+                - "orenco_Zone1_CountTday"
+                - "orenco_Zone1_TimeTday"
+                - "orenco_Zone2_CountTday"
+                - "orenco_Zone2_TimeTday"
+                - "orenco_Zone3_CountTday"
+                - "orenco_Zone3_TimeTday"
+            - type: "max"
+              columns:
+                - "orenco_Zone1_CountTday"
+                - "orenco_Zone1_TimeTday"
+                - "orenco_Zone2_CountTday"
+                - "orenco_Zone2_TimeTday"
+                - "orenco_Zone3_CountTday"
+                - "orenco_Zone3_TimeTday"
+    
+      # ── Environment (BME280) ────────────────────────────────────────────────
+      - name: "environment"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "oteljson:///ingest/septicstation.json"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1h, 6h, 1d, 1w]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "septicstation_temperature"
+                - "septicstation_pressure"
+                - "septicstation_humidity"
+            - type: "min"
+              columns:
+                - "septicstation_temperature"
+                - "septicstation_pressure"
+                - "septicstation_humidity"
+            - type: "max"
+              columns:
+                - "septicstation_temperature"
+                - "septicstation_pressure"
+                - "septicstation_humidity"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /etc/site
+spec:
+  factory: sitegen
+  config:
+    
+    site:
+      title: "Septic Station Monitor"
+      base_url: "${env:SITE_BASE_URL:-/}"
+      github_url: "https://github.com/jmacd/duckpond"
+    
+    exports:
+      - name: "metrics"
+        pattern: "/reduced/*/*/*.series"
+    
+    routes:
+      - name: "home"
+        type: static
+        slug: ""
+        page: "/etc/site/index.md"
+      - name: "data"
+        type: static
+        slug: "data"
+        routes:
+          - name: "metric-detail"
+            type: template
+            slug: "$0"
+            page: "/etc/site/data.md"
+            export: "metrics"
+    
+    partials:
+      sidebar: "/etc/site/sidebar.md"
+    
+    sidebar:
+      - label: "Home"
+        href: "${env:SITE_BASE_URL:-/}"
+      - label: "Pumps"
+        children:
+          - label: "Pump Amps"
+            href: "${env:SITE_BASE_URL:-/}data/pumps.html"
+          - label: "Cycle Times"
+            href: "${env:SITE_BASE_URL:-/}data/cycle-times.html"
+          - label: "Pump Modes"
+            href: "${env:SITE_BASE_URL:-/}data/pump-modes.html"
+      - label: "Flow & Zones"
+        children:
+          - label: "Flow Totals"
+            href: "${env:SITE_BASE_URL:-/}data/flow-totals.html"
+          - label: "Dose Zones"
+            href: "${env:SITE_BASE_URL:-/}data/dose-zones.html"
+      - label: "Environment"
+        children:
+          - label: "BME280"
+            href: "${env:SITE_BASE_URL:-/}data/environment.html"
+    
+    static_assets: []
+    
+    # Industrial/utility theme — muted greens and grays
+    theme:
+      accent: "#2d5016"
+      accent-light: "#4a7c2e"
+      accent-wash: "#f0f5ec"
+      bg: "#f4f5f2"
+      bg-sidebar: "#eef0eb"
+      bg-card: "#f7f8f5"
+      bg-hover: "#e5e8e1"
+      border: "#c5cabe"
+      border-light: "#dde0d8"
+      nav-btn: "rgba(74, 124, 46, 0.8)"
+      nav-btn-hover: "rgba(74, 124, 46, 0.6)"
+      nav-btn-active: "rgba(45, 80, 22, 0.9)"
+      nav-sub-btn: "rgba(74, 124, 46, 0.45)"
+      nav-sub-btn-hover: "rgba(74, 124, 46, 0.3)"
+      nav-sub-btn-active: "rgba(45, 80, 22, 0.85)"

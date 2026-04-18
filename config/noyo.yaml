@@ -9,32 +9,6 @@ metadata:
   path: /system/etc
 ---
 version: v1
-kind: mkdir
-metadata:
-  path: /laketech
----
-version: v1
-kind: copy
-metadata:
-  path: /laketech/data
-spec:
-  source: "host:///${env:NOYO_ROOT}/laketech"
----
-version: v1
-kind: copy
-metadata:
-  path: /hydrovu
-spec:
-  source: "host:///${env:NOYO_ROOT}/hydrovu"
----
-version: v1
-kind: copy
-metadata:
-  path: /system/site
-spec:
-  source: "host:///${env:NOYO_ROOT}/site"
----
-version: v1
 kind: mknod
 metadata:
   path: /system/run/1-backup
@@ -42,13 +16,12 @@ spec:
   factory: remote
   config:
     compression_level: 3
-    region: "us-east-1"
-    url: "s3://noyo-staging"
-    allow_http: true
-    
-    endpoint: "${env:R2_ENDPOINT}"
-    access_key: "${env:R2_KEY}"
-    secret_key: "${env:R2_SECRET}"
+    region: "${env:S3_REGION}"
+    url: "${env:S3_URL}"
+    endpoint: "${env:S3_ENDPOINT}"
+    access_key: "${env:S3_ACCESS_KEY}"
+    secret_key: "${env:S3_SECRET_KEY}"
+    allow_http: ${env:S3_ALLOW_HTTP:-false}
 ---
 version: v1
 kind: mknod
@@ -324,7 +297,7 @@ spec:
     
     site:
       title: "Noyo Harbor Blue Economy"
-      base_url: "/noyo-harbor/"
+      base_url: "${env:SITE_BASE_URL:-/noyo-harbor/}"
       github_url: "https://github.com/jmacd/noyo-blue-econ"
     
     exports:
@@ -364,29 +337,29 @@ spec:
     
     sidebar:
       - label: "Home"
-        href: "/noyo-harbor/"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}"
       - label: "Parameters"
-        href: "/noyo-harbor/params/index.html"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/index.html"
         children:
           - label: "Dissolved Oxygen"
-            href: "/noyo-harbor/params/DO.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/DO.html"
           - label: "Salinity"
-            href: "/noyo-harbor/params/Salinity.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Salinity.html"
           - label: "Temperature"
-            href: "/noyo-harbor/params/Temperature.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
           - label: "Tide"
-            href: "/noyo-harbor/params/Tide.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Tide.html"
       - label: "Sites"
-        href: "/noyo-harbor/sites/index.html"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
         children:
           - label: "B-Dock"
-            href: "/noyo-harbor/sites/BDock.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
           - label: "Field Station"
-            href: "/noyo-harbor/sites/FieldStation.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
           - label: "Princess Seafood"
-            href: "/noyo-harbor/sites/Princess.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
           - label: "Silver"
-            href: "/noyo-harbor/sites/Silver.html"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
     
     static_assets: []
     
