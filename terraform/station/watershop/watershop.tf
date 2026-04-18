@@ -147,9 +147,12 @@ resource "null_resource" "watershop" {
         "cp ${local.base_dir}/pond@*.timer ${local.home}/.config/systemd/user/",
         "systemctl --user daemon-reload",
       ],
-      # Run setup for each instance
+      # Initialize and apply config for each instance
       [for name in local.instance_names :
-        "${local.base_dir}/setup.sh ${name}"
+        "${local.base_dir}/pond.sh ${name} init 2>/dev/null || true"
+      ],
+      [for name in local.instance_names :
+        "${local.base_dir}/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
       ],
       # Enable and start all timers
       [for name in local.instance_names :
