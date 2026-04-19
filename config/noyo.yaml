@@ -23,14 +23,13 @@ spec:
 version: v1
 kind: mknod
 metadata:
-  path: /system/etc/15-git
+  path: /system/site
 spec:
   factory: git-ingest
   config:
     url: "https://github.com/jmacd/caspar.water.git"
     ref: "${env:GIT_REF:-main}"
     prefix: "config/noyo/site"
-    pond_path: "/system/site"
 ---
 version: v1
 kind: mknod

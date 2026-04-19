@@ -18,7 +18,7 @@ fi
 export POND="${SCRIPTS}/pond"
 
 # Pull latest content from git
-"${POND_BIN}" run /system/etc/05-git pull
+"${POND_BIN}" run /content pull
 
 # Regenerate
 export RUST_BACKTRACE=1

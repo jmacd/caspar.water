@@ -6,7 +6,7 @@ SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 EXE="${SCRIPTS}/pond.sh"
 
 echo "--- Pulling site content from git ---"
-${EXE} run /system/etc/05-git pull
+${EXE} run /content pull
 
 echo ""
 echo "--- Importing water data ---"

@@ -11,14 +11,35 @@ metadata:
 version: v1
 kind: mknod
 metadata:
-  path: /system/etc/05-git
+  path: /content
 spec:
   factory: git-ingest
   config:
     url: "https://github.com/jmacd/caspar.water.git"
     ref: "${env:GIT_REF:-main}"
-    prefix: "site"
-    pond_path: "/"
+    prefix: "site/content"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /templates
+spec:
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/caspar.water.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "site/templates"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /img
+spec:
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/caspar.water.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "site/img"
 ---
 version: v1
 kind: mknod
