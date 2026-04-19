@@ -123,3 +123,50 @@ terraform apply -var 'reset_instances=["water-staging"]'
 | water-prod | water | 10min | s3://water-pond |
 | noyo-prod | noyo | 30min | s3://noyo-pond |
 | septic-prod | septic | 10min | s3://septic-pond |
+
+### Diagnostics
+
+Check timer & service status
+
+```
+# Overview of all pond timers and services
+ systemctl --user list-timers 'pond@*'
+ systemctl --user status 'pond@water-staging' 'pond@noyo-staging' 'pond@septic-staging' 'pond@site-staging'
+```
+
+Check recent logs per pond:
+
+```
+ # All pond activity, most recent first
+ journalctl --user -u 'pond@*' --no-pager -n 50
+
+ # One specific pond (e.g. water-staging)
+ journalctl --user -u 'pond@water-staging' --no-pager -n 30
+
+ # Errors only across all ponds
+ journalctl --user -u 'pond@*' -p err --no-pager -n 50
+```
+
+Check if timers are firing:
+
+```
+ # Shows last trigger time and next scheduled run
+ systemctl --user list-timers 'pond@*-staging*'
+```
+
+Check containers ran successfully:
+
+```
+ # Recent podman container exits (they use --rm so only failures may linger)
+ podman ps -a --filter 'status=exited' --format '{{.Names}} {{.Status}}'
+```
+
+Deeper dive:
+
+```
+ # Follow logs live for a specific pond
+ journalctl --user -u 'pond@site-staging' -f
+
+ # Logs since last reboot/reset
+ journalctl --user -u 'pond@water-staging' --no-pager -b
+```
