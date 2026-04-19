@@ -10,6 +10,15 @@ EXE="${SCRIPTS}/pond.sh"
 
 source "$SCRIPTS/env.sh"
 
+# Ensure vendor dependencies are available (DuckDB-WASM, Plot, D3).
+# These are needed for charts to work locally. One-time download.
+VENDOR_DIR="${REPO_ROOT}/duckpond/crates/sitegen/vendor/dist"
+if [ ! -f "${VENDOR_DIR}/duckdb-eh.wasm" ]; then
+    echo "=== Downloading vendor dependencies (one-time) ==="
+    cd "${REPO_ROOT}/duckpond/crates/sitegen/vendor" && bash download.sh
+    cd "${SCRIPTS}"
+fi
+
 set -x
 
 # Wipe and initialize
