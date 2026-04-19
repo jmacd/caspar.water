@@ -10,7 +10,7 @@ variable "user" {
 
 variable "ssh_key" {
   description = "Path to SSH private key"
-  default     = "~/.ssh/id_rsa"
+  default     = "~/.ssh/watershop"
 }
 
 # MinIO (on watershop, used by staging instances)
@@ -26,7 +26,7 @@ variable "minio_secret_key" {
   sensitive = true
 }
 
-# Cloudflare R2 (production backup)
+# Cloudflare R2
 variable "r2_endpoint" {
   sensitive = true
 }
@@ -39,7 +39,7 @@ variable "r2_secret_key" {
   sensitive = true
 }
 
-# HydroVu API (noyo pond)
+# HydroVu API
 variable "hydrovu_key_id" {
   sensitive = true
 }
