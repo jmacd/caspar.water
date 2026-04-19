@@ -25,14 +25,14 @@ locals {
       s3_url     = "s3://noyo-staging"
       interval   = "30min"
       boot_delay = "5min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nNOYO_SITE_DIR=/config/noyo/site"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://noyo-pond"
       interval   = "30min"
       boot_delay = "6min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nNOYO_SITE_DIR=/config/noyo/site"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nGIT_REF=main"
     }
     water-staging = {
       s3         = local.staging_s3
@@ -67,7 +67,7 @@ locals {
       s3_url     = ""
       interval   = "15min"
       boot_delay = "7min"
-      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/"
+      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
   }
 
@@ -94,7 +94,6 @@ resource "local_file" "env_files" {
     "S3_ACCESS_KEY=${each.value.s3.access_key}",
     "S3_SECRET_KEY=${each.value.s3.secret_key}",
     "S3_ALLOW_HTTP=${each.value.s3.allow_http}",
-    "SITE_DIR=/site",
     each.value.extra_env,
     "RUST_LOG=info",
     "",
@@ -133,10 +132,9 @@ resource "null_resource" "watershop" {
   # Clean and create directory structure (preserve podman volumes)
   provisioner "remote-exec" {
     inline = [
-      "rm -rf ${local.base_dir}/config ${local.base_dir}/site ${local.base_dir}/env ${local.base_dir}/timers",
+      "rm -rf ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/timers",
       "rm -f ${local.base_dir}/*.sh",
       "mkdir -p ${local.base_dir}/config",
-      "mkdir -p ${local.base_dir}/site",
       "mkdir -p ${local.base_dir}/env",
       "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/www",
@@ -148,12 +146,6 @@ resource "null_resource" "watershop" {
   provisioner "file" {
     source      = "../../../config/"
     destination = "${local.base_dir}/config"
-  }
-
-  # Push site content
-  provisioner "file" {
-    source      = "../../../site/"
-    destination = "${local.base_dir}/site"
   }
 
   # Push generated env files

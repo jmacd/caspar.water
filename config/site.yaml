@@ -9,25 +9,16 @@ metadata:
   path: /sources
 ---
 version: v1
-kind: copy
+kind: mknod
 metadata:
-  path: /content
+  path: /system/etc/05-git
 spec:
-  source: "host:///${env:SITE_DIR}/content"
----
-version: v1
-kind: copy
-metadata:
-  path: /templates
-spec:
-  source: "host:///${env:SITE_DIR}/templates"
----
-version: v1
-kind: copy
-metadata:
-  path: /img
-spec:
-  source: "host:///${env:SITE_DIR}/img"
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/caspar.water.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "site"
+    pond_path: "/"
 ---
 version: v1
 kind: mknod

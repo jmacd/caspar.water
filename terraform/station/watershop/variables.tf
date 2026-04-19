@@ -79,3 +79,9 @@ variable "reset_instances" {
   type        = list(string)
   default     = []
 }
+
+# Git branch for site content (git-ingest)
+variable "git_ref" {
+  description = "Git branch/ref for staging site content (production always uses main)"
+  default     = "main"
+}

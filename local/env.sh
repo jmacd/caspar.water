@@ -7,6 +7,9 @@ REPO_ROOT=$(cd "${LOCAL_DIR}/.." && pwd)
 export DUCKPOND_ROOT="${REPO_ROOT}/duckpond"
 export CARGO="cargo run --release -p cmd --"
 
+# Git content source (local repo, current branch)
+export GIT_REF="${GIT_REF:-$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD)}"
+
 # Staging MinIO (cross-pond import source)
 export S3_ENDPOINT="${S3_ENDPOINT:-http://watershop.casparwater.us:9000}"
 export S3_REGION="${S3_REGION:-us-east-1}"

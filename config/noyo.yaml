@@ -21,11 +21,16 @@ spec:
   source: "host:///${env:NOYO_ARCHIVE_DIR}/laketech"
 ---
 version: v1
-kind: copy
+kind: mknod
 metadata:
-  path: /system/site
+  path: /system/etc/15-git
 spec:
-  source: "host:///${env:NOYO_SITE_DIR}"
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/caspar.water.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "config/noyo/site"
+    pond_path: "/system/site"
 ---
 version: v1
 kind: mknod

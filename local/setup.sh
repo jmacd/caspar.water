@@ -10,20 +10,17 @@ EXE="${SCRIPTS}/pond.sh"
 
 source "$SCRIPTS/env.sh"
 
-# Export SITE_DIR for ${env:SITE_DIR} expansion in apply configs
-export SITE_DIR="${REPO_ROOT}/site"
-
 set -x
 
 # Wipe and initialize
 rm -rf "${SCRIPTS}/pond"
 ${EXE} init
 
-# Apply canonical site config (dirs, copies, imports, sitegen)
+# Apply canonical site config (dirs, git-ingest, imports, sitegen)
 ${EXE} apply -f "${REPO_ROOT}/config/site.yaml"
 
 echo
 echo "=== Local site pond setup complete ==="
-echo "Next: ./sync.sh      # pull data from staging MinIO"
+echo "Next: ./sync.sh      # pull content + data"
 echo "Then: ./generate.sh  # build the site"
 echo "Then: ./serve.sh     # serve locally"

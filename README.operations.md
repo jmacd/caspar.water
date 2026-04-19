@@ -6,19 +6,35 @@ Four canonical configs in `config/`, one per pond type:
 
 | File | Pond | What it does |
 |------|------|-------------|
-| `config/water.yaml` | Water | Dirs, site content copies, logfile-ingest, backup, temporal-reduce, analysis, sitegen |
-| `config/noyo.yaml` | Noyo | Dirs, laketech archive copy, site copy, backup, hydrovu, column-rename, combine/single/reduce, sitegen |
-| `config/septic.yaml` | Septic | Dirs, logfile-ingest, backup, temporal-reduce, sitegen |
-| `config/site.yaml` | Site | Dirs, site content copies, cross-pond imports (water/noyo/septic), sitegen |
+| `config/water.yaml` | Water | Dirs, logfile-ingest, backup, temporal-reduce, analysis |
+| `config/noyo.yaml` | Noyo | Dirs, git-ingest (site content), laketech archive copy, backup, hydrovu, column-rename, combine/single/reduce, sitegen |
+| `config/septic.yaml` | Septic | Dirs, logfile-ingest, backup, temporal-reduce |
+| `config/site.yaml` | Site | Dirs, git-ingest (site content), cross-pond imports (water/noyo/septic), sitegen |
 
-Each uses `${env:VAR}` for deployment-specific values (S3 credentials, data paths, site paths).
+Each uses `${env:VAR}` for deployment-specific values (S3 credentials, data paths, git ref).
+
+## Site Content
+
+Site content (markdown pages, templates, images) lives in the git repo and is
+pulled into ponds via the `git-ingest` factory.  No host-copy or file-push needed.
+
+| Repo path | Used by | Pond destination |
+|-----------|---------|-----------------|
+| `site/content/` | Site pond | `/content/` |
+| `site/templates/` | Site pond | `/templates/` |
+| `site/img/` | Site pond | `/img/` |
+| `config/noyo/site/` | Noyo pond | `/system/site/` |
+
+The git-ingest `prefix` field filters the repo tree so each pond only syncs its
+relevant subtree.  Staging ponds track the configured `GIT_REF` branch;
+production ponds always track `main`.
 
 ## Shared Scripts
 
 | File | Purpose |
 |------|---------|
 | `config/scripts/pond.sh` | Podman wrapper — runs `pond` in a container with the right volumes, env, and image |
-| `config/scripts/run.sh` | Systemd timer entrypoint — dispatches by pond type (ingest/collect/pull/sitegen) |
+| `config/scripts/run.sh` | Systemd timer entrypoint — dispatches by pond type (git-pull/ingest/collect/pull/sitegen) |
 | `config/scripts/reset.sh` | Erases S3 bucket for an instance — reads credentials from an env file |
 | `config/systemd/pond@.service` | Systemd template unit — runs `run.sh %i` for each instance |
 
@@ -34,11 +50,10 @@ Used by `${env:VAR}` in configs. Set in env files (terraform-generated) or `loca
 | `S3_SECRET_KEY` | All backup/import | MinIO or R2 secret |
 | `S3_ALLOW_HTTP` | All backup/import | `true` for MinIO |
 | `S3_URL` | Backup push URL | `s3://water-staging` |
-| `SITE_DIR` | Site content copies | `/site` (container) or repo path (local) |
+| `GIT_REF` | Git-ingest ref | `main` or branch name |
 | `SITE_BASE_URL` | Sitegen base URL | `/` or `/noyo-harbor/` |
 | `DATA_DIR` | Water/septic ingest | Host path to NFS data, mounted at `/data` |
 | `NOYO_ARCHIVE_DIR` | Noyo laketech copy | Host path to archive |
-| `NOYO_SITE_DIR` | Noyo site pages copy | `/config/noyo/site` (container) |
 | `HYDRO_KEY_ID` | HydroVu API | OAuth client ID |
 | `HYDRO_KEY_VALUE` | HydroVu API | OAuth client secret |
 | `WATER_S3_URL` | Site imports | `s3://water-staging` |
@@ -50,12 +65,14 @@ Used by `${env:VAR}` in configs. Set in env files (terraform-generated) or `loca
 ```bash
 cd local
 ./setup.sh          # pond init + pond apply -f config/site.yaml
-./sync.sh           # pull data from staging MinIO
+./sync.sh           # pull content from git + data from staging MinIO
 ./generate.sh       # run sitegen
 ./serve.sh          # serve locally
+./refresh.sh        # quick content iteration (git pull + rebuild)
 ```
 
-Env vars come from `local/env.sh` (MinIO on watershop, staging buckets).
+Env vars come from `local/env.sh` (MinIO on watershop, staging buckets, GIT_REF from current branch).
+Note: `refresh.sh` only sees committed changes (git-ingest reads from the repo).
 
 ## Watershop Staging
 
@@ -65,10 +82,12 @@ Env vars come from `local/env.sh` (MinIO on watershop, staging buckets).
 cd terraform/station/watershop
 terraform apply                    # staging only (default)
 terraform apply -var deploy_production=true   # + production
+terraform apply -var git_ref=my-branch        # staging with custom branch
 ```
 
-Terraform pushes `config/`, `site/`, env files, timer files to the machine.
+Terraform pushes `config/` and env files to the machine.
 For each instance: `pond init` (no-op if exists) + `pond apply -f /config/<type>.yaml`.
+Site content is pulled from git at runtime by `run.sh` — no file push needed.
 
 ### Reset an instance
 

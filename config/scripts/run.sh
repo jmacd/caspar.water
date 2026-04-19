@@ -15,6 +15,7 @@ TYPE="${TYPE%-prod}"
 
 case "${TYPE}" in
     noyo)
+        ${EXE} "${INSTANCE}" run /system/etc/15-git pull
         ${EXE} "${INSTANCE}" run /system/etc/20-hydrovu collect
         ;;
     water)
@@ -24,6 +25,7 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /etc/ingest
         ;;
     site)
+        ${EXE} "${INSTANCE}" run /system/etc/05-git pull
         ${EXE} "${INSTANCE}" run /system/etc/10-water pull
         ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
         ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
