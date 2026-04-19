@@ -19,8 +19,8 @@ set -x
 rm -rf "${SCRIPTS}/pond"
 ${EXE} init
 
-# Apply canonical site config + local import configs
-${EXE} apply -f "${REPO_ROOT}/config/site.yaml" "${SCRIPTS}"/apply/*.yaml
+# Apply canonical site config (dirs, copies, imports, sitegen)
+${EXE} apply -f "${REPO_ROOT}/config/site.yaml"
 
 echo
 echo "=== Local site pond setup complete ==="
