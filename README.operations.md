@@ -7,27 +7,34 @@ Four canonical configs in `config/`, one per pond type:
 | File | Pond | What it does |
 |------|------|-------------|
 | `config/water.yaml` | Water | Dirs, logfile-ingest, backup, temporal-reduce, analysis |
-| `config/noyo.yaml` | Noyo | Dirs, git-ingest (site content), laketech archive copy, backup, hydrovu, column-rename, combine/single/reduce, sitegen |
+| `config/noyo.yaml` | Noyo | Dirs, git-ingest (noyo site templates), laketech archive copy, backup, hydrovu, column-rename, combine/single/reduce, sitegen |
 | `config/septic.yaml` | Septic | Dirs, logfile-ingest, backup, temporal-reduce |
-| `config/site.yaml` | Site | Dirs, git-ingest (site content), cross-pond imports (water/noyo/septic), sitegen |
+| `config/site.yaml` | Site | Dirs, git-ingest (content, templates, images), cross-pond imports (water/noyo/septic), sitegen |
 
 Each uses `${env:VAR}` for deployment-specific values (S3 credentials, data paths, git ref).
 
 ## Site Content
 
 Site content (markdown pages, templates, images) lives in the git repo and is
-pulled into ponds via the `git-ingest` factory.  No host-copy or file-push needed.
+pulled into ponds via the `git-ingest` factory.  Each git-ingest mknod is a
+dynamic directory — content is served directly from git objects after a
+`pond run <path> pull` fetches the repo.  No host-copy or file-push needed.
 
-| Repo path | Used by | Pond destination |
-|-----------|---------|-----------------|
-| `site/content/` | Site pond | `/content/` |
-| `site/templates/` | Site pond | `/templates/` |
-| `site/img/` | Site pond | `/img/` |
-| `config/noyo/site/` | Noyo pond | `/system/site/` |
+| Repo path | Used by | Pond mknod path | git-ingest prefix |
+|-----------|---------|-----------------|-------------------|
+| `site/content/` | Site pond | `/content` | `site/content` |
+| `site/templates/` | Site pond | `/templates` | `site/templates` |
+| `site/img/` | Site pond | `/img` | `site/img` |
+| `config/noyo/site/` | Noyo pond | `/system/site` | `config/noyo/site` |
 
-The git-ingest `prefix` field filters the repo tree so each pond only syncs its
-relevant subtree.  Staging ponds track the configured `GIT_REF` branch;
-production ponds always track `main`.
+Each mknod has its own bare repo cache (`{pond}/git/{node-id}.git`), so each
+must be pulled individually.  The `prefix` field filters the repo tree so
+only the relevant subtree is served.  Staging ponds track the configured
+`GIT_REF` branch; production ponds always track `main`.
+
+The noyo pond's sitegen config at `/system/etc/90-sitegen` is used by the
+site pond's `subsites:` directive — the site pond imports the full noyo tree
+and builds the Noyo Harbor subsite from it.
 
 ## Shared Scripts
 
