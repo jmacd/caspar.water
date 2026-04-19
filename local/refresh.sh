@@ -8,11 +8,11 @@ SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 
 source "$SCRIPTS/env.sh"
 
-POND_BIN="${DUCKPOND_ROOT}/target/release/pond"
+POND_BIN="${DUCKPOND_ROOT}/target/debug/pond"
 
 if [ ! -x "${POND_BIN}" ]; then
     echo "Building pond binary..."
-    (cd "${DUCKPOND_ROOT}" && cargo build --release --bin pond)
+    (cd "${DUCKPOND_ROOT}" && cargo build --bin pond)
 fi
 
 export POND="${SCRIPTS}/pond"
