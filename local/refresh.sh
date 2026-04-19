@@ -19,6 +19,8 @@ export POND="${SCRIPTS}/pond"
 
 # Pull latest content from git
 "${POND_BIN}" run /content pull
+"${POND_BIN}" run /templates pull
+"${POND_BIN}" run /img pull
 
 # Regenerate
 export RUST_BACKTRACE=1

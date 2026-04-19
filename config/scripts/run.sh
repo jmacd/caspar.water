@@ -26,6 +26,8 @@ case "${TYPE}" in
         ;;
     site)
         ${EXE} "${INSTANCE}" run /content pull
+        ${EXE} "${INSTANCE}" run /templates pull
+        ${EXE} "${INSTANCE}" run /img pull
         ${EXE} "${INSTANCE}" run /system/etc/10-water pull
         ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
         ${EXE} "${INSTANCE}" run /system/etc/12-septic pull

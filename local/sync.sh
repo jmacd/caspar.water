@@ -7,6 +7,8 @@ EXE="${SCRIPTS}/pond.sh"
 
 echo "--- Pulling site content from git ---"
 ${EXE} run /content pull
+${EXE} run /templates pull
+${EXE} run /img pull
 
 echo ""
 echo "--- Importing water data ---"
