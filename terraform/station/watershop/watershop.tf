@@ -25,14 +25,14 @@ locals {
       s3_url     = "s3://noyo-staging"
       interval   = "30min"
       boot_delay = "5min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nGIT_REF=${var.git_ref}"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
       s3         = local.prod_s3
       s3_url     = "s3://noyo-pond"
       interval   = "30min"
       boot_delay = "6min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_ARCHIVE_DIR=${var.noyo_archive_dir}\nGIT_REF=main"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=main"
     }
     water-staging = {
       s3         = local.staging_s3

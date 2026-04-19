@@ -50,17 +50,11 @@ PODMAN_ARGS=(
     -e POND=/pond
     -v "${VOLUME}:/pond"
     -v "${BASE_DIR}/config:/config:ro"
-    -v "${BASE_DIR}/site:/site:ro"
 )
 
 # Mount data directory if set (water, septic)
 if [ -n "${DATA_DIR}" ]; then
     PODMAN_ARGS+=(-v "${DATA_DIR}:/data:ro")
-fi
-
-# Mount noyo archive if set
-if [ -n "${NOYO_ARCHIVE_DIR}" ]; then
-    PODMAN_ARGS+=(-v "${NOYO_ARCHIVE_DIR}:${NOYO_ARCHIVE_DIR}:ro")
 fi
 
 # Mount site build output directory if set

@@ -57,11 +57,6 @@ variable "septic_data_dir" {
   default = "/home/shared/septic/archive/data"
 }
 
-# Noyo archive data (laketech HTML, hydrovu exports)
-variable "noyo_archive_dir" {
-  default = "/home/shared/noyo/archive/data"
-}
-
 variable "deploy_staging" {
   description = "Deploy staging instances"
   type        = bool

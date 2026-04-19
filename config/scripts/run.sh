@@ -15,6 +15,7 @@ TYPE="${TYPE%-prod}"
 
 case "${TYPE}" in
     noyo)
+        ${EXE} "${INSTANCE}" run /laketech/data pull
         ${EXE} "${INSTANCE}" run /system/site pull
         ${EXE} "${INSTANCE}" run /system/etc/20-hydrovu collect
         ;;

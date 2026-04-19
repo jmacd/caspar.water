@@ -7,7 +7,7 @@ Four canonical configs in `config/`, one per pond type:
 | File | Pond | What it does |
 |------|------|-------------|
 | `config/water.yaml` | Water | Dirs, logfile-ingest, backup, temporal-reduce, analysis |
-| `config/noyo.yaml` | Noyo | Dirs, git-ingest (noyo site templates), laketech archive copy, backup, hydrovu, column-rename, combine/single/reduce, sitegen |
+| `config/noyo.yaml` | Noyo | Dirs, git-ingest (noyo site templates + laketech data), backup, hydrovu, column-rename, combine/single/reduce, sitegen |
 | `config/septic.yaml` | Septic | Dirs, logfile-ingest, backup, temporal-reduce |
 | `config/site.yaml` | Site | Dirs, git-ingest (content, templates, images), cross-pond imports (water/noyo/septic), sitegen |
 
@@ -26,6 +26,12 @@ dynamic directory — content is served directly from git objects after a
 | `site/templates/` | Site pond | `/templates` | `site/templates` |
 | `site/img/` | Site pond | `/img` | `site/img` |
 | `config/noyo/site/` | Noyo pond | `/system/site` | `config/noyo/site` |
+
+Laketech archive data (HydroVu HTML exports) is pulled from a separate repo:
+
+| Repo | Pond mknod path | git-ingest prefix |
+|------|-----------------|-------------------|
+| `jmacd/noyo-blue-econ` | `/laketech/data` | `laketech` |
 
 Each mknod has its own bare repo cache (`{pond}/git/{node-id}.git`), so each
 must be pulled individually.  The `prefix` field filters the repo tree so
@@ -60,7 +66,6 @@ Used by `${env:VAR}` in configs. Set in env files (terraform-generated) or `loca
 | `GIT_REF` | Git-ingest ref | `main` or branch name |
 | `SITE_BASE_URL` | Sitegen base URL | `/` or `/noyo-harbor/` |
 | `DATA_DIR` | Water/septic ingest | Host path to NFS data, mounted at `/data` |
-| `NOYO_ARCHIVE_DIR` | Noyo laketech copy | Host path to archive |
 | `HYDRO_KEY_ID` | HydroVu API | OAuth client ID |
 | `HYDRO_KEY_VALUE` | HydroVu API | OAuth client secret |
 | `WATER_S3_URL` | Site imports | `s3://water-staging` |

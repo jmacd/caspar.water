@@ -14,11 +14,15 @@ metadata:
   path: /laketech
 ---
 version: v1
-kind: copy
+kind: mknod
 metadata:
   path: /laketech/data
 spec:
-  source: "host:///${env:NOYO_ARCHIVE_DIR}/laketech"
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/noyo-blue-econ.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "laketech"
 ---
 version: v1
 kind: mknod
