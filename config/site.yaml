@@ -170,6 +170,8 @@ spec:
     
     footer: "Made in Mendocino • ${DATE}"
     
+    header: "img/logo.svg"
+    
     theme:
       bg-image: "none"
     

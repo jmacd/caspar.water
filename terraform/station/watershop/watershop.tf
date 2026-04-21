@@ -135,6 +135,7 @@ resource "null_resource" "watershop" {
       "rm -rf ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/timers",
       "rm -f ${local.base_dir}/*.sh",
       "mkdir -p ${local.base_dir}/config",
+      "mkdir -p ${local.base_dir}/duckpond",
       "mkdir -p ${local.base_dir}/env",
       "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/www",
@@ -146,6 +147,12 @@ resource "null_resource" "watershop" {
   provisioner "file" {
     source      = "../../../config/"
     destination = "${local.base_dir}/config"
+  }
+
+  # Push duckpond VERSION (pinned version for production images)
+  provisioner "file" {
+    source      = "../../../duckpond/VERSION"
+    destination = "${local.base_dir}/duckpond/VERSION"
   }
 
   # Push generated env files
