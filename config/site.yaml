@@ -168,6 +168,8 @@ spec:
     static:
       - pattern: "/img/*"
     
+    footer: "Made in Mendocino • ${DATE}"
+    
     theme:
       bg-image: "none"
     
