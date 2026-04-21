@@ -30,7 +30,7 @@ case "$(uname -m)" in
 esac
 
 # Image selection: staging uses latest, production uses pinned version
-VERSION=$(cat "${BASE_DIR}/config/DUCKPOND_VERSION")
+VERSION=$(cat "${BASE_DIR}/duckpond/VERSION")
 if [[ "${INSTANCE}" == *-staging ]]; then
     IMAGE="ghcr.io/jmacd/duckpond/duckpond:latest-${ARCH}"
     PULL="--pull=newer"
