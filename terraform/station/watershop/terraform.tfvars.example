@@ -1,0 +1,30 @@
+# Watershop terraform variables
+#
+# Copy to terraform.tfvars and fill in secrets.
+# This file is gitignored — credentials stay local.
+
+# SSH connection
+user     = "jmacd"
+host     = "watershop.casparwater.us"
+ssh_key  = "~/.ssh/id_ed25519"
+
+# MinIO (local to watershop)
+minio_endpoint   = "http://localhost:9000"
+minio_access_key = ""
+minio_secret_key = ""
+
+# Cloudflare R2 (production backup)
+r2_endpoint   = ""
+r2_access_key = ""
+r2_secret_key = ""
+
+# HydroVu API (noyo pond)
+hydrovu_key_id    = ""
+hydrovu_key_value = ""
+
+# NFS mount paths (septic and water data sources)
+water_data_dir  = "/home/shared/water/archive/data"
+septic_data_dir = "/home/shared/septic/archive/data"
+
+# Noyo archive data (laketech HTML, archived HydroVu exports)
+noyo_archive_dir = "/home/shared/noyo/archive/data"

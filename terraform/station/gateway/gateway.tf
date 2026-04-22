@@ -44,6 +44,45 @@ resource "null_resource" "setup-script" {
       destination = "/home/jmacd/bin/collector"
   }
 
+  # Duckpond scripts and configs
+  provisioner "file" {
+      source      = "duckpond/"
+      destination = "/home/jmacd/duckpond"
+  }
+
+  # Site content (templates, content pages, images)
+  provisioner "file" {
+      source      = "../../../site/"
+      destination = "/home/jmacd/duckpond/site"
+  }
+
+  # Systemd user units for duckpond timers
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /home/jmacd/.config/systemd/user",
+    ]
+  }
+
+  provisioner "file" {
+      source      = "pond-water.service"
+      destination = "/home/jmacd/.config/systemd/user/pond-water.service"
+  }
+
+  provisioner "file" {
+      source      = "pond-water.timer"
+      destination = "/home/jmacd/.config/systemd/user/pond-water.timer"
+  }
+
+  provisioner "file" {
+      source      = "pond-noyo.service"
+      destination = "/home/jmacd/.config/systemd/user/pond-noyo.service"
+  }
+
+  provisioner "file" {
+      source      = "pond-noyo.timer"
+      destination = "/home/jmacd/.config/systemd/user/pond-noyo.timer"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/setup_script.sh",

@@ -1,0 +1,408 @@
+version: v1
+kind: mkdir
+metadata:
+  path: /system/run
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /system/etc
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /laketech
+---
+version: v1
+kind: mknod
+metadata:
+  path: /laketech/data
+spec:
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/noyo-blue-econ.git"
+    ref: main
+    prefix: "laketech"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/site
+spec:
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/caspar.water.git"
+    ref: "${env:GIT_REF:-main}"
+    prefix: "config/noyo/site"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/run/1-backup
+spec:
+  factory: remote
+  config:
+    region: "${env:S3_REGION}"
+    url: "${env:S3_URL}"
+    endpoint: "${env:S3_ENDPOINT}"
+    access_key: "${env:S3_ACCESS_KEY}"
+    secret_key: "${env:S3_SECRET_KEY}"
+    allow_http: ${env:S3_ALLOW_HTTP:-false}
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/20-hydrovu
+spec:
+  factory: hydrovu
+  config:
+    hydrovu_path: "/hydrovu"
+    max_points_per_run: 10000
+    client_id: "${env:HYDRO_KEY_ID}"
+    client_secret: "${env:HYDRO_KEY_VALUE}"
+    
+    # Instrument names are device-centric, not site-centric.
+    # Instruments move between sites; combine.yaml maps instruments → sites
+    # using time ranges.
+    #
+    # Naming convention: NoyoCenter{Type}_{N}
+    #   Collect writes to: {Name}_active.series
+    #   Archive renames to: {Name}_archive_YYYYMMDD.series
+    #
+    # Notes:
+    #   Noyo Center owns three pairs of Vulink/AT500 although
+    #   only two pairs are in use. Note that these devices could
+    #   be configured with one Vulink serving two AT500s but they
+    #   are not.
+    
+    devices:
+      # ── Active instruments: currently deployed at Field Station ──
+    
+      - name:  NoyoCenterVulink_1
+        id:    4990594334457856
+        comment: "Was BDockVulink. B-Dock until 10/17/2025, then Field Station surface."
+    
+      - name:  NoyoCenterAT500_1
+        id:    6154708427603968
+        comment: "Was BDockAT500. B-Dock until 10/17/2025, then Field Station surface."
+    
+      - name:  NoyoCenterVulink_4
+        id:    5877040213786624
+        comment: "Was PrincessVulink. Princess until 10/17/2025, then Field Station bottom."
+    
+      - name:  NoyoCenterAT500_3
+        id:    6187749627789312
+        comment: "Was PrincessAT500. Princess until 10/17/2025, then Field Station bottom."
+    
+      # ── Inactive instruments: decommissioned, no longer collecting ──
+    
+      - name:  NoyoCenterVulink_2
+        id:    6582334615060480
+        #active: false
+        comment: "Was SilverVulink1. Failed around May 30, 2024."
+    
+      - name:  NoyoCenterVulink_3
+        id:    6417476404772864
+        #active: false
+        comment: "Was SilverVulink2. Replaced Vulink_2 around July 23, 2024. Site decommissioned."
+    
+      - name:  NoyoCenterAT500_2
+        id:    5859376846209024
+        #active: false
+        comment: "Was SilverAT500. Site decommissioned."
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/10-hrename
+spec:
+  factory: column-rename
+  config:
+    rules:
+      - type: direct
+        from: "Date Time"
+        to: "timestamp"
+        cast: timestamp
+      - type: pattern
+        pattern: "^(.+) \\((.+)\\)$"
+        replacement: "$1.$2"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /combined
+spec:
+  factory: dynamic-dir
+  config:
+    # Instrument → Site mapping.
+    #
+    # Glob patterns use _* to match both _active.series and _archive_YYYYMMDD.series.
+    # Time ranges control which instrument data appears in each site view.
+    # The same instrument can appear in multiple sites (it moved between them).
+    
+    entries:
+      - name: "Silver"  
+        factory: "timeseries-join"
+        config:
+          inputs:
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_2*.series"
+              scope: Vulink
+              range:
+                end: 2024-05-30T00:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_3*.series"
+              scope: Vulink
+              range:
+                begin: 2024-05-30T00:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterAT500_2*.series"
+              scope: AT500_Surface
+    
+      - name: "FieldStation"
+        factory: "timeseries-join" 
+        config:
+          inputs:
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink1
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink2
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Bottom
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "excelhtml:///laketech/data/HydroVu_FB-Bottom*.htm"
+              scope: AT500_Bottom
+              transforms:
+                - /system/etc/10-hrename
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "excelhtml:///laketech/data/HydroVu_FB-Surface*.htm"
+              scope: AT500_Surface
+              transforms:
+                - /system/etc/10-hrename
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "excelhtml:///laketech/data/HydroVu_FB-VuLink*.htm"
+              scope: AT500_Vulink
+              transforms:
+                - /system/etc/10-hrename
+              range:
+                end: 2025-10-16T21:00:00Z
+    
+      - name: "BDock"
+        factory: "timeseries-join"
+        config:
+          inputs:
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+    
+      - name: "Princess"
+        factory: "timeseries-join" 
+        config:
+          inputs:
+            - pattern: "/hydrovu/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+---
+version: v1
+kind: mknod
+metadata:
+  path: /singled
+spec:
+  factory: dynamic-dir
+  config:
+    entries:
+      - name: "DO"
+        factory: "timeseries-pivot"
+        config:
+          pattern: "/combined/*"
+          columns:
+            - "AT500_Surface.DO.mg/L"
+            - "AT500_Bottom.DO.mg/L"
+    
+      - name: "Salinity"
+        factory: "timeseries-pivot"
+        config:
+          pattern: "/combined/*"
+          columns:
+            - "AT500_Surface.Salinity.psu"
+            - "AT500_Bottom.Salinity.psu"
+    
+      - name: "Temperature"
+        factory: "timeseries-pivot"
+        config:
+          pattern: "/combined/*"
+          columns:
+            - "AT500_Surface.Temperature.C"
+            - "AT500_Bottom.Temperature.C"
+    
+      - name: "Tide"
+        factory: "timeseries-pivot"
+        config:
+          pattern: "/combined/*"
+          columns:
+            - "AT500_Surface.Depth.m"
+            - "AT500_Bottom.Depth.m"
+            
+---
+version: v1
+kind: mknod
+metadata:
+  path: /reduced
+spec:
+  factory: dynamic-dir
+  config:
+    # This is a dynamic-dir config
+    entries:
+      - name: "single_site"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "/combined/*"
+          out_pattern: "$0"
+          time_column: "timestamp"
+          resolutions: [1h, 2h, 4h, 12h, 24h]
+          aggregations:
+            - type: "avg"
+              columns:
+                - "Vulink*.Temperature.C"
+                - "AT500_*.Temperature.C"
+                - "AT500_*.DO.mg/L"
+                - "AT500_*.Salinity.psu"
+                - "AT500_*.Depth.m"
+            - type: "min"
+              columns:
+                - "Vulink*.Temperature.C"
+                - "AT500_*.Temperature.C"
+                - "AT500_*.DO.mg/L"
+                - "AT500_*.Salinity.psu"
+                - "AT500_*.Depth.m"
+            - type: "max"
+              columns:
+                - "Vulink*.Temperature.C"
+                - "AT500_*.Temperature.C"
+                - "AT500_*.DO.mg/L"
+                - "AT500_*.Salinity.psu"
+                - "AT500_*.Depth.m"
+    
+      - name: "single_param"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "/singled/*"
+          out_pattern: "$0"
+          time_column: "timestamp"
+          resolutions: [1h, 2h, 4h, 12h, 24h]
+          aggregations:
+            - type: "avg"
+            - type: "min"
+            - type: "max"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/90-sitegen
+spec:
+  factory: sitegen
+  config:
+    
+    site:
+      title: "Noyo Harbor Blue Economy"
+      base_url: "${env:SITE_BASE_URL:-/noyo-harbor/}"
+      github_url: "https://github.com/jmacd/noyo-blue-econ"
+    
+    exports:
+      - name: "params"
+        pattern: "/reduced/single_param/*/*.series"
+      - name: "sites"
+        pattern: "/reduced/single_site/*/*.series"
+    
+    routes:
+      - name: "home"
+        type: static
+        slug: ""
+        page: "/system/site/index.md"
+      - name: "params"
+        type: static
+        slug: "params"
+        page: "/system/site/params.md"
+        routes:
+          - name: "param-detail"
+            type: template
+            slug: "$0"
+            page: "/system/site/data.md"
+            export: "params"
+      - name: "sites"
+        type: static
+        slug: "sites"
+        page: "/system/site/sites.md"
+        routes:
+          - name: "site-detail"
+            type: template
+            slug: "$0"
+            page: "/system/site/data.md"
+            export: "sites"
+    
+    partials:
+      sidebar: "/system/site/sidebar.md"
+    
+    sidebar:
+      - label: "Home"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}"
+      - label: "Parameters"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/index.html"
+        children:
+          - label: "Dissolved Oxygen"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/DO.html"
+          - label: "Salinity"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Salinity.html"
+          - label: "Temperature"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
+          - label: "Tide"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Tide.html"
+      - label: "Sites"
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
+        children:
+          - label: "B-Dock"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
+          - label: "Field Station"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
+          - label: "Princess Seafood"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
+          - label: "Silver"
+            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
+    
+    
+    # Noyo Center for Marine Science theme
+    # Deep navy + ocean teal palette inspired by noyocenter.org
+    theme:
+      accent: "#0f3460"
+      accent-light: "#1a6985"
+      accent-wash: "#e8f4f8"
+      bg: "#f5f7fa"
+      bg-sidebar: "#edf2f7"
+      bg-card: "#f7fafc"
+      bg-hover: "#e2e8f0"
+      border: "#cbd5e0"
+      border-light: "#e2e8f0"
+      nav-btn: "rgba(26, 105, 133, 0.85)"
+      nav-btn-hover: "rgba(26, 105, 133, 0.65)"
+      nav-btn-active: "rgba(15, 52, 96, 0.9)"
+      nav-sub-btn: "rgba(26, 105, 133, 0.5)"
+      nav-sub-btn-hover: "rgba(26, 105, 133, 0.35)"
+      nav-sub-btn-active: "rgba(15, 52, 96, 0.85)"
