@@ -168,7 +168,7 @@ spec:
     static:
       - pattern: "/img/*"
     
-    footer: "Made in Mendocino • ${DATE} | ${BUILD}"
+    footer: "Made in Mendocino • ${DATE}"
     
     header: "img/logo.svg"
     
