@@ -2,7 +2,9 @@
 # quick.sh -- Fast layout/formatting iteration.
 #
 # Reads content directly from disk via host+sitegen:// (no pond, no sync).
-# Skips subsites and data exports -- just builds content pages.
+# Uses the canonical config/site.yaml with --hostmount overlays to map
+# pond paths (/content, /templates, /img) to the repo's site/ directory.
+# --quick skips data exports and subsites — just builds content pages.
 # Uncommitted changes to site/ are visible immediately.
 set -e
 
@@ -23,8 +25,11 @@ mkdir -p "${BUILDDIR}"
 set -x
 "${POND_BIN}" run \
     -d "${REPO_ROOT}" \
-    "host+sitegen:///local/quick-site.yaml" \
-    build "${BUILDDIR}"
+    --hostmount /content=site/content \
+    --hostmount /templates=site/templates \
+    --hostmount /img=site/img \
+    "host+sitegen:///config/site.yaml" \
+    -- build --quick "${BUILDDIR}"
 
 echo
 echo "=== Quick build done ==="
