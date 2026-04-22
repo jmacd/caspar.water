@@ -160,6 +160,9 @@ resource "null_resource" "cloud" {
   }
 
   # Set up systemd and initialize pond
+  #
+  # Note: systemctl --user requires XDG_RUNTIME_DIR when run via su from root.
+  # We set it explicitly since machinectl is not available on minimal Debian.
   provisioner "remote-exec" {
     inline = concat(
       [
@@ -169,11 +172,11 @@ resource "null_resource" "cloud" {
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/",
         "chown -R jmacd:jmacd ${local.home}/.config/systemd",
-        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user daemon-reload'",
+        "su - jmacd -c 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user daemon-reload'",
       ],
       # Reset instance if requested
       var.reset_instance ? [
-        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user stop pond@${local.instance}.timer 2>/dev/null || true'",
+        "su - jmacd -c 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user stop pond@${local.instance}.timer 2>/dev/null || true'",
         "su - jmacd -c 'podman volume rm pond-${local.instance} 2>/dev/null || true'",
       ] : [],
       [
@@ -181,7 +184,7 @@ resource "null_resource" "cloud" {
         "su - jmacd -c '${local.base_dir}/config/scripts/pond.sh ${local.instance} init 2>/dev/null || true'",
         "su - jmacd -c '${local.base_dir}/config/scripts/pond.sh ${local.instance} apply -f /config/site.yaml'",
         # Enable and start timer
-        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user enable --now pond@${local.instance}.timer'",
+        "su - jmacd -c 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user enable --now pond@${local.instance}.timer'",
       ],
     )
   }
