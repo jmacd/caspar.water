@@ -165,13 +165,15 @@ resource "null_resource" "cloud" {
       [
         "chmod +x ${local.base_dir}/config/scripts/*.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
+        "chown -R jmacd:jmacd ${local.base_dir}",
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/",
-        "su - jmacd -c 'systemctl --user daemon-reload'",
+        "chown -R jmacd:jmacd ${local.home}/.config/systemd",
+        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user daemon-reload'",
       ],
       # Reset instance if requested
       var.reset_instance ? [
-        "su - jmacd -c 'systemctl --user stop pond@${local.instance}.timer 2>/dev/null || true'",
+        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user stop pond@${local.instance}.timer 2>/dev/null || true'",
         "su - jmacd -c 'podman volume rm pond-${local.instance} 2>/dev/null || true'",
       ] : [],
       [
@@ -179,7 +181,7 @@ resource "null_resource" "cloud" {
         "su - jmacd -c '${local.base_dir}/config/scripts/pond.sh ${local.instance} init 2>/dev/null || true'",
         "su - jmacd -c '${local.base_dir}/config/scripts/pond.sh ${local.instance} apply -f /config/site.yaml'",
         # Enable and start timer
-        "su - jmacd -c 'systemctl --user enable --now pond@${local.instance}.timer'",
+        "machinectl shell jmacd@ /bin/bash -c 'systemctl --user enable --now pond@${local.instance}.timer'",
       ],
     )
   }
