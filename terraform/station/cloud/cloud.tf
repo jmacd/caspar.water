@@ -91,8 +91,8 @@ resource "null_resource" "cloud" {
   connection {
     type        = "ssh"
     user        = "root"
-    private_key = file("${local.home}/.ssh/id_rsa")
-    host        = linode_instance.debian12-us-west.ip_address
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
+    host        = tolist(linode_instance.debian12-us-west.ipv4)[0]
   }
 
   # Push setup/teardown scripts
