@@ -48,18 +48,8 @@ resource "null_resource" "setup-script" {
   }
 
   provisioner "file" {
-      source      = "casparwater_certs/casparwater_us.key"
-      destination = "/etc/casparwater/casparwater_us.key"
-  }
-
-  provisioner "file" {
-      source      = "casparwater_certs/casparwater_us.crt"
-      destination = "/etc/casparwater/casparwater_us.crt"
-  }
-
-  provisioner "file" {
-      source      = "nginx.casparwater.conf"
-      destination = "/etc/nginx/sites-enabled/casparwater"
+      source      = "Caddyfile"
+      destination = "/etc/caddy/Caddyfile"
   }
 
   # Systemd user units for duckpond timer

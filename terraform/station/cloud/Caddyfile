@@ -1,0 +1,15 @@
+casparwater.us {
+	root * /var/www/html/casparwater
+
+	# Extensionless URLs: try path, then path.html, then directory
+	try_files {path} {path}.html {path}/
+
+	file_server
+
+	# Vendor assets: aggressive caching (content-addressed by sitegen)
+	@vendor path /vendor/* /noyo-harbor/vendor/*
+	header @vendor Cache-Control "public, max-age=31536000, immutable"
+
+	# Compress responses
+	encode zstd gzip
+}
