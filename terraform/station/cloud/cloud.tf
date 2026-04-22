@@ -47,11 +47,6 @@ resource "null_resource" "setup-script" {
     ]
   }
 
-  provisioner "file" {
-      source      = "Caddyfile"
-      destination = "/etc/caddy/Caddyfile"
-  }
-
   # Systemd user units for duckpond timer
   provisioner "remote-exec" {
     inline = [
@@ -73,6 +68,18 @@ resource "null_resource" "setup-script" {
     inline = [
       "chmod +x /tmp/setup_script.sh",
       "/tmp/setup_script.sh",
+    ]
+  }
+
+  # Push Caddyfile AFTER setup (which installs caddy and its default config)
+  provisioner "file" {
+      source      = "Caddyfile"
+      destination = "/etc/caddy/Caddyfile"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "systemctl restart caddy",
     ]
   }
 
