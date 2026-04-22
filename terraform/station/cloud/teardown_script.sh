@@ -1,13 +1,12 @@
 #!/bin/sh
+# teardown_script.sh -- Stop services before redeployment.
+set -e
 
-# Stop duckpond timer
-systemctl --user -M jmacd@ stop pond-site.timer 2>/dev/null || true
-systemctl --user -M jmacd@ disable pond-site.timer 2>/dev/null || true
+# Stop duckpond timer (uses common pond@.service template)
+su - jmacd -c "systemctl --user stop 'pond@site-prod.timer' 2>/dev/null || true"
+su - jmacd -c "systemctl --user disable 'pond@site-prod.timer' 2>/dev/null || true"
 
-# Remove duckpond volume
-su - jmacd -c "podman volume rm pond-site 2>/dev/null || true"
-
-# Stop caddy (and nginx if still around from previous deploy)
+# Stop web servers
 systemctl stop caddy 2>/dev/null || true
 systemctl stop nginx 2>/dev/null || true
 systemctl disable nginx 2>/dev/null || true
