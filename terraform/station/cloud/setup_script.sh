@@ -24,4 +24,7 @@ fi
 # Enable lingering for user timers
 loginctl enable-linger jmacd
 
+# Allow Caddy to traverse /home/jmacd for serving site files
+chmod 711 /home/jmacd
+
 echo Setup complete.
