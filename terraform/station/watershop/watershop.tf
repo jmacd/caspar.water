@@ -74,7 +74,7 @@ locals {
       s3_url     = ""
       interval   = "15min"
       boot_delay = "8min"
-      extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=root@${var.cloud_ip}"
+      extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
   }
 
@@ -160,6 +160,20 @@ resource "null_resource" "watershop" {
   provisioner "file" {
     source      = "../../../duckpond/VERSION"
     destination = "${local.base_dir}/duckpond/VERSION"
+  }
+
+  # Push deploy key for watershop → cloud rsync (site-prod)
+  provisioner "file" {
+    source      = "${path.module}/deploy_key"
+    destination = "${local.home}/.ssh/cloud_deploy"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod 600 ${local.home}/.ssh/cloud_deploy",
+      # Configure SSH to use the deploy key for the cloud host
+      "grep -q 'Host cloud' ${local.home}/.ssh/config 2>/dev/null || cat >> ${local.home}/.ssh/config <<EOF\n\nHost cloud\n  HostName ${var.cloud_ip}\n  User jmacd\n  IdentityFile ${local.home}/.ssh/cloud_deploy\n  StrictHostKeyChecking no\nEOF",
+    ]
   }
 
   # Push generated env files

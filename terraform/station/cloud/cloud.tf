@@ -124,6 +124,23 @@ resource "null_resource" "cloud" {
       "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/www",
       "mkdir -p ${local.home}/.config/systemd/user",
+      "mkdir -p ${local.home}/.ssh",
+    ]
+  }
+
+  # Install deploy public key so watershop can rsync as jmacd
+  provisioner "file" {
+    source      = "${path.module}/../watershop/deploy_key.pub"
+    destination = "/tmp/cloud_deploy.pub"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "cat /tmp/cloud_deploy.pub >> ${local.home}/.ssh/authorized_keys",
+      "sort -u -o ${local.home}/.ssh/authorized_keys ${local.home}/.ssh/authorized_keys",
+      "chmod 600 ${local.home}/.ssh/authorized_keys",
+      "chown jmacd:jmacd ${local.home}/.ssh/authorized_keys",
+      "rm /tmp/cloud_deploy.pub",
     ]
   }
 

@@ -52,7 +52,7 @@ case "${TYPE}" in
             CLOUD_WWW="/home/jmacd/duckpond/www"
             CLOUD_BUILD="${CLOUD_WWW}/build-${TIMESTAMP}"
             rsync -az --delete "${DEPLOY_DIR}/" "${CLOUD_HOST}:${CLOUD_BUILD}/"
-            ssh "${CLOUD_HOST}" "ln -sfn '${CLOUD_BUILD}' '${CLOUD_WWW}/current' && chown -R jmacd:jmacd '${CLOUD_BUILD}' && ls -dt '${CLOUD_WWW}'/build-* | tail -n +4 | xargs rm -rf"
+            ssh "${CLOUD_HOST}" "ln -sfn '${CLOUD_BUILD}' '${CLOUD_WWW}/current' && ls -dt '${CLOUD_WWW}'/build-* | tail -n +4 | xargs rm -rf"
         fi
         ;;
     *)
