@@ -80,3 +80,9 @@ variable "git_ref" {
   description = "Git branch/ref for staging site content (production always uses main)"
   default     = "main"
 }
+
+# Cloud host IP for production site deploy (rsync target)
+variable "cloud_ip" {
+  description = "IP address of the cloud (Linode) host serving casparwater.us"
+  default     = "173.255.212.226"
+}
