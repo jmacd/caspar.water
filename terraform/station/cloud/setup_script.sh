@@ -15,6 +15,12 @@ if ! command -v caddy >/dev/null 2>&1; then
     apt-get install -y caddy
 fi
 
+# Install rsync if not present (needed for site-prod deploy to cloud)
+if ! command -v rsync >/dev/null 2>&1; then
+    apt-get update -y
+    apt-get install -y rsync
+fi
+
 # Install podman if not present
 if ! command -v podman >/dev/null 2>&1; then
     apt-get update -y
