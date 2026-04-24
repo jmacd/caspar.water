@@ -211,6 +211,16 @@ spec:
         children:
           - label: "Pump Cycles"
             href: "${env:SITE_BASE_URL:-/}analysis/pump-cycles.html"
+          - label: "Noyo Harbor"
+            href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
+          - label: "Septic"
+            children:
+              - label: "Pump Amps"
+                href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
+              - label: "Cycle Times"
+                href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
+              - label: "Environment"
+                href: "${env:SITE_BASE_URL:-/}septic/environment.html"
       - label: "Monitoring"
         children:
           - label: "Well Depth"
@@ -223,16 +233,6 @@ spec:
             href: "${env:SITE_BASE_URL:-/}data/chlorine-level.html"
           - label: "pH"
             href: "${env:SITE_BASE_URL:-/}data/ph.html"
-          - label: "Noyo Harbor"
-            href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
-          - label: "Septic"
-            children:
-              - label: "Pump Amps"
-                href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
-              - label: "Cycle Times"
-                href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
-              - label: "Environment"
-                href: "${env:SITE_BASE_URL:-/}septic/environment.html"
       - "Software"
       - "Operator"
       - "Thanks"
