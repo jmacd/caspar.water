@@ -29,15 +29,15 @@ case "$(uname -m)" in
     *)             ARCH="$(uname -m)" ;;
 esac
 
-# Image selection: staging uses latest, production uses pinned version
-VERSION=$(cat "${BASE_DIR}/duckpond/VERSION")
+# Image selection: staging uses latest, prod uses the promoted image.
+# Both are mutable tags pulled with --pull=newer, so `systemctl restart`
+# (or the next timer tick) picks up new images automatically.
 if [[ "${INSTANCE}" == *-staging ]]; then
     IMAGE="ghcr.io/jmacd/duckpond/duckpond:latest-${ARCH}"
-    PULL="--pull=newer"
 else
-    IMAGE="ghcr.io/jmacd/duckpond/duckpond:${VERSION}-${ARCH}"
-    PULL="--pull=missing"
+    IMAGE="ghcr.io/jmacd/duckpond/duckpond:prod-${ARCH}"
 fi
+PULL="--pull=newer"
 
 # Volume name from env file (POND_VOLUME)
 VOLUME="${POND_VOLUME:-pond-${INSTANCE}}"
