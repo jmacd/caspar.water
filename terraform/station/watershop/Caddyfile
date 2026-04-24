@@ -1,0 +1,20 @@
+# Caddy configuration for watershop (staging, HTTP only - no public cert)
+#
+# Serves the site-staging build directly at the vhost root.
+
+http://watershop.casparwater.us, http://:80 {
+	root * /home/jmacd/duckpond/www/site-staging/current
+
+	file_server {
+		precompressed br gzip
+	}
+
+	# Extensionless URLs: try path, then path.html, then directory
+	try_files {path} {path}.html {path}/
+
+	# Vendor assets: aggressive caching (content-addressed by sitegen)
+	@vendor path /vendor/* /noyo-harbor/vendor/*
+	header @vendor Cache-Control "public, max-age=31536000, immutable"
+
+	encode zstd gzip
+}

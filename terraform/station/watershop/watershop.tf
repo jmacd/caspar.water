@@ -67,7 +67,7 @@ locals {
       s3_url     = ""
       interval   = "15min"
       boot_delay = "7min"
-      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/staging/\nGIT_REF=${var.git_ref}"
+      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
       s3         = local.prod_s3
@@ -223,6 +223,21 @@ resource "null_resource" "watershop" {
         "systemctl --user enable --now pond@${name}.timer"
       ],
     )
+  }
+
+  # Push Caddyfile and reload caddy
+  provisioner "file" {
+    source      = "Caddyfile"
+    destination = "/tmp/Caddyfile"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo install -o root -g root -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile",
+      "rm /tmp/Caddyfile",
+      "sudo caddy validate --config /etc/caddy/Caddyfile",
+      "sudo systemctl reload caddy",
+    ]
   }
 
   triggers = {
