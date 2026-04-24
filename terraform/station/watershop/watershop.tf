@@ -67,7 +67,7 @@ locals {
       s3_url     = ""
       interval   = "15min"
       boot_delay = "7min"
-      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
+      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/staging/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
       s3         = local.prod_s3
