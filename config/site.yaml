@@ -174,6 +174,33 @@ spec:
     
     theme:
       bg-image: "none"
+
+      # Cool slate backgrounds (replacing warm beige #f7f6f3)
+      bg: "#f0f4f8"
+      bg-sidebar: "#e4ecf5"
+      bg-card: "#f0f5fb"
+      bg-hover: "#dce6f2"
+
+      # Accent — deeper blue, better contrast
+      accent: "#0a3d6b"
+      accent-light: "#0066ee"
+      accent-wash: "#dce8f8"
+
+      # Sidebar nav — cool blue tones (replacing brown/teal)
+      nav-btn: "rgba(200, 218, 240, 0.9)"
+      nav-btn-hover: "rgba(185, 208, 235, 0.9)"
+      nav-btn-active: "rgba(10, 61, 107, 0.9)"
+      nav-sub-btn: "rgba(200, 218, 240, 0.55)"
+      nav-sub-btn-hover: "rgba(185, 208, 235, 0.8)"
+      nav-sub-btn-active: "rgba(10, 61, 107, 0.85)"
+
+      # Text — slightly cooler secondary/muted
+      fg-secondary: "#3d4f65"
+      fg-muted: "#7a8fa6"
+
+      # Borders — cool blue-gray
+      border: "#c4d4e6"
+      border-light: "#dce6f2"
     
     sidebar:
       - "Political"
@@ -184,6 +211,16 @@ spec:
         children:
           - label: "Pump Cycles"
             href: "${env:SITE_BASE_URL:-/}analysis/pump-cycles.html"
+          - label: "Noyo Harbor"
+            href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
+          - label: "Septic"
+            children:
+              - label: "Pump Amps"
+                href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
+              - label: "Cycle Times"
+                href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
+              - label: "Environment"
+                href: "${env:SITE_BASE_URL:-/}septic/environment.html"
       - label: "Monitoring"
         children:
           - label: "Well Depth"
@@ -196,16 +233,6 @@ spec:
             href: "${env:SITE_BASE_URL:-/}data/chlorine-level.html"
           - label: "pH"
             href: "${env:SITE_BASE_URL:-/}data/ph.html"
-      - label: "Septic"
-        children:
-          - label: "Pump Amps"
-            href: "${env:SITE_BASE_URL:-/}septic/pumps.html"
-          - label: "Cycle Times"
-            href: "${env:SITE_BASE_URL:-/}septic/cycle-times.html"
-          - label: "Environment"
-            href: "${env:SITE_BASE_URL:-/}septic/environment.html"
-      - label: "Noyo Harbor"
-        href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
       - "Software"
       - "Operator"
       - "Thanks"

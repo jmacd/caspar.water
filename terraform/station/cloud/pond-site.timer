@@ -1,9 +1,0 @@
-[Unit]
-Description=DuckPond site generation every 15 minutes
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=15min
-
-[Install]
-WantedBy=timers.target

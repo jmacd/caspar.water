@@ -2,3 +2,5 @@ dist/
 deploy.env
 env/
 timers/
+deploy_key
+deploy_key.pub

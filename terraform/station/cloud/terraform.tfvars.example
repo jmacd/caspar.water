@@ -1,0 +1,12 @@
+# Cloud (Linode) terraform variables
+#
+# Copy to terraform.tfvars and fill in secrets.
+# This file is gitignored — credentials stay local.
+
+# Linode API token
+li_token = ""
+
+# Cloudflare R2 (production buckets: water-pond, noyo-pond, septic-pond)
+r2_endpoint   = ""
+r2_access_key = ""
+r2_secret_key = ""

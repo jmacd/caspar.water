@@ -1,1 +1,4 @@
 casparwater_certs/
+env/
+timers/
+terraform.tfvars

@@ -8,6 +8,12 @@ INSTANCE=$1
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
 EXE="${SCRIPTS}/pond.sh"
+ENV_FILE="${BASE_DIR}/env/${INSTANCE}.env"
+
+# Source env file for variables needed by run.sh itself (e.g., CLOUD_HOST)
+if [ -f "${ENV_FILE}" ]; then
+    source "${ENV_FILE}"
+fi
 
 # Extract pond type from instance name (e.g., noyo-staging -> noyo)
 TYPE="${INSTANCE%-staging}"
@@ -33,7 +39,7 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
         ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
         # Build site with atomic deploy
-        DEPLOY_BASE="${BASE_DIR}/www"
+        DEPLOY_BASE="${BASE_DIR}/www/${INSTANCE}"
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"
@@ -41,6 +47,13 @@ case "${TYPE}" in
         ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
         # Clean old builds (keep last 3)
         ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf
+        # For production: deploy to cloud host via rsync + atomic symlink
+        if [[ "${INSTANCE}" == *-prod ]] && [ -n "${CLOUD_HOST}" ]; then
+            CLOUD_WWW="/home/jmacd/duckpond/www"
+            CLOUD_BUILD="${CLOUD_WWW}/build-${TIMESTAMP}"
+            rsync -az --delete "${DEPLOY_DIR}/" "${CLOUD_HOST}:${CLOUD_BUILD}/"
+            ssh "${CLOUD_HOST}" "ln -sfn '${CLOUD_BUILD}' '${CLOUD_WWW}/current' && ls -dt '${CLOUD_WWW}'/build-* | tail -n +4 | xargs rm -rf"
+        fi
         ;;
     *)
         echo "ERROR: Unknown pond type '${TYPE}' for instance '${INSTANCE}'"

@@ -69,6 +69,13 @@ locals {
       boot_delay = "7min"
       extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
+    site-prod = {
+      s3         = local.prod_s3
+      s3_url     = ""
+      interval   = "15min"
+      boot_delay = "8min"
+      extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
+    }
   }
 
   # All instance names for iteration, filtered by deploy flags
@@ -135,7 +142,6 @@ resource "null_resource" "watershop" {
       "rm -rf ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/timers",
       "rm -f ${local.base_dir}/*.sh",
       "mkdir -p ${local.base_dir}/config",
-      "mkdir -p ${local.base_dir}/duckpond",
       "mkdir -p ${local.base_dir}/env",
       "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/www",
@@ -149,10 +155,18 @@ resource "null_resource" "watershop" {
     destination = "${local.base_dir}/config"
   }
 
-  # Push duckpond VERSION (pinned version for production images)
+  # Push deploy key for watershop → cloud rsync (site-prod)
   provisioner "file" {
-    source      = "../../../duckpond/VERSION"
-    destination = "${local.base_dir}/duckpond/VERSION"
+    source      = "${path.module}/deploy_key"
+    destination = "${local.home}/.ssh/cloud_deploy"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod 600 ${local.home}/.ssh/cloud_deploy",
+      # Configure SSH to use the deploy key for the cloud host
+      "grep -q 'Host cloud' ${local.home}/.ssh/config 2>/dev/null || cat >> ${local.home}/.ssh/config <<EOF\n\nHost cloud\n  HostName ${var.cloud_ip}\n  User jmacd\n  IdentityFile ${local.home}/.ssh/cloud_deploy\n  StrictHostKeyChecking no\nEOF",
+    ]
   }
 
   # Push generated env files
@@ -202,6 +216,21 @@ resource "null_resource" "watershop" {
         "systemctl --user enable --now pond@${name}.timer"
       ],
     )
+  }
+
+  # Push Caddyfile and reload caddy
+  provisioner "file" {
+    source      = "Caddyfile"
+    destination = "/tmp/Caddyfile"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo install -o root -g root -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile",
+      "rm /tmp/Caddyfile",
+      "sudo caddy validate --config /etc/caddy/Caddyfile",
+      "sudo systemctl reload caddy",
+    ]
   }
 
   triggers = {
