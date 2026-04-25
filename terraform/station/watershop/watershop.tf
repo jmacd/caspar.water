@@ -76,6 +76,22 @@ locals {
       boot_delay = "8min"
       extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
+    watershop-selfmon-staging = {
+      s3         = local.staging_s3
+      s3_url     = "s3://watershop-selfmon-staging"
+      interval   = "1min"
+      boot_delay = "30s"
+      extra_env  = "SELFMON=1"
+      selfmon    = true
+    }
+    watershop-selfmon-prod = {
+      s3         = local.prod_s3
+      s3_url     = "s3://watershop-selfmon-prod"
+      interval   = "1min"
+      boot_delay = "1min"
+      extra_env  = "SELFMON=1"
+      selfmon    = true
+    }
   }
 
   # All instance names for iteration, filtered by deploy flags
@@ -84,6 +100,26 @@ locals {
       (var.deploy_staging && endswith(name, "-staging")) ||
       (var.deploy_production && endswith(name, "-prod"))
     )
+  ]
+
+  # Containerized vs native (selfmon) instance partitions
+  container_instance_names = [for n in local.instance_names :
+    n if !lookup(local.instances[n], "selfmon", false)
+  ]
+  selfmon_instance_names = [for n in local.instance_names :
+    n if lookup(local.instances[n], "selfmon", false)
+  ]
+  # Selfmon tiers actually scheduled (used to decide which binaries to extract).
+  selfmon_tiers = toset(compact([
+    contains([for n in local.selfmon_instance_names : true if endswith(n, "-staging")], true) ? "staging" : "",
+    contains([for n in local.selfmon_instance_names : true if endswith(n, "-prod")],    true) ? "prod"    : "",
+  ]))
+
+  # MinIO buckets to ensure exist for staging instances.
+  # Production instances target R2 buckets which are managed elsewhere.
+  staging_bucket_names = [for n in local.instance_names :
+    replace(local.instances[n].s3_url, "s3://", "")
+    if endswith(n, "-staging")
   ]
 }
 
@@ -95,6 +131,8 @@ resource "local_file" "env_files" {
   file_permission = "0600"
   content = join("\n", [
     "POND_VOLUME=pond-${each.key}",
+    "POND=${local.home}/pond-${each.key}",
+    "SELFMON_METRICS_DIR=/var/log/duckpond-selfmon/${each.key}",
     "S3_URL=${each.value.s3_url}",
     "S3_ENDPOINT=${each.value.s3.endpoint}",
     "S3_REGION=${each.value.s3.region}",
@@ -107,11 +145,13 @@ resource "local_file" "env_files" {
   ])
 }
 
-# Generate timer files locally for upload
+# Generate timer files locally for upload.  Container instances use the
+# `pond@.service` template; selfmon instances use `pond-selfmon@.service`
+# (native, no podman).
 resource "local_file" "timer_files" {
   for_each = local.instances
 
-  filename        = "${path.module}/timers/pond@${each.key}.timer"
+  filename        = "${path.module}/timers/${lookup(each.value, "selfmon", false) ? "pond-selfmon" : "pond"}@${each.key}.timer"
   file_permission = "0644"
   content = <<-EOT
 [Unit]
@@ -192,28 +232,65 @@ resource "null_resource" "watershop" {
         "chmod +x ${local.base_dir}/config/scripts/*.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
 
-        # Install systemd units
+        # Install systemd unit templates (container + selfmon native)
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
-        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond-selfmon@.service ${local.home}/.config/systemd/user/",
+        # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
+        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
+        "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
-      # Reset specified instances: stop timer, remove volume
+      # Extract native pond binaries for selfmon tiers (one per tier).
+      # Runs WITHOUT sudo so the rootless podman storage is reused;
+      # the script sudoes only the final /usr/local/bin install step.
+      [for tier in local.selfmon_tiers :
+        "${local.base_dir}/config/scripts/extract-pond-binary.sh ${tier} /usr/local/bin/pond-selfmon-${tier}"
+      ],
+      # Provision per-instance metrics dir (writable by the user that
+      # runs the selfmon timer).
+      [for name in local.selfmon_instance_names :
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/duckpond-selfmon/${name}"
+      ],
+      # Ensure MinIO buckets exist for all staging instances (idempotent).
+      # Uses the aws-cli container against localhost:9000.  The container
+      # auto-pulls on first use; subsequent invocations are fast.
+      # `mb` returns non-zero if the bucket already exists, so we swallow.
+      [for bucket in local.staging_bucket_names :
+        "podman run --rm --network=host -e AWS_ACCESS_KEY_ID=${var.minio_access_key} -e AWS_SECRET_ACCESS_KEY=${var.minio_secret_key} docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1 | grep -v 'BucketAlreadyOwnedByYou\\|already exists' || true"
+      ],
+      # Reset specified instances: stop timer, remove volume / pond dir
       [for name in var.reset_instances :
-        "systemctl --user stop pond@${name}.timer 2>/dev/null || true"
+        "systemctl --user stop pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true"
       ],
       [for name in var.reset_instances :
         "podman volume rm pond-${name} 2>/dev/null || true"
       ],
-      # Initialize and apply config for each instance
-      [for name in local.instance_names :
+      [for name in var.reset_instances :
+        "rm -rf ${local.home}/pond-${name}"
+      ],
+      # Initialize containerized instances
+      [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} init 2>/dev/null || true"
       ],
-      [for name in local.instance_names :
+      # Apply containerized instance configs
+      [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
       ],
-      # Enable and start all timers
-      [for name in local.instance_names :
+      # Initialize selfmon instances natively (POND comes from env file)
+      [for name in local.selfmon_instance_names :
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/local/bin/pond-selfmon-${endswith(name, "-staging") ? "staging" : "prod"} init 2>/dev/null || true"
+      ],
+      # Apply selfmon configs natively
+      [for name in local.selfmon_instance_names :
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/local/bin/pond-selfmon-${endswith(name, "-staging") ? "staging" : "prod"} apply -f ${local.base_dir}/config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
+      ],
+      # Enable and start container timers
+      [for name in local.container_instance_names :
         "systemctl --user enable --now pond@${name}.timer"
+      ],
+      # Enable and start selfmon timers
+      [for name in local.selfmon_instance_names :
+        "systemctl --user enable --now pond-selfmon@${name}.timer"
       ],
     )
   }
@@ -226,6 +303,7 @@ resource "null_resource" "watershop" {
 
   provisioner "remote-exec" {
     inline = [
+      "sudo install -d -o caddy -g caddy -m 0755 /var/log/caddy",
       "sudo install -o root -g root -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile",
       "rm /tmp/Caddyfile",
       "sudo caddy validate --config /etc/caddy/Caddyfile",

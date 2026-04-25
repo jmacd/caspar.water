@@ -5,6 +5,17 @@
 http://watershop.casparwater.us, http://:80 {
 	root * /home/jmacd/duckpond/www/site-staging/current
 
+	# Webserver-style JSON access log to a rolling file under
+	# /var/log/caddy/. Read by the watershop-selfmon pond's
+	# logfile-ingest factory (jsonlogs:// reader).
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100MiB
+			roll_keep 10
+		}
+		format json
+	}
+
 	file_server {
 		precompressed br gzip
 	}

@@ -1,10 +1,10 @@
 [Unit]
-Description=DuckPond %i
+Description=DuckPond self-monitoring %i (native)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 MemoryAccounting=yes
-ExecStart=/home/jmacd/duckpond/config/scripts/run.sh %i
+ExecStart=/home/jmacd/duckpond/config/scripts/run-selfmon.sh %i
 Environment=HOME=/home/jmacd

@@ -15,7 +15,8 @@ if [ -f "${ENV_FILE}" ]; then
     source "${ENV_FILE}"
 fi
 
-# Extract pond type from instance name (e.g., noyo-staging -> noyo)
+# Extract pond type from instance name (e.g., noyo-staging -> noyo,
+# watershop-selfmon-staging -> watershop-selfmon)
 TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 
@@ -30,6 +31,12 @@ case "${TYPE}" in
         ;;
     septic)
         ${EXE} "${INSTANCE}" run /etc/ingest
+        ;;
+    *-selfmon)
+        # Self-monitoring runs natively (no podman): see
+        # config/scripts/run-selfmon.sh and pond-selfmon@.service.
+        echo "ERROR: selfmon instances run natively, not via pond@.service" >&2
+        exit 2
         ;;
     site)
         ${EXE} "${INSTANCE}" run /content pull

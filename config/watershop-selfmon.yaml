@@ -1,0 +1,130 @@
+version: v1
+kind: mkdir
+metadata:
+  path: /system/run
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /system/etc
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /logs
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /logs/journal
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /logs/web
+---
+version: v1
+kind: mkdir
+metadata:
+  path: /measure
+---
+# Systemd journal collection (incremental, cursor-tracked).  Captures
+# every systemd unit, the kernel ring buffer (dmesg), and the
+# pond-selfmon@*.service runs themselves -- self-referential, which
+# enables the memory-monitor study (peak RSS gets logged on every
+# service exit and ingested on the next tick).
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/journal
+spec:
+  factory: journal-ingest
+  config:
+    pond_path: /logs/journal
+    journalctl_command: journalctl
+    collect_kernel: true
+---
+# Caddy webserver-style access logs (JSON), mirrored from the host's
+# /var/log/caddy/.  Read with `jsonlogs://` (Caddy emits structured
+# JSON; `weblog://` would be for CLF).
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/caddy-access
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: /var/log/caddy/access.log.*
+    active_pattern: /var/log/caddy/access.log
+    pond_path: /logs/web/watershop
+---
+# Perf metrics jsonl emitted by config/scripts/measure.sh after each
+# tick.  Mirrored into the pond so we can query growth trends from
+# DataFusion the same way as any other ingested log.
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/selfmon-metrics
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/metrics.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/metrics.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/run/1-backup
+spec:
+  factory: remote
+  config:
+    region: "${env:S3_REGION}"
+    url: "${env:S3_URL}"
+    endpoint: "${env:S3_ENDPOINT}"
+    access_key: "${env:S3_ACCESS_KEY}"
+    secret_key: "${env:S3_SECRET_KEY}"
+    allow_http: ${env:S3_ALLOW_HTTP:-false}
+---
+# Aggregated traffic series for sitegen / ad-hoc charting.
+version: v1
+kind: mknod
+metadata:
+  path: /derived
+spec:
+  factory: dynamic-dir
+  config:
+    entries:
+      - name: "watershop-pageviews"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            logs: "jsonlogs:///logs/web/watershop/access.*"
+          query: >-
+            SELECT
+              date_trunc('hour', CAST(ts AS TIMESTAMP)) as timestamp,
+              CAST(status AS INT) as status,
+              COUNT(*) as requests
+            FROM logs
+            GROUP BY date_trunc('hour', CAST(ts AS TIMESTAMP)), status
+            ORDER BY timestamp
+      # Self-perf time series: how list/read latency, peak RSS, and
+      # parquet/delta-log file counts grow as commits accumulate.
+      # The whole point of this experiment.
+      - name: "perf"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/metrics.jsonl"
+          query: >-
+            SELECT
+              CAST(ts AS TIMESTAMP)            as timestamp,
+              CAST(txn_seq AS BIGINT)          as txn_seq,
+              CAST(parquet_files AS BIGINT)    as parquet_files,
+              CAST(delta_log_files AS BIGINT)  as delta_log_files,
+              CAST(pond_size_bytes AS BIGINT)  as pond_size_bytes,
+              CAST(list_seconds AS DOUBLE)     as list_seconds,
+              CAST(read_seconds AS DOUBLE)     as read_seconds,
+              CAST(peak_rss_mb AS DOUBLE)      as peak_rss_mb
+            FROM m
+            ORDER BY timestamp
