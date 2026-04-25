@@ -83,11 +83,25 @@ PEAK_RSS_MB=$(journalctl --user -u "pond-selfmon@${INSTANCE}.service" \
     | grep -oE 'Peak memory usage: [0-9.]+ MB' \
     | awk '{if ($4+0 > max) max=$4+0} END{printf "%.2f", (max==""?0:max)}')
 
+# --- sitegen self-metrics (from .sitegen-last.json written by run-selfmon.sh) ---
+SITEGEN_FILE="${SELFMON_METRICS_DIR}/.sitegen-last.json"
+if [ -f "${SITEGEN_FILE}" ]; then
+    SITEGEN_SECONDS=$(awk -F'[:,}]' '/seconds/ {
+        for (i=1;i<=NF;i++) if ($i ~ /seconds/) { print $(i+1); exit } }' "${SITEGEN_FILE}" \
+        | tr -d ' "')
+    SITEGEN_PEAK_RSS_MB=$(awk -F'[:,}]' '/peak_rss_mb/ {
+        for (i=1;i<=NF;i++) if ($i ~ /peak_rss_mb/) { print $(i+1); exit } }' "${SITEGEN_FILE}" \
+        | tr -d ' "')
+fi
+[ -z "${SITEGEN_SECONDS}" ]     && SITEGEN_SECONDS=0
+[ -z "${SITEGEN_PEAK_RSS_MB}" ] && SITEGEN_PEAK_RSS_MB=0
+
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Single JSON line, append.
-printf '{"ts":"%s","instance":"%s","txn_seq":%s,"parquet_files":%s,"delta_log_files":%s,"pond_size_bytes":%s,"list_seconds":%s,"read_seconds":%s,"peak_rss_mb":%s}\n' \
+printf '{"ts":"%s","instance":"%s","txn_seq":%s,"parquet_files":%s,"delta_log_files":%s,"pond_size_bytes":%s,"list_seconds":%s,"read_seconds":%s,"peak_rss_mb":%s,"sitegen_seconds":%s,"sitegen_peak_rss_mb":%s}\n' \
     "${TS}" "${INSTANCE}" \
     "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" "${POND_SIZE_BYTES}" \
     "${LIST_SECONDS}" "${READ_SECONDS}" "${PEAK_RSS_MB}" \
+    "${SITEGEN_SECONDS}" "${SITEGEN_PEAK_RSS_MB}" \
     >> "${SELFMON_METRICS_DIR}/metrics.jsonl"

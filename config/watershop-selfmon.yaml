@@ -28,6 +28,11 @@ kind: mkdir
 metadata:
   path: /measure
 ---
+version: v1
+kind: mkdir
+metadata:
+  path: /system/site
+---
 # Systemd journal collection (incremental, cursor-tracked).  Captures
 # every systemd unit, the kernel ring buffer (dmesg), and the
 # pond-selfmon@*.service runs themselves -- self-referential, which
@@ -118,13 +123,40 @@ spec:
             m: "jsonlogs:///measure/metrics.jsonl"
           query: >-
             SELECT
-              CAST(ts AS TIMESTAMP)            as timestamp,
-              CAST(txn_seq AS BIGINT)          as txn_seq,
-              CAST(parquet_files AS BIGINT)    as parquet_files,
-              CAST(delta_log_files AS BIGINT)  as delta_log_files,
-              CAST(pond_size_bytes AS BIGINT)  as pond_size_bytes,
-              CAST(list_seconds AS DOUBLE)     as list_seconds,
-              CAST(read_seconds AS DOUBLE)     as read_seconds,
-              CAST(peak_rss_mb AS DOUBLE)      as peak_rss_mb
+              CAST(ts AS TIMESTAMP)                  as timestamp,
+              CAST(txn_seq AS BIGINT)                as txn_seq,
+              CAST(parquet_files AS BIGINT)          as parquet_files,
+              CAST(delta_log_files AS BIGINT)        as delta_log_files,
+              CAST(pond_size_bytes AS BIGINT)        as pond_size_bytes,
+              CAST(list_seconds AS DOUBLE)           as list_seconds,
+              CAST(read_seconds AS DOUBLE)           as read_seconds,
+              CAST(peak_rss_mb AS DOUBLE)            as peak_rss_mb,
+              CAST(sitegen_seconds AS DOUBLE)        as sitegen_seconds,
+              CAST(sitegen_peak_rss_mb AS DOUBLE)    as sitegen_peak_rss_mb
             FROM m
             ORDER BY timestamp
+---
+# Sitegen factory: renders a tiny dashboard from the perf series
+# above into /var/www/selfmon/<instance>/ (served by Caddy at
+# /selfmon/).  Sitegen runs once per tick from run-selfmon.sh and is
+# itself measured -- its memory & runtime cost feeds back into the
+# perf series via measure.sh on the *next* tick.
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/sitegen
+spec:
+  factory: sitegen
+  config:
+    site:
+      title: "Watershop Selfmon"
+      base_url: "/selfmon/"
+    exports:
+      - name: "perf"
+        pattern: "/derived/perf"
+    routes:
+      - name: "home"
+        type: template
+        slug: "index"
+        page: "/system/site/index.md"
+        export: "perf"

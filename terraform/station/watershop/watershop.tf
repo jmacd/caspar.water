@@ -251,6 +251,11 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/duckpond-selfmon/${name}"
       ],
+      # Sitegen output dirs served by Caddy at /selfmon/.  Owned by
+      # ${var.user} so the per-tick render writes here without sudo.
+      [for name in local.selfmon_instance_names :
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
+      ],
       # Ensure MinIO buckets exist for all staging instances (idempotent).
       # Uses the aws-cli container against localhost:9000.  The container
       # auto-pulls on first use; subsequent invocations are fast.

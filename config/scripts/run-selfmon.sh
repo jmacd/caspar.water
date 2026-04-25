@@ -57,9 +57,49 @@ fi
 
 # Per-tick work: ingest journal, ingest caddy access logs, run
 # Delta-Lake maintenance (checkpoint, log cleanup, vacuum-lite),
-# then capture perf metrics.
+# render the dashboard, then capture perf metrics.  Order:
+#   1. ingest sources (journal, caddy, prior-tick metrics)
+#   2. sync site templates from /home/jmacd/duckpond/config/selfmon/site/
+#      into pond /system/site/  (lets us iterate templates without
+#      a git push -- terraform apply rsyncs config/, next tick picks up)
+#   3. maintain (checkpoint)
+#   4. sitegen build -> /var/www/selfmon/${INSTANCE}/  (timed)
+#   5. measure (consumes the sitegen timing file written in step 4)
 "${PONDBIN}" run /system/etc/journal push
 "${PONDBIN}" run /system/etc/caddy-access push
 "${PONDBIN}" run /system/etc/selfmon-metrics push 2>/dev/null || true
+
+# Sync templates (host -> pond).  /system/site is created by the yaml
+# mkdir; we copy each template file individually because `pond copy`
+# operates per-file.
+TEMPLATE_SRC="${BASE_DIR}/config/selfmon/site"
+if [ -d "${TEMPLATE_SRC}" ]; then
+    for f in "${TEMPLATE_SRC}"/*.md; do
+        [ -f "$f" ] || continue
+        "${PONDBIN}" copy "host://${f}" "/system/site/$(basename "$f")"
+    done
+fi
+
 "${PONDBIN}" maintain
+
+# Sitegen render, with wall-clock timing.  Output dir is owned by
+# ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
+SITE_OUT="/var/www/selfmon/${INSTANCE}"
+SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"
+SG_START=$(date +%s.%N)
+SG_LOG=$(mktemp)
+if "${PONDBIN}" run /system/etc/sitegen build "${SITE_OUT}" >"${SG_LOG}" 2>&1; then
+    SG_STATUS=ok
+else
+    SG_STATUS=fail
+fi
+SG_END=$(date +%s.%N)
+SG_SECONDS=$(awk -v a="${SG_END}" -v b="${SG_START}" 'BEGIN{printf "%.3f", a-b}')
+SG_PEAK_MB=$(grep -oE 'Peak memory usage: [0-9.]+ MB' "${SG_LOG}" \
+    | awk '{if ($4+0 > max) max=$4+0} END{printf "%.2f", (max==""?0:max)}')
+printf '{"status":"%s","seconds":%s,"peak_rss_mb":%s}\n' \
+    "${SG_STATUS}" "${SG_SECONDS}" "${SG_PEAK_MB}" > "${SITEGEN_TIMING}"
+[ "${SG_STATUS}" = fail ] && cat "${SG_LOG}" >&2
+rm -f "${SG_LOG}"
+
 "${SCRIPTS}/measure.sh" "${INSTANCE}"
