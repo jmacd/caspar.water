@@ -42,5 +42,27 @@ podman cp "${CID}:/usr/local/bin/pond" "${TMP}"
 sudo install -m 0755 "${TMP}" "${DEST}"
 rm -f "${TMP}"
 
+# Install sitegen vendor assets (DuckDB-WASM, Observable Plot, D3) at
+# the path sitegen searches for them on a system install, so the
+# native-binary `pond run /system/etc/sitegen build ...` finds them
+# without needing DUCKPOND_VENDOR.  See
+# duckpond/crates/sitegen/src/factory.rs:find_vendor_dir().  Only the
+# staging extract owns this path -- prod and staging images carry the
+# same vendor blobs, so it doesn't matter which one writes it.
+if [ "${TIER}" = "staging" ]; then
+    VENDOR_TMP=$(mktemp -d)
+    if podman cp "${CID}:/usr/local/share/duckpond/vendor" "${VENDOR_TMP}/" 2>/dev/null; then
+        sudo install -d -m 0755 /usr/local/share/duckpond
+        sudo rm -rf /usr/local/share/duckpond/vendor
+        sudo mv "${VENDOR_TMP}/vendor" /usr/local/share/duckpond/vendor
+        sudo chown -R root:root /usr/local/share/duckpond/vendor
+        sudo chmod -R a+r /usr/local/share/duckpond/vendor
+        echo "Installed vendor assets -> /usr/local/share/duckpond/vendor"
+    else
+        echo "WARNING: image has no /usr/local/share/duckpond/vendor; charts will need network access"
+    fi
+    rm -rf "${VENDOR_TMP}"
+fi
+
 echo "Installed ${IMAGE} pond binary -> ${DEST}"
 "${DEST}" --version 2>/dev/null || true

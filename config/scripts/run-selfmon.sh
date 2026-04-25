@@ -84,18 +84,11 @@ fi
 
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
+# Vendor assets (DuckDB-WASM, Plot, D3) are installed at
+# /usr/local/share/duckpond/vendor by extract-pond-binary.sh, which
+# is where sitegen's find_vendor_dir() searches for them.
 SITE_OUT="/var/www/selfmon/${INSTANCE}"
 SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"
-
-# DuckDB-WASM/Plot vendor JS is not baked into the duckpond binary;
-# the production site-staging build picked them up from `make vendor`
-# in the duckpond repo and put them in /home/jmacd/duckpond/www/.../vendor.
-# We symlink that into our output so the chart layout's
-# vendor/duckdb-browser.mjs etc. references resolve at /selfmon/vendor/.
-VENDOR_SRC="/home/jmacd/duckpond/www/site-staging/current/vendor"
-if [ -d "${VENDOR_SRC}" ] && [ ! -e "${SITE_OUT}/vendor" ]; then
-    ln -sfn "${VENDOR_SRC}" "${SITE_OUT}/vendor"
-fi
 
 SG_START=$(date +%s.%N)
 SG_LOG=$(mktemp)
