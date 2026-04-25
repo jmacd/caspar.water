@@ -1,6 +1,6 @@
 ---
 title: "Watershop Selfmon"
-layout: default
+layout: data
 ---
 
 # Watershop Selfmon Dashboard
