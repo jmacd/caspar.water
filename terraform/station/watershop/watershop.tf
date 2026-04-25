@@ -240,11 +240,13 @@ resource "null_resource" "watershop" {
         "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
-      # Extract native pond binaries for selfmon tiers (one per tier).
-      # Runs WITHOUT sudo so the rootless podman storage is reused;
-      # the script sudoes only the final /usr/local/bin install step.
+      # Install the duckpond .deb (built natively on watershop by
+      # tools/build-on-watershop.sh) and create per-tier
+      # /usr/local/bin/pond-selfmon-<tier> aliases.  Replaces the
+      # older extract-pond-binary.sh, which copied a binary out of a
+      # podman image; we now ship a real Debian package.
       [for tier in local.selfmon_tiers :
-        "${local.base_dir}/config/scripts/extract-pond-binary.sh ${tier} /usr/local/bin/pond-selfmon-${tier}"
+        "${local.base_dir}/config/scripts/install-duckpond.sh ${tier}"
       ],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).

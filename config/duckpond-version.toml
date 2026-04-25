@@ -1,0 +1,20 @@
+# duckpond-version.toml -- pinned duckpond version per tier on each
+# host.  Read by config/scripts/install-duckpond.sh, which dpkg -i's
+# the matching .deb from ~/duckpond/target/debian/ on watershop and
+# then symlinks /usr/local/bin/pond-selfmon-<tier> -> /usr/bin/pond.
+#
+# Phase A: both tiers track the same version.  Per-tier divergence is
+# a Phase B concern; if you want it, build twice on different SHAs
+# and bump them independently here.
+#
+# To "release":
+#   1. tools/build-on-watershop.sh           # build + dpkg -i on watershop
+#   2. note the version cargo-deb stamped on the .deb (from workspace.package.version)
+#   3. update both lines below to that version
+#   4. terraform apply
+
+[selfmon.staging]
+version = "0.48.0"
+
+[selfmon.prod]
+version = "0.48.0"
