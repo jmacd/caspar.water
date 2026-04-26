@@ -108,3 +108,31 @@ printf '{"status":"%s","seconds":%s,"peak_rss_mb":%s}\n' \
 rm -f "${SG_LOG}"
 
 "${SCRIPTS}/measure.sh" "${INSTANCE}"
+
+# ── Multi-pond probe ──────────────────────────────────────────────
+# Iterate every pond instance defined under ${BASE_DIR}/env/, probe
+# each, write one JSON line to ${MEASURE_OUT_DIR}/<pond>.jsonl.  The
+# selfmon pond's own logfile-ingest mknod (selfmon-pond-metrics in
+# the yaml) globs *.jsonl out of this dir and mirrors them into
+# /measure/ in the pond, where the perf timeseries-join consumes
+# them.  Filenames are preserved so each pond ends up at
+# /measure/<pond>.jsonl with stable identity.
+#
+# We co-locate per-pond jsonl files with .sitegen-last.json under
+# SELFMON_METRICS_DIR for cache-locality, but expose MEASURE_OUT_DIR
+# as a separate env so the probe scripts cannot accidentally clobber
+# selfmon internal state.
+export MEASURE_OUT_DIR="${SELFMON_METRICS_DIR}"
+mkdir -p "${MEASURE_OUT_DIR}"
+
+# Selfmon-process scope (sitegen timing/RSS).  Always emitted -- it
+# describes THIS run, regardless of which other ponds exist.
+"${SCRIPTS}/measure-self.sh" || \
+    echo "WARNING: measure-self.sh failed" >&2
+
+for envf in "${BASE_DIR}/env"/*.env; do
+    [ -f "$envf" ] || continue
+    pond_name=$(basename "$envf" .env)
+    "${SCRIPTS}/measure-pond.sh" "${pond_name}" || \
+        echo "WARNING: measure-pond.sh ${pond_name} failed" >&2
+done
