@@ -58,10 +58,16 @@ fi
     mkdir -p "${MEASURE_OUT_DIR}"
 
     # Skip ponds whose backing store doesn't exist yet (un-bootstrapped
-    # tier, deleted pond, etc.) -- rather than emitting zero rows that
-    # would mislead the dashboard, just exit cleanly.
+    # tier, etc.) -- but still emit a single zero-row.  The per-pond
+    # `sql-derived-series` needs SOMETHING to read; a missing jsonl
+    # in the pond would break the dependent timeseries-join.  A zero
+    # row tells the truth (no parquet yet, 0 commits) and the chart
+    # gets a clean baseline rather than an undefined panel.
     if [ ! -d "${POND}" ]; then
-        echo "measure-pond: skipping '${POND_NAME}' (no POND dir at ${POND})" >&2
+        echo "measure-pond: '${POND_NAME}' has no POND dir at ${POND}; emitting zero row" >&2
+        TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0}\n' \
+            "${TS}" >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
         exit 0
     fi
 

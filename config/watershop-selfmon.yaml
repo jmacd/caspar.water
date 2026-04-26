@@ -11,6 +11,11 @@ metadata:
 version: v1
 kind: mkdir
 metadata:
+  path: /system/etc/measure
+---
+version: v1
+kind: mkdir
+metadata:
   path: /logs
 ---
 version: v1
@@ -63,18 +68,138 @@ spec:
     active_pattern: /var/log/caddy/access.log
     pond_path: /logs/web/watershop
 ---
-# Perf metrics jsonl emitted by config/scripts/measure.sh after each
-# tick.  Mirrored into the pond so we can query growth trends from
-# DataFusion the same way as any other ingested log.
+# ── Per-pond perf metrics ingest ─────────────────────────────────
+# config/scripts/measure-pond.sh writes one JSON line per pond into
+# ${SELFMON_METRICS_DIR}/<pond>.jsonl each tick, and measure-self.sh
+# writes _self.jsonl.  We give each pond its own logfile-ingest
+# mknod (and corresponding /derived sql-derived-series below)
+# because logfile-ingest selects exactly ONE active file per mknod
+# (factory/logfile_ingest.rs:204), so a single glob won't work.
+# All files share pond_path: /measure -- filenames stay flat, e.g.
+# /measure/water-staging.jsonl, /measure/_self.jsonl.
+#
+# run-selfmon.sh runs each of these via `pond run /system/etc/measure/<pond> push`
+# in a loop matching env/*.env.
+
 version: v1
 kind: mknod
 metadata:
-  path: /system/etc/selfmon-metrics
+  path: /system/etc/measure/_self
 spec:
   factory: logfile-ingest
   config:
-    archived_pattern: "${env:SELFMON_METRICS_DIR}/metrics.jsonl.*"
-    active_pattern:   "${env:SELFMON_METRICS_DIR}/metrics.jsonl"
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/_self.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/_self.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/noyo-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/noyo-prod
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/septic-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/septic-prod
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/site-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/site-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/site-staging.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/site-prod
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/site-prod.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/site-prod.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/water-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/water-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/water-staging.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/water-prod
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/water-prod.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/water-prod.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/watershop-selfmon-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon-staging.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/watershop-selfmon-prod
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon-prod.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon-prod.jsonl"
     pond_path:        /measure
 ---
 version: v1
@@ -92,6 +217,24 @@ spec:
     allow_http: ${env:S3_ALLOW_HTTP:-false}
 ---
 # Aggregated traffic series for sitegen / ad-hoc charting.
+#
+# `/derived` houses two kinds of entries:
+#
+#   1. Per-pond `sql-derived-series` (`p-<pond>`).  Reads the
+#      mirrored jsonl, casts every column to its proper type, and
+#      emits a typed FileSeries.  Column names are un-prefixed and
+#      match the canonical `<param>.<unit>` from the semconv
+#      registry (config/semconv/duckpond-pond.yaml).  Pond name is
+#      NOT in the column -- timeseries-join attaches it as a scope.
+#
+#   2. The cross-pond `perf` `timeseries-join`.  FULL OUTER JOINs
+#      every per-pond series on `timestamp` with `scope: <pond>`,
+#      producing wide columns of shape `<pond>.<param>.<unit>` that
+#      chart.js groups into one panel per metric (chartKey =
+#      `<param>.<unit>`) with one line per pond.
+#
+#   3. `_self` follows the same convention with scope: "_self" and
+#      different column names (sitegen.seconds, sitegen_peak_rss.bytes).
 version: v1
 kind: mknod
 metadata:
@@ -113,34 +256,141 @@ spec:
             FROM logs
             GROUP BY date_trunc('hour', CAST(ts AS TIMESTAMP)), status
             ORDER BY timestamp
-      # Self-perf time series: how list/read latency, peak RSS, and
-      # parquet/delta-log file counts grow as commits accumulate.
-      # The whole point of this experiment.
-      - name: "perf"
+
+      # ── Per-pond typed series ────────────────────────────────────
+      # All have the same SQL skeleton; only the source URL differs.
+      # CASTs are required because jsonlogs returns all-Utf8.
+
+      - name: "p-_self"
         factory: "sql-derived-series"
         config:
           patterns:
-            m: "jsonlogs:///measure/metrics.jsonl"
+            m: "jsonlogs:///measure/_self.jsonl"
           query: >-
             SELECT
-              CAST(ts AS TIMESTAMP)                  as timestamp,
-              CAST(txn_seq AS BIGINT)                as txn_seq,
-              CAST(parquet_files AS BIGINT)          as parquet_files,
-              CAST(delta_log_files AS BIGINT)        as delta_log_files,
-              CAST(pond_size_bytes AS BIGINT)        as pond_size_bytes,
-              CAST(list_seconds AS DOUBLE)           as list_seconds,
-              CAST(read_seconds AS DOUBLE)           as read_seconds,
-              CAST(peak_rss_mb AS DOUBLE)            as peak_rss_mb,
-              CAST(sitegen_seconds AS DOUBLE)        as sitegen_seconds,
-              CAST(sitegen_peak_rss_mb AS DOUBLE)    as sitegen_peak_rss_mb
+              CAST(ts AS TIMESTAMP)                        as timestamp,
+              CAST("read.seconds" AS DOUBLE)               as "read.seconds",
+              CAST("sitegen.seconds" AS DOUBLE)            as "sitegen.seconds",
+              CAST("sitegen_peak_rss.bytes" AS BIGINT)     as "sitegen_peak_rss.bytes"
             FROM m
             ORDER BY timestamp
+
+      - name: "p-noyo-staging"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/noyo-staging.jsonl"
+          query: &pondseries >-
+            SELECT
+              CAST(ts AS TIMESTAMP)                        as timestamp,
+              CAST("committed.txn_ids" AS BIGINT)          as "committed.txn_ids",
+              CAST("parquet.files" AS BIGINT)              as "parquet.files",
+              CAST("delta_log.files" AS BIGINT)            as "delta_log.files",
+              CAST("size.bytes" AS BIGINT)                 as "size.bytes",
+              CAST("list.seconds" AS DOUBLE)               as "list.seconds",
+              CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes"
+            FROM m
+            ORDER BY timestamp
+
+      - name: "p-noyo-prod"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/noyo-prod.jsonl"
+          query: *pondseries
+
+      - name: "p-septic-staging"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/septic-staging.jsonl"
+          query: *pondseries
+
+      - name: "p-septic-prod"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/septic-prod.jsonl"
+          query: *pondseries
+
+      - name: "p-site-staging"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/site-staging.jsonl"
+          query: *pondseries
+
+      - name: "p-site-prod"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/site-prod.jsonl"
+          query: *pondseries
+
+      - name: "p-water-staging"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/water-staging.jsonl"
+          query: *pondseries
+
+      - name: "p-water-prod"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/water-prod.jsonl"
+          query: *pondseries
+
+      - name: "p-watershop-selfmon-staging"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/watershop-selfmon-staging.jsonl"
+          query: *pondseries
+
+      - name: "p-watershop-selfmon-prod"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/watershop-selfmon-prod.jsonl"
+          query: *pondseries
+
+      # ── Cross-pond perf series ───────────────────────────────────
+      # FULL OUTER JOIN on timestamp, with each input scope-prefixed
+      # to <pond>.<param>.<unit>.  This is what sitegen exports and
+      # chart.js consumes.
+      - name: "perf"
+        factory: "timeseries-join"
+        config:
+          inputs:
+            - pattern: "series:///derived/p-_self"
+              scope: "_self"
+            - pattern: "series:///derived/p-noyo-staging"
+              scope: "noyo-staging"
+            - pattern: "series:///derived/p-noyo-prod"
+              scope: "noyo-prod"
+            - pattern: "series:///derived/p-septic-staging"
+              scope: "septic-staging"
+            - pattern: "series:///derived/p-septic-prod"
+              scope: "septic-prod"
+            - pattern: "series:///derived/p-site-staging"
+              scope: "site-staging"
+            - pattern: "series:///derived/p-site-prod"
+              scope: "site-prod"
+            - pattern: "series:///derived/p-water-staging"
+              scope: "water-staging"
+            - pattern: "series:///derived/p-water-prod"
+              scope: "water-prod"
+            - pattern: "series:///derived/p-watershop-selfmon-staging"
+              scope: "watershop-selfmon-staging"
+            - pattern: "series:///derived/p-watershop-selfmon-prod"
+              scope: "watershop-selfmon-prod"
 ---
 # Sitegen factory: renders a tiny dashboard from the perf series
 # above into /var/www/selfmon/<instance>/ (served by Caddy at
 # /selfmon/).  Sitegen runs once per tick from run-selfmon.sh and is
 # itself measured -- its memory & runtime cost feeds back into the
-# perf series via measure.sh on the *next* tick.
+# perf series via measure-self.sh on the *next* tick.
 version: v1
 kind: mknod
 metadata:

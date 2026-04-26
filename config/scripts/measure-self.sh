@@ -17,7 +17,29 @@ set -e
 
 : "${MEASURE_OUT_DIR:?MEASURE_OUT_DIR must be set}"
 : "${SELFMON_METRICS_DIR:?SELFMON_METRICS_DIR must be set}"
+: "${POND:?POND must be set}"
 mkdir -p "${MEASURE_OUT_DIR}"
+
+PONDBIN=/usr/bin/pond
+[ -x "${PONDBIN}" ] || PONDBIN="/usr/local/bin/pond-selfmon-staging"
+[ -x "${PONDBIN}" ] || PONDBIN="/usr/local/bin/pond-selfmon-prod"
+
+# ── timed read (DataFusion COUNT over kernel.jsonl) ───────────────
+# Selfmon-pond-only probe: every selfmon instance ingests the host
+# journal incl. the kernel ring buffer, so this query exercises a
+# meaningful jsonlogs scan that scales with retained log volume.
+# Other (non-selfmon) ponds don't have a comparable canonical path,
+# which is why this lives under the `_self` scope rather than per-pond.
+READ_SECONDS=0
+if "${PONDBIN}" list /logs/journal/kernel.jsonl >/dev/null 2>&1; then
+    READ_START=$(date +%s.%N)
+    "${PONDBIN}" cat 'jsonlogs:///logs/journal/kernel.jsonl' \
+        --sql 'SELECT COUNT(*) FROM source' --format=table \
+        >/dev/null 2>&1 || true
+    READ_END=$(date +%s.%N)
+    READ_SECONDS=$(awk -v a="${READ_END}" -v b="${READ_START}" \
+        'BEGIN{printf "%.3f", a-b}')
+fi
 
 SITEGEN_FILE="${SELFMON_METRICS_DIR}/.sitegen-last.json"
 
@@ -38,6 +60,6 @@ fi
 
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-printf '{"ts":"%s","sitegen.seconds":%s,"sitegen_peak_rss.bytes":%s}\n' \
-    "${TS}" "${SITEGEN_SECONDS}" "${SITEGEN_PEAK_RSS_BYTES}" \
+printf '{"ts":"%s","read.seconds":%s,"sitegen.seconds":%s,"sitegen_peak_rss.bytes":%s}\n' \
+    "${TS}" "${READ_SECONDS}" "${SITEGEN_SECONDS}" "${SITEGEN_PEAK_RSS_BYTES}" \
     >> "${MEASURE_OUT_DIR}/_self.jsonl"
