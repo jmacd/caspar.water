@@ -401,6 +401,20 @@ spec:
     site:
       title: "Watershop Selfmon"
       base_url: "/selfmon/"
+    # Metric instrument-kind registry.  Mirrors the non-gauge entries
+    # of the canonical Weaver semconv registry at
+    # config/semconv/duckpond-pond.yaml -- keep these in sync.
+    # chart.js applies a per-kind transform: counter -> first-difference
+    # rate per scope; updowncounter -> identity (today; future: spatial
+    # sum); gauge or missing -> identity.
+    metric_registry:
+      committed.txn_ids: counter
+      aborted.txn_ids: counter
+      parquet.files: updowncounter
+      delta_log.files: updowncounter
+      size.bytes: updowncounter
+      peak_rss.bytes: updowncounter
+      sitegen_peak_rss.bytes: updowncounter
     exports:
       - name: "perf"
         pattern: "/derived/perf"
