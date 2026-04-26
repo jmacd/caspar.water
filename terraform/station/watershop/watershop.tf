@@ -242,9 +242,7 @@ resource "null_resource" "watershop" {
       ],
       # Install the duckpond .deb (built natively on watershop by
       # tools/build-on-watershop.sh) and create per-tier
-      # /usr/local/bin/pond-selfmon-<tier> aliases.  Replaces the
-      # older extract-pond-binary.sh, which copied a binary out of a
-      # podman image; we now ship a real Debian package.
+      # /usr/local/bin/pond-selfmon-<tier> aliases.
       [for tier in local.selfmon_tiers :
         "${local.base_dir}/config/scripts/install-duckpond.sh ${tier}"
       ],

@@ -9,13 +9,9 @@
 #
 # Reads the version for <tier> from config/duckpond-version.toml
 # (relative to the caspar.water repo this script lives in), locates
-# ~/duckpond/target/debian/duckpond_<ver>_arm64.deb, runs `dpkg -i`,
-# and symlinks /usr/local/bin/pond-selfmon-<tier> to /usr/bin/pond.
-#
-# Replaces the older extract-pond-binary.sh, which copied a binary
-# out of a podman image.  Now the binary (and sitegen vendor blobs)
-# come from a real Debian package -- versionable, removable,
-# inspectable with dpkg.
+# ~/src/duckpond/target/debian/duckpond_<ver>_arm64.deb, runs
+# `dpkg -i`, and symlinks /usr/local/bin/pond-selfmon-<tier> to
+# /usr/bin/pond.
 set -euo pipefail
 
 TIER=${1:?usage: install-duckpond.sh <staging|prod>}
