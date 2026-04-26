@@ -14,7 +14,7 @@
 #   4. terraform apply
 
 [selfmon.staging]
-version = "0.48.0"
+version = "0.49.0-1"
 
 [selfmon.prod]
-version = "0.48.0"
+version = "0.49.0-1"

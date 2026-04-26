@@ -33,7 +33,7 @@ esac
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 VERSION_FILE="${REPO_ROOT}/config/duckpond-version.toml"
-DUCKPOND_DIR=${DUCKPOND_DIR:-${HOME}/duckpond}
+DUCKPOND_DIR=${DUCKPOND_DIR:-${HOME}/src/duckpond}
 DEB_DIR="${DUCKPOND_DIR}/target/debian"
 ALIAS="/usr/local/bin/pond-selfmon-${TIER}"
 

@@ -33,7 +33,7 @@ done
 
 cd "${DUCKPOND_DIR}"
 
-if [ ! -d .git ]; then
+if [ ! -e .git ]; then
     echo "ERROR: ${DUCKPOND_DIR} is not a git worktree" >&2
     exit 1
 fi
@@ -59,7 +59,7 @@ git push origin "${BRANCH}"
 # pushed even if someone else races a push to the same branch.
 REMOTE_SCRIPT=$(cat <<EOF
 set -euo pipefail
-cd ~/duckpond
+cd ~/src/duckpond
 git fetch origin ${BRANCH}
 git checkout ${BRANCH}
 git reset --hard ${LOCAL_SHA}
@@ -76,7 +76,7 @@ ssh "${WATERSHOP_HOST}" bash -s <<<"${REMOTE_SCRIPT}"
 if [ "${INSTALL}" = "1" ]; then
     echo "==> installing freshly built deb on ${WATERSHOP_HOST}"
     ssh "${WATERSHOP_HOST}" \
-        'sudo dpkg -i $(ls -t ~/duckpond/target/debian/duckpond_*_arm64.deb | head -1) && /usr/bin/pond --version'
+        'sudo dpkg -i $(ls -t ~/src/duckpond/target/debian/duckpond_*_arm64.deb | head -1) && /usr/bin/pond --version'
 else
-    echo "==> --no-install: deb left at ~/duckpond/target/debian/ on ${WATERSHOP_HOST}"
+    echo "==> --no-install: deb left at ~/src/duckpond/target/debian/ on ${WATERSHOP_HOST}"
 fi
