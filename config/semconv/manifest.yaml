@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Caspar Water Company
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Weaver registry manifest for the duckpond / caspar.water semantic
+# conventions.  Validate with:
+#
+#   docker run --rm -v "$PWD:/work" otel/weaver:latest \
+#     registry check -r /work/config/semconv
+#
+# See https://github.com/open-telemetry/weaver/blob/main/docs/usage.md
+name: caspar.water
+description: |
+  Semantic conventions for self-monitoring metrics emitted by
+  duckpond ponds running on the Caspar Water Company infrastructure.
+  Names are also the canonical column-suffix shape consumed by the
+  sitegen chart.js renderer (`<scope>.<param>.<unit>`); the registry
+  tells consumers what instrument kind a given `<param>.<unit>` pair
+  has so the renderer can apply the right transform (rate for
+  counters, identity for updowncounters and gauges).
+schema_url: https://caspar.water/schemas/v0.1.0

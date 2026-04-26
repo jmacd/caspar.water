@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: 2026 Caspar Water Company
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Self-monitoring metrics for duckpond ponds.
+#
+# Convention reminder.  The selfmon collector writes per-pond JSON
+# rows whose column names are the metric_name values defined here
+# (`committed.txn_ids`, `parquet.files`, ...).  The
+# `timeseries-join` factory then prefixes each input's columns with
+# its `scope`, producing wide columns of shape
+# `<scope>.<param>.<unit>` (e.g. `water-staging.parquet.files`).
+# chart.js groups by the `<param>.<unit>` suffix into one panel per
+# metric, with one line per scope.
+#
+# Default instrument kind is `gauge`; only non-gauge metrics need
+# entries here.  `list.seconds`, `read.seconds`, `sitegen.seconds`
+# etc. are gauges and intentionally omitted.
+
+groups:
+  # ── Attributes ───────────────────────────────────────────────────
+
+  - id: registry.duckpond
+    type: attribute_group
+    brief: "Identification attributes for duckpond self-monitoring."
+    stability: experimental
+    attributes:
+      - id: duckpond.pond.scope
+        type: string
+        stability: experimental
+        brief: >
+          Pond instance name.  Used as the column-name prefix when
+          per-pond series are joined into a wide table by the
+          `timeseries-join` factory.
+        examples:
+          - water-staging
+          - water-prod
+          - noyo-staging
+          - noyo-prod
+          - septic-staging
+          - septic-prod
+          - site-staging
+          - site-prod
+          - watershop-selfmon-staging
+        requirement_level: required
+
+      - id: duckpond.process.scope
+        type: string
+        stability: experimental
+        brief: >
+          Selfmon-process scope, used for metrics that describe the
+          collector or sitegen run itself rather than a particular
+          pond.
+        examples: [selfmon]
+        requirement_level: required
+
+  # ── Per-pond counters (monotonic) ────────────────────────────────
+
+  - id: metric.duckpond.pond.committed
+    type: metric
+    metric_name: committed.txn_ids
+    stability: experimental
+    brief: "Cumulative count of transactions committed to a pond."
+    instrument: counter
+    unit: "{txn_id}"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  - id: metric.duckpond.pond.aborted
+    type: metric
+    metric_name: aborted.txn_ids
+    stability: experimental
+    brief: "Cumulative count of transactions aborted before commit."
+    instrument: counter
+    unit: "{txn_id}"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  # ── Per-pond updowncounters (current-state, summable) ────────────
+
+  - id: metric.duckpond.pond.parquet
+    type: metric
+    metric_name: parquet.files
+    stability: experimental
+    brief: "Number of *.parquet files currently in the pond's backing store."
+    note: >
+      Grows with every commit and shrinks after compaction.  A
+      coarse signal for linear-time list/scan cost.
+    instrument: updowncounter
+    unit: "{file}"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  - id: metric.duckpond.pond.delta_log
+    type: metric
+    metric_name: delta_log.files
+    stability: experimental
+    brief: "Number of delta-log JSON files currently under any `_delta_log/` directory in the pond."
+    note: >
+      Cleaned up by checkpointing.  Grows with every commit until a
+      checkpoint compacts the log.
+    instrument: updowncounter
+    unit: "{file}"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  - id: metric.duckpond.pond.size
+    type: metric
+    metric_name: size.bytes
+    stability: experimental
+    brief: "Total bytes occupied by the pond's backing store."
+    instrument: updowncounter
+    unit: "By"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  - id: metric.duckpond.pond.peak_rss
+    type: metric
+    metric_name: peak_rss.bytes
+    stability: experimental
+    brief: >
+      Peak resident set size observed for pond CLI invocations during
+      the previous selfmon tick (one tick lag).
+    note: >
+      Sourced from the `Peak memory usage: N MB` line that pond
+      writes to stderr at process exit.  The selfmon tick takes the
+      max across that tick's invocations.  Unit is bytes despite the
+      MB-formatted source, because storage is canonical (renderer
+      may scale for display).
+    instrument: updowncounter
+    unit: "By"
+    attributes:
+      - ref: duckpond.pond.scope
+
+  # ── Selfmon-process scope (no pond attribute) ────────────────────
+
+  - id: metric.duckpond.sitegen.peak_rss
+    type: metric
+    metric_name: sitegen_peak_rss.bytes
+    stability: experimental
+    brief: "Peak resident set size observed during the most recent sitegen pass."
+    instrument: updowncounter
+    unit: "By"
+    attributes:
+      - ref: duckpond.process.scope
