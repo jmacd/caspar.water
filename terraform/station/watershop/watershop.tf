@@ -76,27 +76,22 @@ locals {
       boot_delay = "8min"
       extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
-    watershop-selfmon-staging = {
+    watershop-selfmon = {
       s3         = local.staging_s3
-      s3_url     = "s3://watershop-selfmon-staging"
+      s3_url     = "s3://watershop-selfmon"
       interval   = "1min"
       boot_delay = "30s"
       extra_env  = "SELFMON=1"
       selfmon    = true
     }
-    watershop-selfmon-prod = {
-      s3         = local.prod_s3
-      s3_url     = "s3://watershop-selfmon-prod"
-      interval   = "1min"
-      boot_delay = "1min"
-      extra_env  = "SELFMON=1"
-      selfmon    = true
-    }
   }
 
-  # All instance names for iteration, filtered by deploy flags
+  # All instance names for iteration, filtered by deploy flags.
+  # Selfmon is local-experimental: it always deploys (it's tied to
+  # this host, not to a staging/prod tier of any pond).
   instance_names = [for name in keys(local.instances) :
-    name if (
+    name if(
+      lookup(local.instances[name], "selfmon", false) ||
       (var.deploy_staging && endswith(name, "-staging")) ||
       (var.deploy_production && endswith(name, "-prod"))
     )
@@ -109,17 +104,13 @@ locals {
   selfmon_instance_names = [for n in local.instance_names :
     n if lookup(local.instances[n], "selfmon", false)
   ]
-  # Selfmon tiers actually scheduled (used to decide which binaries to extract).
-  selfmon_tiers = toset(compact([
-    contains([for n in local.selfmon_instance_names : true if endswith(n, "-staging")], true) ? "staging" : "",
-    contains([for n in local.selfmon_instance_names : true if endswith(n, "-prod")],    true) ? "prod"    : "",
-  ]))
 
   # MinIO buckets to ensure exist for staging instances.
   # Production instances target R2 buckets which are managed elsewhere.
+  # Selfmon also lives in MinIO local (staging_s3), so include it.
   staging_bucket_names = [for n in local.instance_names :
     replace(local.instances[n].s3_url, "s3://", "")
-    if endswith(n, "-staging")
+    if endswith(n, "-staging") || lookup(local.instances[n], "selfmon", false)
   ]
 }
 
@@ -153,7 +144,7 @@ resource "local_file" "timer_files" {
 
   filename        = "${path.module}/timers/${lookup(each.value, "selfmon", false) ? "pond-selfmon" : "pond"}@${each.key}.timer"
   file_permission = "0644"
-  content = <<-EOT
+  content         = <<-EOT
 [Unit]
 Description=DuckPond ${each.key} (every ${each.value.interval})
 
@@ -235,17 +226,24 @@ resource "null_resource" "watershop" {
         # Install systemd unit templates (container + selfmon native)
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/config/systemd/pond-selfmon@.service ${local.home}/.config/systemd/user/",
+        # Drop stale per-instance timers (e.g. from the obsolete
+        # watershop-selfmon-{staging,prod} split) so only currently-
+        # generated timers remain enabled.  Stop+disable any that are
+        # currently active before removing the unit files.
+        "systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.timer' | awk '{print $1}' | xargs -r systemctl --user disable --now 2>/dev/null || true",
+        "rm -f ${local.home}/.config/systemd/user/pond@*.timer ${local.home}/.config/systemd/user/pond-selfmon@*.timer",
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
         "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
       # Install the duckpond .deb (built natively on watershop by
-      # tools/build-on-watershop.sh) and create per-tier
-      # /usr/local/bin/pond-selfmon-<tier> aliases.
-      [for tier in local.selfmon_tiers :
-        "${local.base_dir}/config/scripts/install-duckpond.sh ${tier}"
-      ],
+      # tools/build-on-watershop.sh).  Always installs the newest .deb
+      # in target/debian/; selfmon is local-experimental, no version
+      # pinning.  Skipped if there is no selfmon instance to run.
+      length(local.selfmon_instance_names) > 0
+      ? ["${local.base_dir}/config/scripts/install-duckpond.sh"]
+      : [],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).
       [for name in local.selfmon_instance_names :
@@ -283,11 +281,11 @@ resource "null_resource" "watershop" {
       ],
       # Initialize selfmon instances natively (POND comes from env file)
       [for name in local.selfmon_instance_names :
-        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/local/bin/pond-selfmon-${endswith(name, "-staging") ? "staging" : "prod"} init 2>/dev/null || true"
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond init 2>/dev/null || true"
       ],
       # Apply selfmon configs natively
       [for name in local.selfmon_instance_names :
-        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/local/bin/pond-selfmon-${endswith(name, "-staging") ? "staging" : "prod"} apply -f ${local.base_dir}/config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond apply -f ${local.base_dir}/config/${name}.yaml"
       ],
       # Enable and start container timers
       [for name in local.container_instance_names :

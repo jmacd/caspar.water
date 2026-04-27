@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
 # install-duckpond.sh -- install the duckpond .deb that was previously
-# built on this host (typically by tools/build-on-watershop.sh) and
-# create the per-tier pond-selfmon-<tier> alias the systemd unit
-# template references.
+# built on this host (typically by tools/build-on-watershop.sh).
 #
 # Usage:
-#   install-duckpond.sh <staging|prod>
+#   install-duckpond.sh
 #
-# Reads the version for <tier> from config/duckpond-version.toml
-# (relative to the caspar.water repo this script lives in), locates
-# ~/src/duckpond/target/debian/duckpond_<ver>_arm64.deb, runs
-# `dpkg -i`, and symlinks /usr/local/bin/pond-selfmon-<tier> to
-# /usr/bin/pond.
+# Always installs the newest .deb in ~/src/duckpond/target/debian/,
+# regardless of currently-installed version.  Each run of
+# tools/build-on-watershop.sh produces a `.deb` that the next
+# `terraform apply` picks up unconditionally.  No version pinning,
+# no manual bump.  dpkg -i over an identical version is a cheap
+# no-op overwrite.
+#
+# This binary (`/usr/bin/pond`) is meant for the local-experimental
+# `watershop-selfmon` pond only.  Production data ponds run from
+# GH-Actions-built podman images (see config/scripts/pond.sh).
 set -euo pipefail
-
-TIER=${1:?usage: install-duckpond.sh <staging|prod>}
-
-case "${TIER}" in
-    staging|prod) ;;
-    *) echo "ERROR: tier must be 'staging' or 'prod', got '${TIER}'" >&2; exit 2 ;;
-esac
 
 case "$(uname -m)" in
     aarch64|arm64) ARCH="arm64" ;;
@@ -27,52 +23,19 @@ case "$(uname -m)" in
     *) echo "ERROR: unsupported arch $(uname -m)" >&2; exit 2 ;;
 esac
 
-REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-VERSION_FILE="${REPO_ROOT}/config/duckpond-version.toml"
 DUCKPOND_DIR=${DUCKPOND_DIR:-${HOME}/src/duckpond}
 DEB_DIR="${DUCKPOND_DIR}/target/debian"
-ALIAS="/usr/local/bin/pond-selfmon-${TIER}"
 
-if [ ! -f "${VERSION_FILE}" ]; then
-    echo "ERROR: ${VERSION_FILE} not found" >&2
-    exit 1
-fi
-
-# Tiny TOML extractor: find [selfmon.<tier>] section, then the
-# version = "..." line within it.  Avoids a python/toml dep.
-VERSION=$(awk -v section="[selfmon.${TIER}]" '
-    $0 == section { in_sec = 1; next }
-    in_sec && /^\[/ { in_sec = 0 }
-    in_sec && /^[[:space:]]*version[[:space:]]*=/ {
-        gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit
-    }
-' "${VERSION_FILE}")
-
-if [ -z "${VERSION}" ]; then
-    echo "ERROR: no version pinned for [selfmon.${TIER}] in ${VERSION_FILE}" >&2
-    exit 1
-fi
-
-DEB="${DEB_DIR}/duckpond_${VERSION}_${ARCH}.deb"
-if [ ! -f "${DEB}" ]; then
-    echo "ERROR: ${DEB} not found" >&2
+DEB=$(ls -t "${DEB_DIR}"/duckpond_*_"${ARCH}".deb 2>/dev/null | head -1)
+if [ -z "${DEB}" ] || [ ! -f "${DEB}" ]; then
+    echo "ERROR: no duckpond_*_${ARCH}.deb in ${DEB_DIR}" >&2
     echo "       Build it first:  tools/build-on-watershop.sh" >&2
     exit 1
 fi
 
-# Idempotent: only reinstall if the package is missing or at a
-# different version.  Saves a few seconds on terraform reapplies.
-INSTALLED=$(dpkg-query -W -f='${Version}' duckpond 2>/dev/null || echo "")
-if [ "${INSTALLED}" != "${VERSION}" ]; then
-    echo "Installing ${DEB} (was: ${INSTALLED:-none})"
-    sudo dpkg -i "${DEB}"
-else
-    echo "duckpond ${VERSION} already installed"
-fi
+INSTALLED=$(dpkg-query -W -f='${Version}' duckpond 2>/dev/null || echo none)
+NEW_VER=$(dpkg-deb -f "${DEB}" Version)
+echo "Installing $(basename "${DEB}") (${INSTALLED} -> ${NEW_VER})"
+sudo dpkg -i "${DEB}"
 
-# Per-tier alias so existing pond-selfmon@<inst>.service unit (which
-# ExecStart's /usr/local/bin/pond-selfmon-${TIER}) works unchanged.
-sudo ln -sfn /usr/bin/pond "${ALIAS}"
-echo "Linked ${ALIAS} -> /usr/bin/pond"
-
-"${ALIAS}" --version 2>/dev/null || true
+/usr/bin/pond --version 2>/dev/null || true

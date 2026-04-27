@@ -41,7 +41,7 @@ groups:
           - septic-prod
           - site-staging
           - site-prod
-          - watershop-selfmon-staging
+          - watershop-selfmon
         requirement_level: required
 
       - id: duckpond.process.scope

@@ -21,8 +21,6 @@ set -e
 mkdir -p "${MEASURE_OUT_DIR}"
 
 PONDBIN=/usr/bin/pond
-[ -x "${PONDBIN}" ] || PONDBIN="/usr/local/bin/pond-selfmon-staging"
-[ -x "${PONDBIN}" ] || PONDBIN="/usr/local/bin/pond-selfmon-prod"
 
 # ── timed read (DataFusion COUNT over kernel.jsonl) ───────────────
 # Selfmon-pond-only probe: every selfmon instance ingests the host

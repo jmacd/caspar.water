@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # build-on-watershop.sh -- push the current duckpond branch and build a
 # Debian package for it natively on watershop (arm64).  The resulting
-# .deb lands at ~/duckpond/target/debian/duckpond_<ver>_arm64.deb on
+# .deb lands at ~/src/duckpond/target/debian/duckpond_<ver>_arm64.deb on
 # watershop.  By default also `dpkg -i`'s it.  Use --no-install to
 # stop after the build.
 #
 # Why native: watershop is the same arch as our prod arm64 fleet, so
 # building there avoids cross-compile pain and the ~3-hour PR/CI/image
 # cycle.  No GH Actions, no podman, no self-hosted runner involved.
+#
+# This binary is for the local-experimental `watershop-selfmon` pond
+# only.  Production data ponds (water/noyo/septic/site) run from
+# GH-Actions-built podman images.
 #
 # Usage:
 #   tools/build-on-watershop.sh                      # build + install
@@ -57,6 +61,8 @@ git push origin "${BRANCH}"
 
 # Remote build.  We pin to LOCAL_SHA so the build matches what we just
 # pushed even if someone else races a push to the same branch.
+# `dpkg -i` over an identical version is a cheap no-op overwrite, so
+# we don't bother to vary the cargo-deb revision per build.
 REMOTE_SCRIPT=$(cat <<EOF
 set -euo pipefail
 cd ~/src/duckpond
@@ -66,7 +72,7 @@ git reset --hard ${LOCAL_SHA}
 . \$HOME/.cargo/env
 make vendor
 cargo deb -p cmd
-ls -la target/debian/duckpond_*_arm64.deb
+ls -la target/debian/duckpond_*_arm64.deb | tail -1
 EOF
 )
 
@@ -76,7 +82,7 @@ ssh "${WATERSHOP_HOST}" bash -s <<<"${REMOTE_SCRIPT}"
 if [ "${INSTALL}" = "1" ]; then
     echo "==> installing freshly built deb on ${WATERSHOP_HOST}"
     ssh "${WATERSHOP_HOST}" \
-        'sudo dpkg -i $(ls -t ~/src/duckpond/target/debian/duckpond_*_arm64.deb | head -1) && /usr/bin/pond --version'
+        "DEB=\$(ls -t ~/src/duckpond/target/debian/duckpond_*_arm64.deb | head -1) && sudo dpkg -i \"\${DEB}\" && /usr/bin/pond --version"
 else
-    echo "==> --no-install: deb left at ~/src/duckpond/target/debian/ on ${WATERSHOP_HOST}"
+    echo "==> --no-install: deb left in ~/src/duckpond/target/debian/ on ${WATERSHOP_HOST}"
 fi

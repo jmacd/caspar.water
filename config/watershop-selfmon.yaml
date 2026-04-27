@@ -183,23 +183,12 @@ spec:
 version: v1
 kind: mknod
 metadata:
-  path: /system/etc/measure/watershop-selfmon-staging
+  path: /system/etc/measure/watershop-selfmon
 spec:
   factory: logfile-ingest
   config:
-    archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon-staging.jsonl.*"
-    active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon-staging.jsonl"
-    pond_path:        /measure
----
-version: v1
-kind: mknod
-metadata:
-  path: /system/etc/measure/watershop-selfmon-prod
-spec:
-  factory: logfile-ingest
-  config:
-    archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon-prod.jsonl.*"
-    active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon-prod.jsonl"
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl"
     pond_path:        /measure
 ---
 version: v1
@@ -341,18 +330,11 @@ spec:
             m: "jsonlogs:///measure/water-prod.jsonl"
           query: *pondseries
 
-      - name: "p-watershop-selfmon-staging"
+      - name: "p-watershop-selfmon"
         factory: "sql-derived-series"
         config:
           patterns:
-            m: "jsonlogs:///measure/watershop-selfmon-staging.jsonl"
-          query: *pondseries
-
-      - name: "p-watershop-selfmon-prod"
-        factory: "sql-derived-series"
-        config:
-          patterns:
-            m: "jsonlogs:///measure/watershop-selfmon-prod.jsonl"
+            m: "jsonlogs:///measure/watershop-selfmon.jsonl"
           query: *pondseries
 
       # ── Cross-pond perf series ───────────────────────────────────
@@ -381,10 +363,8 @@ spec:
               scope: "water-staging"
             - pattern: "series:///derived/p-water-prod"
               scope: "water-prod"
-            - pattern: "series:///derived/p-watershop-selfmon-staging"
-              scope: "watershop-selfmon-staging"
-            - pattern: "series:///derived/p-watershop-selfmon-prod"
-              scope: "watershop-selfmon-prod"
+            - pattern: "series:///derived/p-watershop-selfmon"
+              scope: "watershop-selfmon"
 ---
 # Sitegen factory: renders a tiny dashboard from the perf series
 # above into /var/www/selfmon/<instance>/ (served by Caddy at

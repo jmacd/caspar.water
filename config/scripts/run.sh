@@ -15,8 +15,8 @@ if [ -f "${ENV_FILE}" ]; then
     source "${ENV_FILE}"
 fi
 
-# Extract pond type from instance name (e.g., noyo-staging -> noyo,
-# watershop-selfmon-staging -> watershop-selfmon)
+# Extract pond type from instance name (e.g., noyo-staging -> noyo).
+# watershop-selfmon has no -staging/-prod suffix and matches *-selfmon.
 TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 

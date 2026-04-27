@@ -4,17 +4,11 @@
 
 http://watershop.casparwater.us, http://:80 {
 	# Selfmon dashboard rendered each tick by the watershop-selfmon
-	# pond into /var/www/selfmon/<instance>/.  handle_path strips
-	# /selfmon so sitegen's base_url=/selfmon/ links resolve.
-	# Defaults to staging tier; the prod tier (when deployed) is
-	# reachable at /selfmon/prod/.
-	handle_path /selfmon/prod/* {
-		root * /var/www/selfmon/watershop-selfmon-prod
-		file_server
-		encode zstd gzip
-	}
+	# pond into /var/www/selfmon/watershop-selfmon/.  handle_path
+	# strips /selfmon so sitegen's base_url=/selfmon/ links resolve.
+	# Selfmon is local-experimental (staging-only), tied to this host.
 	handle_path /selfmon/* {
-		root * /var/www/selfmon/watershop-selfmon-staging
+		root * /var/www/selfmon/watershop-selfmon
 		file_server
 		encode zstd gzip
 	}

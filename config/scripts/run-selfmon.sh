@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run-selfmon.sh -- run a native selfmon pond instance (no podman).
+# run-selfmon.sh -- run the native selfmon pond (no podman).
 #
-# Usage: run-selfmon.sh <instance>     (e.g. watershop-selfmon-staging)
+# Usage: run-selfmon.sh <instance>     (e.g. watershop-selfmon)
 #
 # Reads ${BASE_DIR}/env/${INSTANCE}.env for POND, S3_*, etc.
-# Invokes the host-installed `pond-selfmon-<tier>` binary directly.
+# Invokes the host-installed `/usr/bin/pond` directly.
 set -e
 
 INSTANCE=$1
@@ -22,19 +22,13 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-# Choose binary by tier (staging vs prod, matching pond.sh image tag logic).
-case "${INSTANCE}" in
-    *-staging) PONDBIN="/usr/local/bin/pond-selfmon-staging" ;;
-    *-prod)    PONDBIN="/usr/local/bin/pond-selfmon-prod" ;;
-    *)         echo "ERROR: instance must end in -staging or -prod"; exit 2 ;;
-esac
-
+PONDBIN="/usr/bin/pond"
 if [ ! -x "${PONDBIN}" ]; then
-    echo "ERROR: ${PONDBIN} not installed; run config/scripts/install-duckpond.sh ${INSTANCE##*-}"
+    echo "ERROR: ${PONDBIN} not installed; run tools/build-on-watershop.sh"
     exit 1
 fi
 
-# POND must be set per-instance (e.g. /home/jmacd/pond-watershop-selfmon-staging).
+# POND must be set per-instance (e.g. /home/jmacd/pond-watershop-selfmon).
 : "${POND:?POND must be set in ${ENV_FILE}}"
 export POND
 
