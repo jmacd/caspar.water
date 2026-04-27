@@ -395,6 +395,43 @@ spec:
       size.bytes: updowncounter
       peak_rss.bytes: updowncounter
       sitegen_peak_rss.bytes: updowncounter
+    # Per-chart caption strings keyed the same way as metric_registry.
+    # chart.js renders these as a small grey paragraph beneath each
+    # chart.  Plain text only (no HTML) -- the client uses textContent.
+    metric_captions:
+      committed.txn_ids: >-
+        Commit rate per pond (transactions/second), derived from the
+        running transaction-id counter.  Steady ingestion shows up as
+        a flat non-zero rate; spikes correspond to bulk imports or
+        backfills.
+      parquet.files: >-
+        Total parquet files under each pond's data directory.  Rises
+        with every commit and drops when compaction merges shards.
+      delta_log.files: >-
+        Delta-log JSON entries per pond.  Each file is a single
+        transaction; checkpointing collapses old entries into a
+        snapshot, so this should grow modestly between checkpoints.
+      size.bytes: >-
+        On-disk footprint of each pond (parquet + delta log + sidecar
+        files), measured via du.  Use alongside parquet.files to
+        track compaction effectiveness.
+      peak_rss.bytes: >-
+        Peak resident-set size of the previous tick's `pond run`,
+        scraped from the systemd unit's exit log line.  This is the
+        ceiling reached by the per-pond ingest, not a steady-state.
+      list.seconds: >-
+        Wall-clock time for `pond list /` against each pond -- a
+        proxy for catalog-walk cost.  Should stay flat with file
+        count thanks to incremental list optimizations.
+      sitegen.seconds: >-
+        Wall-clock time of the dashboard's own sitegen invocation
+        each tick (self-referential observability).
+      sitegen_peak_rss.bytes: >-
+        Peak resident-set size of the dashboard's own sitegen
+        invocation each tick.
+      read.seconds: >-
+        Wall-clock cost of the read-side warm-up performed by the
+        selfmon pond itself (sitegen-internal).
     exports:
       - name: "perf"
         pattern: "/derived/perf"
