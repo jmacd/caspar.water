@@ -4,7 +4,6 @@ weight: 20
 layout: blog
 section: Blog
 date: "2025-01-10"
-summary: "How a Go readability review led to a blog post by Rob Pike about regular expressions in lexing and parsing."
 ---
 
 Once in a while you find someone still posting on Blogger. They want a

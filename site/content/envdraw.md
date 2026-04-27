@@ -4,7 +4,6 @@ weight: 60
 layout: blog
 section: Blog
 date: "1995-06-15"
-summary: "From a high-school nerd running out of math classes to building a self-diagramming metacircular evaluator for UC Berkeley's CS61A. Thirty years later, reborn in WebAssembly."
 image: "https://jmacd.github.io/envdraw/envdraw-screenshot.png"
 ---
 

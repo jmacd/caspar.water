@@ -4,7 +4,6 @@ weight: 10
 layout: blog
 section: Blog
 date: "2025-01-01"
-summary: "Why I'm blogging again. From Xdelta to OpenTelemetry, finding joy in programming through open-source projects."
 ---
 
 I thought I should keep a blog.
