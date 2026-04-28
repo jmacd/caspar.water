@@ -435,9 +435,26 @@ spec:
     exports:
       - name: "perf"
         pattern: "/derived/perf"
+    # Per-pond systemd-style status cards rendered server-side from
+    # ingested journal data.  Sitegen lists journal `.jsonl` files
+    # matching `journal_pattern`, filters basenames against
+    # `unit_globs`, and runs status + tail SQL queries each tick.
+    # The `pond_status_grid` shortcode bakes the result into the
+    # status page as a static HTML grid of cards.
+    status_grid:
+      journal_pattern: "jsonlogs:///logs/journal/*.jsonl"
+      unit_globs:
+        - "user-pond@*.service"
+        - "user-pond-selfmon@*.service"
+      tail_lines: 10
     routes:
       - name: "home"
         type: template
         slug: "index"
         page: "/system/site/index.md"
+        export: "perf"
+      - name: "status"
+        type: template
+        slug: "status"
+        page: "/system/site/status.md"
         export: "perf"
