@@ -7,4 +7,4 @@ section: Main
 
 ## Blog
 
-{{ blog_grid content="pages" section="Blog" /}}
+{{ blog_grid content="blog" section="Blog" /}}
