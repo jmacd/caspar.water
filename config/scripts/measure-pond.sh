@@ -66,7 +66,7 @@ fi
     if [ ! -d "${POND}" ]; then
         echo "measure-pond: '${POND_NAME}' has no POND dir at ${POND}; emitting zero row" >&2
         TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0}\n' \
+        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0}\n' \
             "${TS}" >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
         exit 0
     fi
@@ -121,12 +121,29 @@ fi
         | awk '{ if ($4+0 > max) max=$4+0 }
                END   { printf "%.0f", (max==""?0:max) * 1048576 }')
 
+    # ── elapsed time of last `pond run` (run.seconds) ─────────────
+    # The pond CLI emits one structured "Run summary" line per `pond
+    # run` invocation, e.g.:
+    #   "Run summary  path=...  factory=...  args=[...]
+    #    elapsed_s=12.345  peak_mem_mb=...  outcome=ok"
+    # We grep the unit's journal for the most recent such line and
+    # extract elapsed_s.  For pond@<name>.service this is the timer's
+    # main job; for pond-selfmon@<...>.service it's whichever inner
+    # `pond run` finished most recently in the selfmon loop.
+    RUN_SECONDS=$(journalctl --user -u "${UNIT}" \
+        --no-pager -n 500 --since "5 minutes ago" 2>/dev/null \
+        | grep -oE 'Run summary .* elapsed_s=[0-9.]+' \
+        | tail -1 \
+        | grep -oE 'elapsed_s=[0-9.]+' \
+        | awk -F= 'END{ printf "%.3f", ($2==""?0:$2) }')
+    [ -z "${RUN_SECONDS}" ] && RUN_SECONDS=0
+
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     # Single JSON line, append.  Column names match metric_name
     # entries in config/semconv/duckpond-pond.yaml.
-    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s}\n' \
+    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s}\n' \
         "${TS}" "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" \
-        "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" \
+        "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \
         >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
 )

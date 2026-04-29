@@ -284,7 +284,8 @@ spec:
               CAST("delta_log.files" AS BIGINT)            as "delta_log.files",
               CAST("size.bytes" AS BIGINT)                 as "size.bytes",
               CAST("list.seconds" AS DOUBLE)               as "list.seconds",
-              CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes"
+              CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes",
+              CAST("run.seconds" AS DOUBLE)                as "run.seconds"
             FROM m
             ORDER BY timestamp
 
@@ -430,6 +431,12 @@ spec:
         Wall-clock time for `pond list /` against each pond -- a
         proxy for catalog-walk cost.  Should stay flat with file
         count thanks to incremental list optimizations.
+      run.seconds: >-
+        Wall-clock duration of the previous tick's `pond run`,
+        scraped from the pond CLI's structured "Run summary" exit log
+        line.  This is the total time of the most recent timer firing
+        per pond -- useful for spotting slowdowns under load (e.g.
+        contention with the post-commit backup factory).
       sitegen.seconds: >-
         Wall-clock time of the dashboard's own sitegen invocation
         each tick (self-referential observability).
