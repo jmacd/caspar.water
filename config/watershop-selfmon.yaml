@@ -53,6 +53,13 @@ spec:
     pond_path: /logs/journal
     journalctl_command: journalctl
     collect_kernel: true
+    # --merge pulls both the system journal and the invoking user's
+    # journal in one stream.  Required to capture user-scope units
+    # like `pond@water-prod.service` and `pond-selfmon@*.service`,
+    # which surface as `user-<unit>.jsonl` files in /logs/journal/
+    # and feed the status-grid page.
+    extra_args:
+      - --merge
 ---
 # Caddy webserver-style access logs (JSON), mirrored from the host's
 # /var/log/caddy/.  Read with `jsonlogs://` (Caddy emits structured
