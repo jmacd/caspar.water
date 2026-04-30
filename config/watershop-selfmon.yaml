@@ -285,7 +285,9 @@ spec:
               CAST("size.bytes" AS BIGINT)                 as "size.bytes",
               CAST("list.seconds" AS DOUBLE)               as "list.seconds",
               CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes",
-              CAST("run.seconds" AS DOUBLE)                as "run.seconds"
+              CAST("run.seconds" AS DOUBLE)                as "run.seconds",
+              CAST("timer.active" AS BIGINT)               as "timer.active",
+              CAST("last_run.seconds_ago" AS BIGINT)       as "last_run.seconds_ago"
             FROM m
             ORDER BY timestamp
 
@@ -437,6 +439,18 @@ spec:
         line.  This is the total time of the most recent timer firing
         per pond -- useful for spotting slowdowns under load (e.g.
         contention with the post-commit backup factory).
+      timer.active: >-
+        1 if the pond's systemd `.timer` is in the active state, 0
+        otherwise.  A flat zero line here means the timer has been
+        stopped or disabled and the pond has stopped ingesting --
+        catches the silent-failure mode where journal-ingest sees
+        no entries because nothing is firing.
+      last_run.seconds_ago: >-
+        Wall-clock seconds since the pond service's last
+        ExecMainExitTimestamp (read from `systemctl show --user`).
+        -1 means the service has never run on this host.  Healthy
+        ponds stay below 2x their timer interval; a value that
+        keeps climbing indicates a stale or stopped pond.
       sitegen.seconds: >-
         Wall-clock time of the dashboard's own sitegen invocation
         each tick (self-referential observability).

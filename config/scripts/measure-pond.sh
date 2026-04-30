@@ -66,7 +66,7 @@ fi
     if [ ! -d "${POND}" ]; then
         echo "measure-pond: '${POND_NAME}' has no POND dir at ${POND}; emitting zero row" >&2
         TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0}\n' \
+        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0,"timer.active":0,"last_run.seconds_ago":-1}\n' \
             "${TS}" >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
         exit 0
     fi
@@ -138,12 +138,49 @@ fi
         | awk -F= 'END{ printf "%.3f", ($2==""?0:$2) }')
     [ -z "${RUN_SECONDS}" ] && RUN_SECONDS=0
 
+    # ── timer + service liveness via systemctl ────────────────────
+    # Two signals that surface stopped/stale ponds even when nothing
+    # is being logged (e.g. timer disabled, container failing to
+    # start, host bind-mount missing):
+    #   timer.active           1 if <unit>.timer is active, else 0
+    #   last_run.seconds_ago   wall-clock seconds since the service's
+    #                          most recent ExecMainExitTimestamp; -1
+    #                          if the service has never run.
+    if [ -n "${SELFMON:-}" ]; then
+        TIMER_UNIT="pond-selfmon@${POND_NAME}.timer"
+        SERVICE_UNIT="pond-selfmon@${POND_NAME}.service"
+    else
+        TIMER_UNIT="pond@${POND_NAME}.timer"
+        SERVICE_UNIT="pond@${POND_NAME}.service"
+    fi
+
+    if [ "$(systemctl --user is-active "${TIMER_UNIT}" 2>/dev/null)" = active ]; then
+        TIMER_ACTIVE=1
+    else
+        TIMER_ACTIVE=0
+    fi
+
+    EXIT_TS=$(systemctl --user show "${SERVICE_UNIT}" \
+        -p ExecMainExitTimestamp --value 2>/dev/null)
+    if [ -n "${EXIT_TS}" ] && [ "${EXIT_TS}" != "n/a" ]; then
+        EXIT_EPOCH=$(date -d "${EXIT_TS}" +%s 2>/dev/null)
+        if [ -n "${EXIT_EPOCH}" ] && [ "${EXIT_EPOCH}" -gt 0 ] 2>/dev/null; then
+            LAST_RUN_AGO=$(( $(date +%s) - EXIT_EPOCH ))
+            [ "${LAST_RUN_AGO}" -lt 0 ] && LAST_RUN_AGO=0
+        else
+            LAST_RUN_AGO=-1
+        fi
+    else
+        LAST_RUN_AGO=-1
+    fi
+
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     # Single JSON line, append.  Column names match metric_name
     # entries in config/semconv/duckpond-pond.yaml.
-    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s}\n' \
+    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"timer.active":%s,"last_run.seconds_ago":%s}\n' \
         "${TS}" "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" \
         "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \
+        "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" \
         >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
 )
