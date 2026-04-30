@@ -77,7 +77,7 @@ spec:
 ---
 # ── Per-pond perf metrics ingest ─────────────────────────────────
 # config/scripts/measure-pond.sh writes one JSON line per pond into
-# ${SELFMON_METRICS_DIR}/<pond>.jsonl each tick, and measure-self.sh
+# ${SELFMON_METRICS_DIR}/<pond>.jsonl each tick, and run-selfmon.sh inline
 # writes _self.jsonl.  We give each pond its own logfile-ingest
 # mknod (and corresponding /derived sql-derived-series below)
 # because logfile-ingest selects exactly ONE active file per mknod
@@ -378,7 +378,7 @@ spec:
 # above into /var/www/selfmon/<instance>/ (served by Caddy at
 # /selfmon/).  Sitegen runs once per tick from run-selfmon.sh and is
 # itself measured -- its memory & runtime cost feeds back into the
-# perf series via measure-self.sh on the *next* tick.
+# perf series via run-selfmon.sh inline on the *next* tick.
 version: v1
 kind: mknod
 metadata:
