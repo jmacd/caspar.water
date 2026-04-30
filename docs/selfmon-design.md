@@ -53,7 +53,25 @@ systemd-journald (host)
 | Script | Role |
 |---|---|
 | `run-selfmon.sh` | Tick orchestrator. Runs as the systemd unit's main job (`pond-selfmon@<inst>.service`). Sources the selfmon env, performs the five steps above, and inlines the `_self` probe as a brace block. |
-| `measure-pond.sh` | Per-pond probe. Forks a subshell, re-sources `<pond>.env` so `POND` / `S3_*` point at the **probed** pond, asks that pond for `committed.txn_ids`, `parquet.files`, `delta_log.files`, `size.bytes`, `list.seconds`, journalctl-greps the unit for `peak_rss.bytes` and `run.seconds`, appends one JSON row to `<pond>.jsonl`. Kept separate from the orchestrator because of the env-scoping requirement. |
+| `measure-pond.sh` | Per-pond probe. Forks a subshell, re-sources `<pond>.env` so `POND` / `S3_*` point at the **probed** pond, asks that pond for `committed.txn_ids`, `parquet.files`, `delta_log.files`, `size.bytes`, `list.seconds`, journalctl-greps the unit for `peak_rss.bytes` and `run.seconds`, queries `systemctl --user` for `timer.active` and `last_run.seconds_ago`, appends one JSON row to `<pond>.jsonl`. Kept separate from the orchestrator because of the env-scoping requirement. |
+
+#### Containerized vs. host-native ponds
+
+On watershop, every pond except `watershop-selfmon` runs in a podman
+named volume rather than at the host path that its env file's `POND`
+variable names. Rootless podman keeps each volume's `_data` directory
+in `~/.local/share/containers/storage/volumes/<vol>/_data`, owned by
+the user, so the host-fs probes work directly against that path
+without paying podman startup latency. `measure-pond.sh` resolves
+`POND_VOLUME` (set in the container env files) via
+`podman volume inspect --format '{{.Mountpoint}}'` and overrides
+`POND` for the duration of the probe. Falls back to the env file's
+`POND` value when `POND_VOLUME` is unset (e.g. `watershop-selfmon`
+itself, which is host-native).
+
+Before this fix every containerized pond reported all-zeros forever,
+because the env file's `POND=/home/jmacd/pond-<name>` is just the
+**container's** bind-mount label and does not exist on the host.
 
 ### Pond contents (`config/watershop-selfmon.yaml`)
 
@@ -76,6 +94,29 @@ systemd-journald (host)
   human-readable per-chart captions, and renders a status-grid via
   the `pond_status_grid` shortcode driven by per-unit-glob queries
   against `jsonlogs:///logs/journal/<unit>.jsonl`.
+
+### Liveness signals
+
+`measure-pond.sh` also emits two columns derived from `systemctl
+--user` rather than from the pond itself, so a pond with **no recent
+activity** still produces a meaningful row:
+
+| Column | Source | Semantics |
+|---|---|---|
+| `timer.active` | `systemctl --user is-active <unit>.timer` | `1` when active, `0` otherwise (inactive, failed, disabled). |
+| `last_run.seconds_ago` | `systemctl --user show <unit>.service -p ExecMainExitTimestamp --value` | Wall-clock seconds since the service's last clean exit. `-1` when the service has never run **or** is currently running (no exit timestamp yet). |
+
+These exist because every other signal in the per-pond JSONL row goes
+silent the moment a pond stops being scheduled: the perf series stops
+advancing, the status grid drops the unit because there are no fresh
+journal entries, and the dashboard ends up showing a frozen-but-not-
+obviously-frozen view. A flat-zero `timer.active` line and a
+monotonically growing `last_run.seconds_ago` line make the failure
+mode visible. As of the deploy that introduced these columns, all
+four prod timers on watershop (`water-prod`, `septic-prod`,
+`noyo-prod`, `site-prod`) have been inactive for at least three days
+without selfmon noticing -- exactly the case these columns now
+catch.
 
 ### Pond CLI exit log
 
@@ -191,6 +232,28 @@ interval than its actual duration, runs will either stack
 (`Type=simple`) or get serialized by the unit lock (`Type=oneshot`).
 Worth checking the timer unit's `OnUnitActiveSec` vs. observed run
 duration, but unrelated to selfmon's own loop.
+
+### 8. Selfmon tick duration on slow ponds
+
+`measure-pond.sh` shells out to `find` and `du` once per pond per
+tick. On `site-staging` (5 K parquet files, 950 MB) one probe takes
+several seconds; the full per-tick loop currently runs ~10-11 minutes
+end to end. With the selfmon timer's `OnUnitActiveSec=1min` the
+effective measurement cadence is ~12 minutes, not 1 minute. Acceptable
+for current goals (long-term growth visibility) but worth replacing
+the host-fs traversal with a dedicated `pond` subcommand if we ever
+want sub-minute cadence.
+
+### 9. `last_run.seconds_ago == -1` while a service is running
+
+A `pond run` invocation has no `ExecMainExitTimestamp` until it exits,
+so `last_run.seconds_ago` reports `-1` for any pond whose service is
+currently mid-tick. For long-running services like `pond@site-staging`
+this means the column toggles between a real "seconds since last exit"
+value and `-1` rather than reporting a continuously growing number.
+Could be improved by falling back to `ExecMainStartTimestamp` (or
+`ActiveEnterTimestamp`) when the service is in `activating`/`active`
+state; not done today.
 
 ## What is NOT a limitation (clarifications worth keeping)
 
