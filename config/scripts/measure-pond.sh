@@ -48,6 +48,25 @@ fi
 
     : "${POND:?POND must be set in ${ENV_FILE}}"
 
+    # If POND_VOLUME is set, the pond runs in a podman named volume
+    # (the production layout on watershop).  Rootless podman volumes
+    # are owned by this user under
+    #   ~/.local/share/containers/storage/volumes/<vol>/_data
+    # which is fully readable on the host -- so we can run all the
+    # host-fs probes (find, du) and the on-disk pond CLI (`pond list`,
+    # `pond log`) directly against the volume mountpoint, without
+    # paying podman startup latency for every probe.  The env file's
+    # POND value (e.g. /home/jmacd/pond-water-prod) is only used to
+    # label the *container's* bind mount and does not exist on the
+    # host -- hence the all-zeros reports we used to emit.
+    if [ -n "${POND_VOLUME:-}" ] && command -v podman >/dev/null 2>&1; then
+        VOL_MOUNT=$(podman volume inspect "${POND_VOLUME}" \
+            --format '{{.Mountpoint}}' 2>/dev/null || true)
+        if [ -n "${VOL_MOUNT}" ] && [ -d "${VOL_MOUNT}" ]; then
+            POND="${VOL_MOUNT}"
+        fi
+    fi
+
     # SELFMON_METRICS_DIR is exported by run-selfmon.sh from the
     # selfmon pond's env file (NOT this pond's env), and points at
     # the directory the selfmon pond mirrors per-pond jsonl files
