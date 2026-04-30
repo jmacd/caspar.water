@@ -36,8 +36,7 @@ if [ ! -f "${ENV_FILE}" ]; then
 fi
 
 # Source env file.  The probed pond's env, NOT the selfmon pond's.
-# We need POND (the storage path) and SELFMON (truthy iff selfmon
-# pond, used to choose the right journalctl unit).
+# We need POND (the storage path) to find this pond's data.
 (
     # Subshell to keep env isolated; we re-read SELFMON_METRICS_DIR
     # from the *caller's* environment (see below).
@@ -45,6 +44,13 @@ fi
     # shellcheck disable=SC1090
     source "${ENV_FILE}"
     set +a
+    # SELFMON leaks in from run-selfmon.sh (which sources the selfmon
+    # env with `set -a`).  measure-pond.sh is only ever called for
+    # non-selfmon ponds (the selfmon pond is the inlined `_self`
+    # block in run-selfmon.sh) so SELFMON has no meaning here, and
+    # leaving it set causes us to look up `pond-selfmon@<name>.*`
+    # systemd units below, which do not exist for water-prod etc.
+    unset SELFMON
 
     : "${POND:?POND must be set in ${ENV_FILE}}"
 
@@ -127,13 +133,10 @@ fi
     # Stored in bytes (see config/semconv/duckpond-pond.yaml: unit By).
     # Source line emitted by pond CLI to stderr at process exit:
     #   "Peak memory usage: NN.NN MB"
-    # Selfmon ponds run via `pond-selfmon@.service`; containerized
-    # ponds run via `pond@.service`; we try the right one.
-    if [ -n "${SELFMON:-}" ]; then
-        UNIT="pond-selfmon@${POND_NAME}.service"
-    else
-        UNIT="pond@${POND_NAME}.service"
-    fi
+    # Containerized ponds run via `pond@.service`.  (The selfmon pond
+    # itself runs via `pond-selfmon@.service` but is measured by the
+    # `_self` block in run-selfmon.sh, not by this script.)
+    UNIT="pond@${POND_NAME}.service"
     PEAK_RSS_BYTES=$(journalctl --user -u "${UNIT}" \
         --no-pager -n 200 --since "5 minutes ago" 2>/dev/null \
         | grep -oE 'Peak memory usage: [0-9.]+ MB' \
@@ -165,13 +168,8 @@ fi
     #   last_run.seconds_ago   wall-clock seconds since the service's
     #                          most recent ExecMainExitTimestamp; -1
     #                          if the service has never run.
-    if [ -n "${SELFMON:-}" ]; then
-        TIMER_UNIT="pond-selfmon@${POND_NAME}.timer"
-        SERVICE_UNIT="pond-selfmon@${POND_NAME}.service"
-    else
-        TIMER_UNIT="pond@${POND_NAME}.timer"
-        SERVICE_UNIT="pond@${POND_NAME}.service"
-    fi
+    TIMER_UNIT="pond@${POND_NAME}.timer"
+    SERVICE_UNIT="pond@${POND_NAME}.service"
 
     if [ "$(systemctl --user is-active "${TIMER_UNIT}" 2>/dev/null)" = active ]; then
         TIMER_ACTIVE=1
