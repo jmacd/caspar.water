@@ -1,6 +1,12 @@
 [Unit]
 Description=Caspar Water Gateway Collector
-After=network.target
+# Couple to the NFS mount that holds the jsonfile output target.  Without
+# this, a lost mount silently breaks the jsonfile exporter for as long as
+# the unit stays up (lumberjack returns "mkdir ... file exists" on every
+# write) without restarting the unit.  RequiresMountsFor stops the unit
+# when /home/system goes away and starts it again when the mount returns.
+After=network.target home-system.mount
+RequiresMountsFor=/home/system
 
 [Service]
 Type=simple
