@@ -97,6 +97,13 @@ locals {
     )
   ]
 
+  # Every configured instance name regardless of deploy flag, used
+  # to decide which existing systemd units the cleanup step should
+  # leave alone.  Toggling deploy_production=false should NOT disable
+  # the running -prod timers; only retired/renamed instances should
+  # be cleaned up.
+  all_configured_names = keys(local.instances)
+
   # Containerized vs native (selfmon) instance partitions
   container_instance_names = [for n in local.instance_names :
     n if !lookup(local.instances[n], "selfmon", false)
@@ -226,18 +233,26 @@ resource "null_resource" "watershop" {
         # Install systemd unit templates (container + selfmon native)
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/config/systemd/pond-selfmon@.service ${local.home}/.config/systemd/user/",
-        # Drop stale per-instance timers (e.g. from the obsolete
-        # watershop-selfmon-{staging,prod} split) so only currently-
-        # generated timers remain enabled.  Stop+disable any that are
-        # currently active before removing the unit files.
-        "systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.timer' | awk '{print $1}' | xargs -r systemctl --user disable --now 2>/dev/null || true",
-        # Reap any leaked pond containers.  `podman run --rm` detaches
-        # from systemd, so a `systemctl stop` on the .service does NOT
-        # kill the running container (cf. cloud Apr 30 bandwidth bleed).
-        # Match by image to catch every duckpond container.
-        "podman ps --format '{{.Names}}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true",
-        "podman ps -aq --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true",
-        "rm -f ${local.home}/.config/systemd/user/pond@*.timer ${local.home}/.config/systemd/user/pond-selfmon@*.timer",
+        # Drop ONLY units whose instance name is no longer in the
+        # configured set (e.g. retired watershop-selfmon-{staging,prod}
+        # split).  Configured-but-not-deployed instances (e.g. -prod
+        # when deploy_production=false) are left alone -- toggling a
+        # deploy flag must not disturb the other tier.
+        "${local.base_dir}/config/scripts/cleanup-stale-pond-units.sh ${join(" ", local.all_configured_names)}",
+        # Reap any leaked pond containers belonging to instances we
+        # are about to (re)deploy in this apply.  `podman run --rm`
+        # detaches from systemd, so a `systemctl stop` on the .service
+        # does NOT kill the running container (cf. cloud Apr 30
+        # bandwidth bleed).  Match by image AND volume so we don't
+        # disturb containers for instances we're leaving alone.
+        join(" ; ", concat(
+          [for name in local.container_instance_names :
+            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true"
+          ],
+          [for name in local.container_instance_names :
+            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true"
+          ],
+        )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
         "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
