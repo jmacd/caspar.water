@@ -231,6 +231,12 @@ resource "null_resource" "watershop" {
         # generated timers remain enabled.  Stop+disable any that are
         # currently active before removing the unit files.
         "systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.timer' | awk '{print $1}' | xargs -r systemctl --user disable --now 2>/dev/null || true",
+        # Reap any leaked pond containers.  `podman run --rm` detaches
+        # from systemd, so a `systemctl stop` on the .service does NOT
+        # kill the running container (cf. cloud Apr 30 bandwidth bleed).
+        # Match by image to catch every duckpond container.
+        "podman ps --format '{{.Names}}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true",
+        "podman ps -aq --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true",
         "rm -f ${local.home}/.config/systemd/user/pond@*.timer ${local.home}/.config/systemd/user/pond-selfmon@*.timer",
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
         "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",

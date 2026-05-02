@@ -22,8 +22,19 @@ su - jmacd -c "
     systemctl --user daemon-reload 2>/dev/null || true
 " || true
 
-# Remove the pond data volume if present.
-su - jmacd -c "podman volume rm pond-site-prod 2>/dev/null || true"
+# Kill any running pond containers and remove the data volume.
+# `podman run --rm` detaches from systemd, so a `systemctl stop` on a
+# pond@*.service does NOT reap the underlying container -- the apparent
+# cause of the Apr 30 bandwidth alert was a leaked container that kept
+# running 43h after its service was killed.  Reap them explicitly.
+su - jmacd -c "
+    podman ps --format '{{.Names}}' --filter 'volume=pond-site-prod' \
+        | xargs -r podman kill 2>/dev/null || true
+    sleep 1
+    podman ps -aq --filter 'volume=pond-site-prod' \
+        | xargs -r podman rm -f 2>/dev/null || true
+    podman volume rm pond-site-prod 2>/dev/null || true
+"
 
 # Stop web servers
 systemctl stop caddy 2>/dev/null || true
