@@ -2,7 +2,10 @@ locals {
   home     = "/home/${var.user}"
   base_dir = "${local.home}/duckpond"
 
-  # Staging instances use MinIO, production uses R2
+  # All instances currently use MinIO on watershop.  Production previously
+  # used Cloudflare R2 (see prod_s3 below), but we are running prod against
+  # MinIO too while we continue to harden the remote backup feature.  Prod
+  # and staging stay isolated by bucket name.
   staging_s3 = {
     endpoint   = var.minio_endpoint
     region     = "us-east-1"
@@ -10,6 +13,7 @@ locals {
     secret_key = var.minio_secret_key
     allow_http = "true"
   }
+  # Reserved for future re-enable of R2-backed production.  Currently unused.
   prod_s3 = {
     endpoint   = var.r2_endpoint
     region     = "auto"
@@ -28,7 +32,7 @@ locals {
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://noyo-pond"
       interval   = "30min"
       boot_delay = "6min"
@@ -42,7 +46,7 @@ locals {
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://water-pond"
       interval   = "10min"
       boot_delay = "3min"
@@ -56,7 +60,7 @@ locals {
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://septic-pond"
       interval   = "10min"
       boot_delay = "5min"
@@ -70,7 +74,7 @@ locals {
       extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = ""
       interval   = "15min"
       boot_delay = "8min"
@@ -112,12 +116,12 @@ locals {
     n if lookup(local.instances[n], "selfmon", false)
   ]
 
-  # MinIO buckets to ensure exist for staging instances.
-  # Production instances target R2 buckets which are managed elsewhere.
-  # Selfmon also lives in MinIO local (staging_s3), so include it.
+  # MinIO buckets to ensure exist.  All instances now use MinIO; the only
+  # ones that need a bucket are those with a non-empty s3_url (the site-*
+  # instances aggregate from other ponds and have no bucket of their own).
   staging_bucket_names = [for n in local.instance_names :
     replace(local.instances[n].s3_url, "s3://", "")
-    if endswith(n, "-staging") || lookup(local.instances[n], "selfmon", false)
+    if local.instances[n].s3_url != ""
   ]
 }
 
