@@ -279,34 +279,52 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
       ],
-      # Ensure MinIO buckets exist for all staging instances (idempotent).
-      # Uses the aws-cli container against localhost:9000.  The container
-      # auto-pulls on first use; subsequent invocations are fast.
-      # `mb` returns non-zero if the bucket already exists, so we swallow.
+      # Ensure MinIO buckets exist for all instances that have an s3_url
+      # (staging + prod, plus selfmon).  Uses the aws-cli container
+      # against localhost:9000.  `mb` returns non-zero when the bucket
+      # already exists; we check the message to distinguish that
+      # benign case from a real failure.
       [for bucket in local.staging_bucket_names :
-        "podman run --rm --network=host -e AWS_ACCESS_KEY_ID=${var.minio_access_key} -e AWS_SECRET_ACCESS_KEY=${var.minio_secret_key} docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1 | grep -v 'BucketAlreadyOwnedByYou\\|already exists' || true"
+        "out=$(podman run --rm --network=host -e AWS_ACCESS_KEY_ID=${var.minio_access_key} -e AWS_SECRET_ACCESS_KEY=${var.minio_secret_key} docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1) || { echo \"$out\" | grep -qE 'BucketAlreadyOwnedByYou|already exists' || { echo \"$out\" >&2; exit 1; }; }; true"
       ],
-      # Reset specified instances: stop timer, remove volume / pond dir
+      # Reset specified instances.  The reset must FAIL LOUD: the only
+      # way the volume rm can refuse is if a pond/sitegen container is
+      # still using it (cf. site-prod 2026-05-02 silent reset failure
+      # caused by a 90-min sitegen container surviving the global kill
+      # earlier in this apply).  We therefore (1) disable the timer so
+      # it cannot fire mid-apply, (2) stop the service, (3) kill any
+      # container holding THIS volume, (4) rm the volume with no error
+      # suppression so terraform aborts if the kill missed something.
       [for name in var.reset_instances :
-        "systemctl --user stop pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true"
+        join(" && ", [
+          "echo '[reset] ${name}: disabling timer'",
+          "(systemctl --user disable --now pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true)",
+          "echo '[reset] ${name}: stopping service'",
+          "(systemctl --user stop pond@${name}.service pond-selfmon@${name}.service 2>/dev/null || true)",
+          "echo '[reset] ${name}: killing any container holding pond-${name}'",
+          "podman ps -aq --filter 'volume=pond-${name}' | xargs -r podman rm -f",
+          "echo '[reset] ${name}: removing volume pond-${name}'",
+          "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
+          "echo '[reset] ${name}: removing host dir'",
+          "rm -rf ${local.home}/pond-${name}",
+          "echo '[reset] ${name}: done'",
+        ])
       ],
-      [for name in var.reset_instances :
-        "podman volume rm pond-${name} 2>/dev/null || true"
-      ],
-      [for name in var.reset_instances :
-        "rm -rf ${local.home}/pond-${name}"
-      ],
-      # Initialize containerized instances
+      # Initialize containerized instances if not already initialized.
+      # `pond init` errors with "Pond already exists" on a populated pond;
+      # we detect that condition on the host (via the volume's mountpoint)
+      # and skip init in the no-op case.  Real init failures still surface.
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} init 2>/dev/null || true"
+        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init; fi"
       ],
       # Apply containerized instance configs
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
       ],
-      # Initialize selfmon instances natively (POND comes from env file)
+      # Initialize selfmon instances natively (POND comes from env file).
+      # Same idempotent pattern as containerized instances above.
       [for name in local.selfmon_instance_names :
-        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond init 2>/dev/null || true"
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init; fi"
       ],
       # Apply selfmon configs natively
       [for name in local.selfmon_instance_names :
