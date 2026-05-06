@@ -147,6 +147,26 @@ resource "local_file" "env_files" {
   ])
 }
 
+# Generate a single MinIO admin env file used only for the bucket-create
+# step in the remote-exec provisioner.  We push the credentials via a
+# `file` provisioner (encrypted in transit by SSH, file mode 0600 on
+# disk) and reference them with podman's `--env-file` rather than
+# `-e KEY=${var...}`.  This keeps `var.minio_access_key` /
+# `var.minio_secret_key` out of the inline= [...] string list, which
+# would otherwise force terraform to mark every line of remote-exec
+# output for this resource as "(output suppressed due to sensitive
+# value in config)" -- an all-or-nothing per-resource gate that hides
+# unrelated init / podman / sitegen lines too.
+resource "local_file" "minio_admin_env" {
+  filename        = "${path.module}/env/_minio-admin.env"
+  file_permission = "0600"
+  content = join("\n", [
+    "AWS_ACCESS_KEY_ID=${var.minio_access_key}",
+    "AWS_SECRET_ACCESS_KEY=${var.minio_secret_key}",
+    "",
+  ])
+}
+
 # Generate timer files locally for upload.  Container instances use the
 # `pond@.service` template; selfmon instances use `pond-selfmon@.service`
 # (native, no podman).
@@ -169,7 +189,11 @@ EOT
 }
 
 resource "null_resource" "watershop" {
-  depends_on = [local_file.env_files, local_file.timer_files]
+  depends_on = [
+    local_file.env_files,
+    local_file.minio_admin_env,
+    local_file.timer_files,
+  ]
 
   connection {
     type  = "ssh"
@@ -284,8 +308,17 @@ resource "null_resource" "watershop" {
       # against localhost:9000.  `mb` returns non-zero when the bucket
       # already exists; we check the message to distinguish that
       # benign case from a real failure.
+      #
+      # Credentials come from the env file uploaded above
+      # (`env/_minio-admin.env`) rather than `-e KEY=${var...}` so that
+      # `var.minio_*` does NOT appear in the inline= [...] string list.
+      # Inlining a sensitive var would force terraform to mark every
+      # line of remote-exec output for this resource as "(output
+      # suppressed due to sensitive value in config)" -- an
+      # all-or-nothing per-resource gate that would also hide unrelated
+      # init / podman / sitegen lines.
       [for bucket in local.staging_bucket_names :
-        "out=$(podman run --rm --network=host -e AWS_ACCESS_KEY_ID=${var.minio_access_key} -e AWS_SECRET_ACCESS_KEY=${var.minio_secret_key} docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1) || { echo \"$out\" | grep -qE 'BucketAlreadyOwnedByYou|already exists' || { echo \"$out\" >&2; exit 1; }; }; true"
+        "out=$(podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1) || { echo \"$out\" | grep -qE 'BucketAlreadyOwnedByYou|already exists' || { echo \"$out\" >&2; exit 1; }; }; true"
       ],
       # Reset specified instances.  The reset must FAIL LOUD: the only
       # way the volume rm can refuse is if a pond/sitegen container is
