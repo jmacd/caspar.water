@@ -97,14 +97,15 @@ because the env file's `POND=/home/jmacd/pond-<name>` is just the
 
 ### Liveness signals
 
-`measure-pond.sh` also emits two columns derived from `systemctl
+`measure-pond.sh` also emits three columns derived from `systemctl
 --user` rather than from the pond itself, so a pond with **no recent
 activity** still produces a meaningful row:
 
 | Column | Source | Semantics |
 |---|---|---|
 | `timer.active` | `systemctl --user is-active <unit>.timer` | `1` when active, `0` otherwise (inactive, failed, disabled). |
-| `last_run.seconds_ago` | `systemctl --user show <unit>.service -p ExecMainExitTimestamp --value` | Wall-clock seconds since the service's last clean exit. `-1` when the service has never run **or** is currently running (no exit timestamp yet). |
+| `last_run.seconds_ago` | `systemctl --user show <unit>.service -p ExecMainExitTimestamp --value` | Wall-clock seconds since the service's last clean exit. `-1` when the service has no parseable exit timestamp -- this includes "never run", "currently running", and parse failures, so the value is **not** a reliable in-flight signal on its own. |
+| `timer.interval_s` | `systemctl --user show <unit>.timer -p OnUnitActiveSecUSec --value` | Configured `OnUnitActiveSec` in integer seconds (rounded up). Drives the dashboard's "stale = 2x interval" health threshold so the page knows what "overdue" means without per-unit YAML configuration. `0` when the timer is missing or the value is unset/infinity. |
 
 These exist because every other signal in the per-pond JSONL row goes
 silent the moment a pond stops being scheduled: the perf series stops
@@ -117,6 +118,58 @@ four prod timers on watershop (`water-prod`, `septic-prod`,
 `noyo-prod`, `site-prod`) have been inactive for at least three days
 without selfmon noticing -- exactly the case these columns now
 catch.
+
+### Status page health classification
+
+The status grid (front page of the dashboard) colours each card based
+on the journal-derived terminal events plus the perf-derived timer
+fields above. The `Health::classify` helper in
+`crates/sitegen/src/shortcodes.rs` is a pure function over those
+inputs:
+
+| Color | Rule |
+|---|---|
+| **Red** | `timer.active == 0` (timer disabled), OR the most recent terminal event is a failure (`last_err_us > last_ok_us`, or `last_err_us` is set with no `last_ok_us` at all). |
+| **Yellow** | `last_ok_us` is older than `2 * timer.interval_s` -- the run is overdue. |
+| **Green** | Recent successful run within the staleness threshold and no fresher failure. |
+| **Grey (Unknown)** | `timer.interval_s` is missing or zero, or no `last_ok_us` has been seen yet. The card still renders but lacks a colour. |
+
+`StatusGridConfig.perf_pattern` (in the site config) controls where
+the perf data comes from; for selfmon it is
+`"series:///derived/p-{pond}"`. The `{pond}` placeholder is the unit
+basename with `user-pond@` / `user-pond-selfmon@` prefix and
+`.service` suffix stripped. A missing perf series for a unit logs a
+`warn!` and leaves the card grey rather than failing the build.
+
+### Local-time display
+
+All timestamps in the status cards are emitted as
+`<time datetime="..." data-utc-us="...">UTC string</time>` markers.
+The companion `crates/sitegen/assets/relative-time.js` script (loaded
+from the `data` layout alongside `chart.js`) walks every such element
+on `DOMContentLoaded`, replaces its text with the visitor's local
+time via `Intl.DateTimeFormat`, and appends a sibling
+`<span class="rel-time">` with a "X minutes ago" relative label. A
+`setInterval(30s)` keeps the relative label fresh as the page sits
+open. There is no server-side timezone configuration; the page works
+the same in every browser regardless of where sitegen ran.
+
+### Routes and sidebar
+
+The dashboard has two pages, linked by a sidebar driven by sitegen's
+`partials.sidebar` + `sidebar:` config (see `config/watershop-selfmon.yaml`):
+
+```
++-- Status (/selfmon/index.html)         pond_status_grid -- the front page
++-- Metrics (/selfmon/metrics.html)      chart wall -- per-metric line graphs
+```
+
+Both pages use `layout: data` so they share the chart.js / overlay.js /
+relative-time.js loader and the same theme/sidebar shell. The
+`partials.sidebar` partial (`config/selfmon/site/sidebar.md`) is a
+single `{{ content_nav /}}` shortcode; the `sidebar:` config carries
+explicit `DirectLink` entries so `content_nav` renders pills directly
+rather than trying to match against content pages.
 
 ### Pond CLI exit log
 
@@ -277,9 +330,12 @@ state; not done today.
 | Tick orchestrator | `config/scripts/run-selfmon.sh` |
 | Per-pond probe | `config/scripts/measure-pond.sh` |
 | Semantic conventions | `config/semconv/duckpond-pond.yaml` |
-| Sitegen templates | `config/selfmon/site/*.md` |
+| Sitegen templates (status / metrics / sidebar) | `config/selfmon/site/*.md` |
 | `pond_status_grid` shortcode | `duckpond/crates/sitegen/src/shortcodes.rs` |
-| `run_status_grid_queries` | `duckpond/crates/sitegen/src/factory.rs` |
+| `Health::classify` | `duckpond/crates/sitegen/src/shortcodes.rs` |
+| `run_status_grid_queries` (journal + perf enrichment) | `duckpond/crates/sitegen/src/factory.rs` |
+| `extract_pond_name` (unit -> `{pond}` placeholder) | `duckpond/crates/sitegen/src/factory.rs` |
+| Local-time hydration script | `duckpond/crates/sitegen/assets/relative-time.js` |
 | `journal-ingest` factory | `duckpond/crates/provider/src/factory/journal_ingest.rs` |
 | `Run summary` log line | `duckpond/crates/cmd/src/main.rs`, `commands/run_summary.rs` |
 | Format cache (the source of limitation #1) | `duckpond/crates/provider/src/format_cache.rs` |

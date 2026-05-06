@@ -1,11 +1,9 @@
 ---
-title: "Watershop Selfmon"
+title: "Metrics"
 layout: data
 ---
 
-# Watershop Selfmon Dashboard
-
-[Pond status →](./status.html)
+# Watershop Selfmon Metrics
 
 This DuckPond instance ingests host journald, Caddy access logs, and
 its own per-tick performance metrics every 60 seconds.  The charts

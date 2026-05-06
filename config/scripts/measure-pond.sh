@@ -91,7 +91,7 @@ fi
     if [ ! -d "${POND}" ]; then
         echo "measure-pond: '${POND_NAME}' has no POND dir at ${POND}; emitting zero row" >&2
         TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0,"timer.active":0,"last_run.seconds_ago":-1}\n' \
+        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0,"timer.active":0,"last_run.seconds_ago":-1,"timer.interval_s":0}\n' \
             "${TS}" >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
         exit 0
     fi
@@ -191,13 +191,31 @@ fi
         LAST_RUN_AGO=-1
     fi
 
+    # Configured timer interval (OnUnitActiveSec), in integer seconds.
+    # Drives the status grid's "stale = 2x interval" health threshold
+    # so the page knows what "overdue" means without per-unit YAML
+    # configuration.  systemd reports the value in microseconds via
+    # `OnUnitActiveSecUSec` (a bare integer with no unit suffix); we
+    # round up to the next whole second.  Falls back to 0 when the
+    # timer is missing or the value is unset/infinity, which the
+    # renderer treats as Unknown rather than a hard error.
+    TIMER_INTERVAL_USEC=$(systemctl --user show "${TIMER_UNIT}" \
+        -p OnUnitActiveSecUSec --value 2>/dev/null)
+    if [ -n "${TIMER_INTERVAL_USEC}" ] \
+        && [ "${TIMER_INTERVAL_USEC}" != "infinity" ] \
+        && [ "${TIMER_INTERVAL_USEC}" -gt 0 ] 2>/dev/null; then
+        TIMER_INTERVAL_S=$(( (TIMER_INTERVAL_USEC + 999999) / 1000000 ))
+    else
+        TIMER_INTERVAL_S=0
+    fi
+
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     # Single JSON line, append.  Column names match metric_name
     # entries in config/semconv/duckpond-pond.yaml.
-    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"timer.active":%s,"last_run.seconds_ago":%s}\n' \
+    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"timer.active":%s,"last_run.seconds_ago":%s,"timer.interval_s":%s}\n' \
         "${TS}" "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" \
         "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \
-        "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" \
+        "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" "${TIMER_INTERVAL_S}" \
         >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
 )

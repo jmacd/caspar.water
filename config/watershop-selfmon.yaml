@@ -287,7 +287,8 @@ spec:
               CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes",
               CAST("run.seconds" AS DOUBLE)                as "run.seconds",
               CAST("timer.active" AS BIGINT)               as "timer.active",
-              CAST("last_run.seconds_ago" AS BIGINT)       as "last_run.seconds_ago"
+              CAST("last_run.seconds_ago" AS BIGINT)       as "last_run.seconds_ago",
+              CAST("timer.interval_s" AS BIGINT)           as "timer.interval_s"
             FROM m
             ORDER BY timestamp
 
@@ -469,20 +470,42 @@ spec:
     # `unit_globs`, and runs status + tail SQL queries each tick.
     # The `pond_status_grid` shortcode bakes the result into the
     # status page as a static HTML grid of cards.
+    #
+    # `perf_pattern` enables per-card health classification: for each
+    # surviving unit sitegen substitutes `{pond}` with the bare pond
+    # name (basename minus `user-pond@` / `user-pond-selfmon@` prefix
+    # and `.service` suffix) and reads the latest `(timer.active,
+    # last_run.seconds_ago, timer.interval_s)` row from the per-pond
+    # series produced upstream.  The card is then coloured
+    # green/yellow/red based on `Health::classify`; missing perf data
+    # leaves the card grey rather than failing the build.
     status_grid:
       journal_pattern: "jsonlogs:///logs/journal/*.jsonl"
       unit_globs:
         - "user-pond@*.service"
         - "user-pond-selfmon@*.service"
+      perf_pattern: "series:///derived/p-{pond}"
       tail_lines: 10
+    # Sidebar navigation shared by every page in the dashboard.
+    # Layouts only render the sidebar when a `partials.sidebar` entry
+    # is configured (sidebar entries alone are inert), so we provide
+    # both.  All entries are DirectLink so `content_nav` renders
+    # buttons directly without trying to match against content pages.
+    partials:
+      sidebar: "/system/site/sidebar.md"
+    sidebar:
+      - label: "Status"
+        href: "/selfmon/index.html"
+      - label: "Metrics"
+        href: "/selfmon/metrics.html"
     routes:
-      - name: "home"
-        type: template
-        slug: "index"
-        page: "/system/site/index.md"
-        export: "perf"
       - name: "status"
         type: template
-        slug: "status"
+        slug: "index"
         page: "/system/site/status.md"
+        export: "perf"
+      - name: "metrics"
+        type: template
+        slug: "metrics"
+        page: "/system/site/metrics.md"
         export: "perf"
