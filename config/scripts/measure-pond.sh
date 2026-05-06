@@ -194,20 +194,33 @@ fi
     # Configured timer interval (OnUnitActiveSec), in integer seconds.
     # Drives the status grid's "stale = 2x interval" health threshold
     # so the page knows what "overdue" means without per-unit YAML
-    # configuration.  systemd reports the value in microseconds via
-    # `OnUnitActiveSecUSec` (a bare integer with no unit suffix); we
-    # round up to the next whole second.  Falls back to 0 when the
-    # timer is missing or the value is unset/infinity, which the
-    # renderer treats as Unknown rather than a hard error.
-    TIMER_INTERVAL_USEC=$(systemctl --user show "${TIMER_UNIT}" \
-        -p OnUnitActiveSecUSec --value 2>/dev/null)
-    if [ -n "${TIMER_INTERVAL_USEC}" ] \
-        && [ "${TIMER_INTERVAL_USEC}" != "infinity" ] \
-        && [ "${TIMER_INTERVAL_USEC}" -gt 0 ] 2>/dev/null; then
-        TIMER_INTERVAL_S=$(( (TIMER_INTERVAL_USEC + 999999) / 1000000 ))
-    else
-        TIMER_INTERVAL_S=0
-    fi
+    # configuration.
+    #
+    # systemd does NOT expose this as a top-level scalar property
+    # (`-p OnUnitActiveSecUSec` returns empty on v252+).  The value
+    # lives inside the `TimersMonotonic` multi-record property in
+    # human-readable form, e.g.:
+    #     { OnUnitActiveUSec=30min ; next_elapse=... }
+    #     { OnBootUSec=6min ; next_elapse=... }
+    # We extract the OnUnitActiveUSec= field and convert the suffix
+    # (us/ms/s/min/h) to integer seconds.  Falls back to 0 when the
+    # property is missing -- the renderer treats 0 as Unknown rather
+    # than a hard error, so a misconfigured timer doesn't break the
+    # whole status grid.
+    TIMER_INTERVAL_RAW=$(systemctl --user show "${TIMER_UNIT}" \
+        -p TimersMonotonic --value 2>/dev/null \
+        | grep -oE 'OnUnitActiveUSec=[^ ]+' \
+        | head -1 \
+        | cut -d= -f2)
+    case "${TIMER_INTERVAL_RAW}" in
+        *us)  TIMER_INTERVAL_S=$(( ( ${TIMER_INTERVAL_RAW%us} + 999999 ) / 1000000 )) ;;
+        *ms)  TIMER_INTERVAL_S=$(( ( ${TIMER_INTERVAL_RAW%ms} + 999 ) / 1000 )) ;;
+        *min) TIMER_INTERVAL_S=$(( ${TIMER_INTERVAL_RAW%min} * 60 )) ;;
+        *h)   TIMER_INTERVAL_S=$(( ${TIMER_INTERVAL_RAW%h} * 3600 )) ;;
+        *s)   TIMER_INTERVAL_S=${TIMER_INTERVAL_RAW%s} ;;
+        *)    TIMER_INTERVAL_S=0 ;;
+    esac
+    [ -z "${TIMER_INTERVAL_S}" ] && TIMER_INTERVAL_S=0
 
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

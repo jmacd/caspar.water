@@ -340,6 +340,18 @@ resource "null_resource" "watershop" {
           "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
           "echo '[reset] ${name}: removing host dir'",
           "rm -rf ${local.home}/pond-${name}",
+          # Selfmon-only: also wipe the per-pond JSONL source dir and
+          # the rendered HTML output dir.  Both are no-ops for
+          # containerized data ponds (path won't exist), but for a
+          # native selfmon reset they are required -- otherwise the
+          # next ingest tick replays old JSONL rows whose schema may
+          # not match what the current pond/sitegen code expects, and
+          # Caddy keeps serving stale HTML files (e.g. orphan
+          # status.html after a route rename) from prior runs.
+          "echo '[reset] ${name}: wiping selfmon metrics source'",
+          "rm -rf /var/log/duckpond-selfmon/${name}",
+          "echo '[reset] ${name}: wiping selfmon rendered output'",
+          "rm -rf /var/www/selfmon/${name}",
           "echo '[reset] ${name}: done'",
         ])
       ],
