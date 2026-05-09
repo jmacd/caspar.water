@@ -4,7 +4,7 @@ weight: 60
 layout: blog
 section: Blog
 date: "1995-06-15"
-image: "https://jmacd.github.io/envdraw/envdraw-screenshot.png"
+image: "/img/envdraw-screenshot.png"
 ---
 
 I was a high-school nerd who had run out of math classes, so my senior
@@ -42,7 +42,7 @@ Thirty years passed.
 Hoot, a Scheme-to-WebAssembly compiler was recently announced. Very
 cool! 
 
-[Here](https://github.com/jmacd/envdaraw) is a modern reimplementation
+[Here](https://github.com/jmacd/envdraw) is a modern reimplementation
 of EnvDraw on Hoot, replacing the old Scheme/Tk display with a D3.js
 diagram, compiled into WASM. [Try it in your
 browser](https://jmacd.github.io/envdraw).
