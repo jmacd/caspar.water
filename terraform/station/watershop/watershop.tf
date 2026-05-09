@@ -2,7 +2,10 @@ locals {
   home     = "/home/${var.user}"
   base_dir = "${local.home}/duckpond"
 
-  # Staging instances use MinIO, production uses R2
+  # All instances currently use MinIO on watershop.  Production previously
+  # used Cloudflare R2 (see prod_s3 below), but we are running prod against
+  # MinIO too while we continue to harden the remote backup feature.  Prod
+  # and staging stay isolated by bucket name.
   staging_s3 = {
     endpoint   = var.minio_endpoint
     region     = "us-east-1"
@@ -10,6 +13,7 @@ locals {
     secret_key = var.minio_secret_key
     allow_http = "true"
   }
+  # Reserved for future re-enable of R2-backed production.  Currently unused.
   prod_s3 = {
     endpoint   = var.r2_endpoint
     region     = "auto"
@@ -28,7 +32,7 @@ locals {
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://noyo-pond"
       interval   = "30min"
       boot_delay = "6min"
@@ -42,7 +46,7 @@ locals {
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://water-pond"
       interval   = "10min"
       boot_delay = "3min"
@@ -56,7 +60,7 @@ locals {
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = "s3://septic-pond"
       interval   = "10min"
       boot_delay = "5min"
@@ -70,20 +74,54 @@ locals {
       extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
-      s3         = local.prod_s3
+      s3         = local.staging_s3
       s3_url     = ""
       interval   = "15min"
       boot_delay = "8min"
       extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
+    watershop-selfmon = {
+      s3         = local.staging_s3
+      s3_url     = "s3://watershop-selfmon"
+      interval   = "1min"
+      boot_delay = "30s"
+      extra_env  = "SELFMON=1"
+      selfmon    = true
+    }
   }
 
-  # All instance names for iteration, filtered by deploy flags
+  # All instance names for iteration, filtered by deploy flags.
+  # Selfmon is local-experimental: it always deploys (it's tied to
+  # this host, not to a staging/prod tier of any pond).
   instance_names = [for name in keys(local.instances) :
-    name if (
+    name if(
+      lookup(local.instances[name], "selfmon", false) ||
       (var.deploy_staging && endswith(name, "-staging")) ||
       (var.deploy_production && endswith(name, "-prod"))
     )
+  ]
+
+  # Every configured instance name regardless of deploy flag, used
+  # to decide which existing systemd units the cleanup step should
+  # leave alone.  Toggling deploy_production=false should NOT disable
+  # the running -prod timers; only retired/renamed instances should
+  # be cleaned up.
+  all_configured_names = keys(local.instances)
+
+  # Containerized vs native (selfmon) instance partitions
+  container_instance_names = [for n in local.instance_names :
+    n if !lookup(local.instances[n], "selfmon", false)
+  ]
+  selfmon_instance_names = [for n in local.instance_names :
+    n if lookup(local.instances[n], "selfmon", false)
+  ]
+
+  # MinIO buckets to ensure exist.  All instances now use MinIO; the only
+  # ones that need a bucket are those with a non-empty s3_url (the site-*
+  # instances aggregate from other ponds and have no bucket of their own).
+  staging_bucket_names = [for n in local.instance_names :
+    replace(local.instances[n].s3_url, "s3://", "")
+    if local.instances[n].s3_url != ""
   ]
 }
 
@@ -95,6 +133,8 @@ resource "local_file" "env_files" {
   file_permission = "0600"
   content = join("\n", [
     "POND_VOLUME=pond-${each.key}",
+    "POND=${local.home}/pond-${each.key}",
+    "SELFMON_METRICS_DIR=/var/log/duckpond-selfmon/${each.key}",
     "S3_URL=${each.value.s3_url}",
     "S3_ENDPOINT=${each.value.s3.endpoint}",
     "S3_REGION=${each.value.s3.region}",
@@ -107,13 +147,35 @@ resource "local_file" "env_files" {
   ])
 }
 
-# Generate timer files locally for upload
+# Generate a single MinIO admin env file used only for the bucket-create
+# step in the remote-exec provisioner.  We push the credentials via a
+# `file` provisioner (encrypted in transit by SSH, file mode 0600 on
+# disk) and reference them with podman's `--env-file` rather than
+# `-e KEY=${var...}`.  This keeps `var.minio_access_key` /
+# `var.minio_secret_key` out of the inline= [...] string list, which
+# would otherwise force terraform to mark every line of remote-exec
+# output for this resource as "(output suppressed due to sensitive
+# value in config)" -- an all-or-nothing per-resource gate that hides
+# unrelated init / podman / sitegen lines too.
+resource "local_file" "minio_admin_env" {
+  filename        = "${path.module}/env/_minio-admin.env"
+  file_permission = "0600"
+  content = join("\n", [
+    "AWS_ACCESS_KEY_ID=${var.minio_access_key}",
+    "AWS_SECRET_ACCESS_KEY=${var.minio_secret_key}",
+    "",
+  ])
+}
+
+# Generate timer files locally for upload.  Container instances use the
+# `pond@.service` template; selfmon instances use `pond-selfmon@.service`
+# (native, no podman).
 resource "local_file" "timer_files" {
   for_each = local.instances
 
-  filename        = "${path.module}/timers/pond@${each.key}.timer"
+  filename        = "${path.module}/timers/${lookup(each.value, "selfmon", false) ? "pond-selfmon" : "pond"}@${each.key}.timer"
   file_permission = "0644"
-  content = <<-EOT
+  content         = <<-EOT
 [Unit]
 Description=DuckPond ${each.key} (every ${each.value.interval})
 
@@ -127,7 +189,11 @@ EOT
 }
 
 resource "null_resource" "watershop" {
-  depends_on = [local_file.env_files, local_file.timer_files]
+  depends_on = [
+    local_file.env_files,
+    local_file.minio_admin_env,
+    local_file.timer_files,
+  ]
 
   connection {
     type  = "ssh"
@@ -192,28 +258,130 @@ resource "null_resource" "watershop" {
         "chmod +x ${local.base_dir}/config/scripts/*.sh",
         "chmod 600 ${local.base_dir}/env/*.env",
 
-        # Install systemd units
+        # Install systemd unit templates (container + selfmon native)
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
-        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond-selfmon@.service ${local.home}/.config/systemd/user/",
+        # Drop ONLY units whose instance name is no longer in the
+        # configured set (e.g. retired watershop-selfmon-{staging,prod}
+        # split).  Configured-but-not-deployed instances (e.g. -prod
+        # when deploy_production=false) are left alone -- toggling a
+        # deploy flag must not disturb the other tier.
+        "${local.base_dir}/config/scripts/cleanup-stale-pond-units.sh ${join(" ", local.all_configured_names)}",
+        # Reap any leaked pond containers belonging to instances we
+        # are about to (re)deploy in this apply.  `podman run --rm`
+        # detaches from systemd, so a `systemctl stop` on the .service
+        # does NOT kill the running container (cf. cloud Apr 30
+        # bandwidth bleed).  Match by image AND volume so we don't
+        # disturb containers for instances we're leaving alone.
+        join(" ; ", concat(
+          [for name in local.container_instance_names :
+            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true"
+          ],
+          [for name in local.container_instance_names :
+            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true"
+          ],
+        )),
+        # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
+        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
+        "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
-      # Reset specified instances: stop timer, remove volume
+      # Install the duckpond .deb (built natively on watershop by
+      # tools/build-on-watershop.sh).  Always installs the newest .deb
+      # in target/debian/; selfmon is local-experimental, no version
+      # pinning.  Skipped if there is no selfmon instance to run.
+      length(local.selfmon_instance_names) > 0
+      ? ["${local.base_dir}/config/scripts/install-duckpond.sh"]
+      : [],
+      # Provision per-instance metrics dir (writable by the user that
+      # runs the selfmon timer).
+      [for name in local.selfmon_instance_names :
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/duckpond-selfmon/${name}"
+      ],
+      # Sitegen output dirs served by Caddy at /selfmon/.  Owned by
+      # ${var.user} so the per-tick render writes here without sudo.
+      [for name in local.selfmon_instance_names :
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
+      ],
+      # Ensure MinIO buckets exist for all instances that have an s3_url
+      # (staging + prod, plus selfmon).  Uses the aws-cli container
+      # against localhost:9000.  `mb` returns non-zero when the bucket
+      # already exists; we check the message to distinguish that
+      # benign case from a real failure.
+      #
+      # Credentials come from the env file uploaded above
+      # (`env/_minio-admin.env`) rather than `-e KEY=${var...}` so that
+      # `var.minio_*` does NOT appear in the inline= [...] string list.
+      # Inlining a sensitive var would force terraform to mark every
+      # line of remote-exec output for this resource as "(output
+      # suppressed due to sensitive value in config)" -- an
+      # all-or-nothing per-resource gate that would also hide unrelated
+      # init / podman / sitegen lines.
+      [for bucket in local.staging_bucket_names :
+        "out=$(podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 mb s3://${bucket} --region us-east-1 2>&1) || { echo \"$out\" | grep -qE 'BucketAlreadyOwnedByYou|already exists' || { echo \"$out\" >&2; exit 1; }; }; true"
+      ],
+      # Reset specified instances.  The reset must FAIL LOUD: the only
+      # way the volume rm can refuse is if a pond/sitegen container is
+      # still using it (cf. site-prod 2026-05-02 silent reset failure
+      # caused by a 90-min sitegen container surviving the global kill
+      # earlier in this apply).  We therefore (1) disable the timer so
+      # it cannot fire mid-apply, (2) stop the service, (3) kill any
+      # container holding THIS volume, (4) rm the volume with no error
+      # suppression so terraform aborts if the kill missed something.
       [for name in var.reset_instances :
-        "systemctl --user stop pond@${name}.timer 2>/dev/null || true"
+        join(" && ", [
+          "echo '[reset] ${name}: disabling timer'",
+          "(systemctl --user disable --now pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true)",
+          "echo '[reset] ${name}: stopping service'",
+          "(systemctl --user stop pond@${name}.service pond-selfmon@${name}.service 2>/dev/null || true)",
+          "echo '[reset] ${name}: killing any container holding pond-${name}'",
+          "podman ps -aq --filter 'volume=pond-${name}' | xargs -r podman rm -f",
+          "echo '[reset] ${name}: removing volume pond-${name}'",
+          "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
+          "echo '[reset] ${name}: removing host dir'",
+          "rm -rf ${local.home}/pond-${name}",
+          # Selfmon-only: also wipe the per-pond JSONL source dir and
+          # the rendered HTML output dir.  Both are no-ops for
+          # containerized data ponds (path won't exist), but for a
+          # native selfmon reset they are required -- otherwise the
+          # next ingest tick replays old JSONL rows whose schema may
+          # not match what the current pond/sitegen code expects, and
+          # Caddy keeps serving stale HTML files (e.g. orphan
+          # status.html after a route rename) from prior runs.
+          "echo '[reset] ${name}: wiping selfmon metrics source'",
+          "rm -rf /var/log/duckpond-selfmon/${name}",
+          "echo '[reset] ${name}: wiping selfmon rendered output'",
+          "rm -rf /var/www/selfmon/${name}",
+          "echo '[reset] ${name}: done'",
+        ])
       ],
-      [for name in var.reset_instances :
-        "podman volume rm pond-${name} 2>/dev/null || true"
+      # Initialize containerized instances if not already initialized.
+      # `pond init` errors with "Pond already exists" on a populated pond;
+      # we detect that condition on the host (via the volume's mountpoint)
+      # and skip init in the no-op case.  Real init failures still surface.
+      [for name in local.container_instance_names :
+        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init; fi"
       ],
-      # Initialize and apply config for each instance
-      [for name in local.instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} init 2>/dev/null || true"
-      ],
-      [for name in local.instance_names :
+      # Apply containerized instance configs
+      [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
       ],
-      # Enable and start all timers
-      [for name in local.instance_names :
+      # Initialize selfmon instances natively (POND comes from env file).
+      # Same idempotent pattern as containerized instances above.
+      [for name in local.selfmon_instance_names :
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init; fi"
+      ],
+      # Apply selfmon configs natively
+      [for name in local.selfmon_instance_names :
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond apply -f ${local.base_dir}/config/${name}.yaml"
+      ],
+      # Enable and start container timers
+      [for name in local.container_instance_names :
         "systemctl --user enable --now pond@${name}.timer"
+      ],
+      # Enable and start selfmon timers
+      [for name in local.selfmon_instance_names :
+        "systemctl --user enable --now pond-selfmon@${name}.timer"
       ],
     )
   }
@@ -226,6 +394,7 @@ resource "null_resource" "watershop" {
 
   provisioner "remote-exec" {
     inline = [
+      "sudo install -d -o caddy -g caddy -m 0755 /var/log/caddy",
       "sudo install -o root -g root -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile",
       "rm /tmp/Caddyfile",
       "sudo caddy validate --config /etc/caddy/Caddyfile",

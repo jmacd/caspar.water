@@ -20,10 +20,19 @@ exporters:
     org: "casparwater"
     bucket: "production"
     token: "${INFLUXD_TOKEN}"
+  # NOTE: write directly to the NFS mount path; do NOT route through
+  # the /home/data symlink.  When the NFS mount drops, lumberjack's
+  # MkdirAll on the symlinked parent returns EEXIST (the symlink
+  # itself exists but the target is gone), which it treats as a
+  # permanent config error -- the exporter then rejects every batch
+  # silently.  Pointing at the real path lets MkdirAll fail with a
+  # transient filesystem error instead, and `RequiresMountsFor=` on
+  # the unit prevents the collector from running at all without the
+  # mount.  See gateway-collector outage 2026-04-26 for context.
   jsonfile:
-    path: "/home/data/casparwater.json"
+    path: "/home/system/water/archive/data/casparwater.json"
   jsonfile/logs:
-    path: "/home/data/systemlogs.json"
+    path: "/home/system/water/archive/data/systemlogs.json"
 
 service:
   pipelines:

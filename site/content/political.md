@@ -5,38 +5,6 @@ layout: page
 section: Main
 ---
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Political
 
 Caspar Water System is regulated by a number of public agencies,

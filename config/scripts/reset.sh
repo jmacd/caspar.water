@@ -14,12 +14,13 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-# Find the pond binary
+# Find the pond binary.  Use POND_BIN (not POND) because the env files
+# sourced below set POND=<pond data dir> and would clobber it.
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "${SCRIPTS}/../.." && pwd)
-POND="${REPO_ROOT}/duckpond/target/release/pond"
+POND_BIN="${REPO_ROOT}/duckpond/target/release/pond"
 
-if [ ! -x "${POND}" ]; then
+if [ ! -x "${POND_BIN}" ]; then
     echo "Building pond..."
     (cd "${REPO_ROOT}/duckpond" && cargo build --release -p cmd)
 fi
@@ -44,7 +45,7 @@ for ENV_FILE in "$@"; do
         ALLOW_HTTP_FLAG="--allow-http"
     fi
 
-    "${POND}" emergency erase-bucket "${S3_URL}" \
+    "${POND_BIN}" emergency erase-bucket "${S3_URL}" \
         --endpoint "${S3_ENDPOINT}" \
         --region "${S3_REGION}" \
         --access-key "${S3_ACCESS_KEY}" \

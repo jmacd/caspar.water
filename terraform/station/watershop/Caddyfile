@@ -3,7 +3,28 @@
 # Serves the site-staging build directly at the vhost root.
 
 http://watershop.casparwater.us, http://:80 {
+	# Selfmon dashboard rendered each tick by the watershop-selfmon
+	# pond into /var/www/selfmon/watershop-selfmon/.  handle_path
+	# strips /selfmon so sitegen's base_url=/selfmon/ links resolve.
+	# Selfmon is local-experimental (staging-only), tied to this host.
+	handle_path /selfmon/* {
+		root * /var/www/selfmon/watershop-selfmon
+		file_server
+		encode zstd gzip
+	}
+
 	root * /home/jmacd/duckpond/www/site-staging/current
+
+	# Webserver-style JSON access log to a rolling file under
+	# /var/log/caddy/. Read by the watershop-selfmon pond's
+	# logfile-ingest factory (jsonlogs:// reader).
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100MiB
+			roll_keep 10
+		}
+		format json
+	}
 
 	file_server {
 		precompressed br gzip

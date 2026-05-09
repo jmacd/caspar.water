@@ -1,0 +1,15 @@
+[Unit]
+Description=DuckPond self-monitoring %i (native)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+MemoryAccounting=yes
+# Delta-Lake's _delta_log/ accumulates one JSON per transaction; with
+# ~25 commits/min and no compaction yet, we routinely have thousands
+# of small files open during backup/scan.  Bump the per-process limit
+# well above the default 1024 so we can keep growing while we measure.
+LimitNOFILE=65536
+ExecStart=/home/jmacd/duckpond/config/scripts/run-selfmon.sh %i
+Environment=HOME=/home/jmacd
