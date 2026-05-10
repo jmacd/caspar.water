@@ -116,13 +116,14 @@ terraform apply -var 'reset_instances=["water-staging"]'
 
 | Instance | Type | Timer interval | S3 bucket |
 |----------|------|---------------|-----------|
-| water-staging | water | 10min | s3://water-staging |
-| noyo-staging | noyo | 30min | s3://noyo-staging |
-| septic-staging | septic | 10min | s3://septic-staging |
-| site-staging | site | 15min | (no backup) |
-| water-prod | water | 10min | s3://water-pond |
-| noyo-prod | noyo | 30min | s3://noyo-pond |
-| septic-prod | septic | 10min | s3://septic-pond |
+| water-staging | water | 1h | s3://water-staging |
+| noyo-staging | noyo | 1h | s3://noyo-staging |
+| septic-staging | septic | 1h | s3://septic-staging |
+| site-staging | site | 3h | (no backup) |
+| water-prod | water | 1h | s3://water-pond |
+| noyo-prod | noyo | 1h | s3://noyo-pond |
+| septic-prod | septic | 1h | s3://septic-pond |
+| site-prod | site | 3h | (no backup) |
 
 ### Diagnostics
 
