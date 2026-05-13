@@ -27,56 +27,56 @@ locals {
     noyo-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://noyo-staging"
-      interval   = "30min"
+      interval   = "1h"
       boot_delay = "5min"
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
       s3         = local.staging_s3
       s3_url     = "s3://noyo-pond"
-      interval   = "30min"
+      interval   = "1h"
       boot_delay = "6min"
       extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/"
     }
     water-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://water-staging"
-      interval   = "10min"
+      interval   = "1h"
       boot_delay = "2min"
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
       s3         = local.staging_s3
       s3_url     = "s3://water-pond"
-      interval   = "10min"
+      interval   = "1h"
       boot_delay = "3min"
       extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     septic-staging = {
       s3         = local.staging_s3
       s3_url     = "s3://septic-staging"
-      interval   = "10min"
+      interval   = "1h"
       boot_delay = "4min"
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
       s3         = local.staging_s3
       s3_url     = "s3://septic-pond"
-      interval   = "10min"
+      interval   = "1h"
       boot_delay = "5min"
       extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     site-staging = {
       s3         = local.staging_s3
       s3_url     = ""
-      interval   = "15min"
+      interval   = "3h"
       boot_delay = "7min"
       extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
       s3         = local.staging_s3
       s3_url     = ""
-      interval   = "15min"
+      interval   = "3h"
       boot_delay = "8min"
       extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }

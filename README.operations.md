@@ -112,17 +112,69 @@ cd terraform/station/watershop
 terraform apply -var 'reset_instances=["water-staging"]'
 ```
 
+### Full clean reset (recover from stale data, watermark drift, or phantom partitions)
+
+Site-* instances aggregate from producer ponds via S3 import. Two known
+duckpond bugs cause site-* to gradually mask producer data:
+
+1. The cross-pond import watermark is computed as `max()` across all imported
+   partitions instead of per-partition. Slower-growing producers
+   (water/noyo) get masked when faster ones (septic) advance their `txn_seq`
+   past them.
+2. After a producer-pond reset, the old pond's partition UUIDs persist in the
+   S3 bucket as "phantom" partitions. Site-* discovers them on next pull and
+   their stale watermarks pollute the `max()` calculation indefinitely.
+
+The reliable recovery is to wipe **all** producer S3 buckets and reset **all**
+prod ponds together, so every producer restarts at `txn_seq = 1` in lockstep.
+With identical 1h intervals they drift only ~24 txns/day against each other
+-- well below any practical masking threshold for at least a week.
+
+```bash
+# 1. Erase prod producer S3 buckets (clears phantom partition UUIDs).
+config/scripts/reset.sh \
+    terraform/station/watershop/env/water-prod.env \
+    terraform/station/watershop/env/noyo-prod.env \
+    terraform/station/watershop/env/septic-prod.env
+
+# 2. Wipe all four prod volumes and re-init (terraform).
+cd terraform/station/watershop
+terraform apply -var deploy_production=true \
+    -var 'reset_instances=["water-prod","noyo-prod","septic-prod","site-prod"]'
+
+# 3. Workaround for duckpond bug: terraform's idempotent-init skips
+#    `pond apply` for site-prod after the reset, leaving the pond
+#    initialized but with no factories.  Apply manually:
+ssh watershop.casparwater.us '/home/jmacd/duckpond/config/scripts/pond.sh \
+    site-prod apply -f /config/site.yaml'
+
+# 4. Workaround for duckpond bug: noyo-prod's first hydrovu collect from
+#    a fresh pond often fails with API timeout (asks for all history at
+#    startTime=0).  Retry once if it failed:
+ssh watershop.casparwater.us 'systemctl --user start pond@noyo-prod.service'
+
+# 5. Optionally trigger site-prod immediately instead of waiting up to 3h:
+ssh watershop.casparwater.us 'systemctl --user start pond@site-prod.service'
+```
+
+Total time to fresh data on cloud: ~10 min (bucket wipe + terraform) +
+~1 min producer first ingest + ~10 min site-prod pull/build/rsync.
+
+The same recipe works for staging: substitute `-staging` for `-prod`
+throughout, and drop `-var deploy_production=true`.
+
 ### Instances
 
 | Instance | Type | Timer interval | S3 bucket |
 |----------|------|---------------|-----------|
-| water-staging | water | 10min | s3://water-staging |
-| noyo-staging | noyo | 30min | s3://noyo-staging |
-| septic-staging | septic | 10min | s3://septic-staging |
-| site-staging | site | 15min | (no backup) |
-| water-prod | water | 10min | s3://water-pond |
-| noyo-prod | noyo | 30min | s3://noyo-pond |
-| septic-prod | septic | 10min | s3://septic-pond |
+| water-staging | water | 1h | s3://water-staging |
+| noyo-staging | noyo | 1h | s3://noyo-staging |
+| septic-staging | septic | 1h | s3://septic-staging |
+| site-staging | site | 3h | (no backup) |
+| water-prod | water | 1h | s3://water-pond |
+| noyo-prod | noyo | 1h | s3://noyo-pond |
+| septic-prod | septic | 1h | s3://septic-pond |
+| site-prod | site | 3h | (no backup) |
 
 ### Diagnostics
 
