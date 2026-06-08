@@ -33,7 +33,8 @@ Gateway (linux.local)             Cloud (Linode / casparwater.us)
 | `terraform/station/gateway/` | Gateway provisioning (collector + duckpond water/noyo) |
 | `terraform/station/cloud/` | Cloud provisioning (cross-pond sitegen + nginx) |
 | `terraform/station/staging/` | Pre-release staging on watershop |
-| `sparkplug/`, `measure/`, `otlp/`, `model/`, `storage/`, `display/` | Go packages |
+| `opentelemetry-mqtt-sparkplug/` | Git submodule providing the MQTT Sparkplug-B receiver |
+| `measure/`, `model/`, `storage/`, `display/` | Go packages |
 
 ## Components
 

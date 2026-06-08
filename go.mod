@@ -4,11 +4,8 @@ go 1.24.0
 
 require (
 	github.com/Rhymond/go-money v1.0.10
-	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jmacd/maroto v0.0.0-20230617070925-955e5cabca9e
-	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/mochi-co/mqtt v1.3.2
 	github.com/prometheus-community/pro-bing v0.4.0
 	github.com/simonvetter/modbus v1.6.3
 	github.com/spf13/afero v1.10.0
@@ -17,7 +14,6 @@ require (
 	go.bug.st/serial v1.6.4
 	go.opentelemetry.io/collector/component v1.49.0
 	go.opentelemetry.io/collector/config/confighttp v0.143.0
-	go.opentelemetry.io/collector/config/confignet v1.49.0
 	go.opentelemetry.io/collector/config/configopaque v1.49.0
 	go.opentelemetry.io/collector/config/configoptional v1.49.0
 	go.opentelemetry.io/collector/config/configretry v1.49.0
@@ -66,7 +62,6 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -83,7 +78,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.23 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rs/cors v1.11.1 // indirect
-	github.com/rs/xid v1.4.0 // indirect
 	github.com/ruudk/golang-pdf417 v0.0.0-20201230142125-a7e3863a1245 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
