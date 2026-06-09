@@ -2,25 +2,25 @@ flowchart LR
   %% --- Sensors -------------------------------------------------------
   subgraph SENSORS["Sensors (analog 4-20 mA + Atlas pH probe)"]
     direction TB
-    S1["Well depth<br/>4–20 mA"]
-    S2["System pressure<br/>4–20 mA"]
-    S3["Chlorine tank level<br/>4–20 mA"]
-    S4["Concrete tank level<br/>4–20 mA"]
-    S5["pH probe<br/>(Atlas Scientific, in-tank)"]
+    S1["Well depth<br/>In-Situ"]
+    S2["System pressure<br/>Dwyer"]
+    S3["Chlorine tank level<br/>Banner"]
+    S4["Concrete tank level<br/>Dwyer"]
+    S5["pH probe<br/>Atlas Scientific"]
   end
 
   %% --- Pumphouse LAN ------------------------------------------------
-  subgraph PUMP["Pumphouse  (LAN 192.168.80.0/24)"]
+  subgraph PUMP["Pumphouse"]
     direction TB
-    COTS["COTS MQTT–Sparkplug device<br/>(4 × current-loop inputs)"]
-    BBB["BeagleBone Black Industrial<br/>pumphouse  192.168.80.60"]
+    COTS["MQTT–Sparkplug device"]
+    BBB["BeagleBone Black industrial"]
 
-    subgraph BBBCOL["OTel Collector (collector.bbb)"]
+    subgraph BBBCOL["OpenTelemetry Collector"]
       direction TB
-      MQTT["self-hosted MQTT broker :1883<br/>host_id = waterco"]
+      MQTT["self-hosted MQTT broker"]
       RX1["sparkplug receiver"]
       RX2["atlasph receiver"]
-      EX1["otelarrow exporter<br/>→ 192.168.80.40:4317"]
+      EX1["otelarrow exporter"]
       MQTT --> RX1
       RX1 --> EX1
       RX2 --> EX1
@@ -34,40 +34,37 @@ flowchart LR
   S5 -- "I²C / UART" --> RX2
 
   %% --- Gateway ------------------------------------------------------
-  subgraph GW["Gateway  (LAN 192.168.80.40, more powerful host + storage)"]
+  subgraph GW["Gateway"]
     direction TB
-    subgraph GWCOL["OTel Collector"]
+    subgraph GWCOL["OpenTelemetry Collector"]
       direction TB
-      GRX1["otelarrow receiver :4317"]
-      GRX2["prometheus receiver<br/>scrapes pumphouse:8888"]
-      GEX1["jsonfile exporter<br/>casparwater.json"]
-      GEX2["jsonfile/logs exporter<br/>systemlogs.json"]
-      GEX3["influxdb exporter<br/>→ influx.casparwater.us"]
+      GRX1["otelarrow receiver"]
+      GRX2["prometheus receiver"]
+      GEX1["jsonfile exporter"]
+      GEX2["influxdb exporter"]
       GRX1 --> GEX1
-      GRX1 --> GEX3
+      GRX1 --> GEX2
       GRX2 --> GEX1
-      GRX2 --> GEX3
-      GRX1 -. logs .-> GEX2
+      GRX2 --> GEX2
     end
 
-    NFS[("NFS-mounted storage<br/>/home/system/water/archive/data/<br/>RequiresMountsFor=/home/system")]
+    NFS[("NFS-mounted storage")]
     GEX1 --> NFS
-    GEX2 --> NFS
   end
 
-  EX1 == "OTLP Arrow / gRPC<br/>(LAN, plaintext)" ==> GRX1
+  EX1 == "OpenTelemetry-Arrow Protocol" ==> GRX1
 
   %% --- Internet boundary -------------------------------------------
-  GEX3 == "HTTPS :443<br/>InfluxDB v2 write API" ==> CADDY
+  GEX2 == "HTTPS :443<br/>InfluxDB v2 write API" ==> CADDY
 
   %% --- Cloud --------------------------------------------------------
-  subgraph CLOUD["Cloud  (Linode Debian 12, 173.255.212.226)"]
+  subgraph CLOUD["Cloud (Linode)"]
     direction TB
-    CADDY["Caddy<br/>:80 / :443<br/>Let's Encrypt ACME"]
-    INFLUX["InfluxDB v2.7<br/>127.0.0.1:8087 (plaintext, loopback)"]
-    HUGO["Hugo site<br/>/home/jmacd/duckpond/www/current"]
+    CADDY["Caddy<br/>Let's Encrypt ACME"]
+    INFLUX["InfluxDB v2.x"]
+    SSG["Static site"]
 
-    CADDY -- "casparwater.us" --> HUGO
+    CADDY -- "casparwater.us" --> SSG
     CADDY -- "influx.casparwater.us<br/>reverse_proxy" --> INFLUX
   end
 
@@ -80,6 +77,6 @@ flowchart LR
   classDef store  fill:#eaffea,stroke:#2f855a,color:#000
   classDef edge   fill:#f5f5f5,stroke:#666,color:#000
   class S1,S2,S3,S4,S5 sensor
-  class COTS,BBB,MQTT,RX1,RX2,EX1,GRX1,GRX2,GEX1,GEX2,GEX3,CADDY,INFLUX,HUGO node
+  class COTS,BBB,MQTT,RX1,RX2,EX1,GRX1,GRX2,GEX1,GEX2,CADDY,INFLUX,SSG node
   class NFS store
   class OPS edge
