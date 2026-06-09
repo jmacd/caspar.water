@@ -27,18 +27,38 @@ type bme280Receiver struct {
 // newBme280Receiver just creates the OpenTelemetry receiver services. It is the caller's
 // responsibility to invoke the respective Start*Reception methods as well
 // as the various Stop*Reception methods to end it.
+//
+// Device-open errors are logged but do NOT fail receiver construction.
+// The sensor can be missing, disconnected, or unpowered at startup
+// (BME280 over I2C is physically optional hardware); the receiver
+// keeps polling and tries to (re-)open the device on every tick.
+// Once the sensor comes back, measurements resume automatically.
 func newBme280Receiver(cfg *Config, set receiver.Settings, nextConsumer consumer.Metrics) (*bme280Receiver, error) {
-	bme, err := New(cfg.Device, int(cfg.I2CAddr), UltraHighAccuracy)
-	if err != nil {
-		return nil, err
-	}
 	r := &bme280Receiver{
 		cfg:          cfg,
 		settings:     set,
 		nextConsumer: nextConsumer,
-		bme:          bme,
+	}
+	if err := r.openDevice(); err != nil {
+		set.TelemetrySettings.Logger.Warn("bme280 device unavailable at startup; will keep retrying",
+			zap.String("device", cfg.Device),
+			zap.Int("i2c_addr", int(cfg.I2CAddr)),
+			zap.Error(err))
 	}
 	return r, nil
+}
+
+// openDevice attempts to (re-)initialize the underlying BME280 handle.
+// Safe to call repeatedly; on success r.bme is non-nil, on failure r.bme
+// is left nil and the caller should log/skip.
+func (r *bme280Receiver) openDevice() error {
+	bme, err := New(r.cfg.Device, int(r.cfg.I2CAddr), UltraHighAccuracy)
+	if err != nil {
+		r.bme = nil
+		return err
+	}
+	r.bme = bme
+	return nil
 }
 
 // Start runs.
@@ -70,10 +90,24 @@ func (r *bme280Receiver) run(ctx context.Context) {
 }
 
 func (r *bme280Receiver) measure() {
+	if r.bme == nil {
+		if err := r.openDevice(); err != nil {
+			r.settings.TelemetrySettings.Logger.Debug("bme280 still unavailable, skipping measurement",
+				zap.String("device", r.cfg.Device),
+				zap.Error(err))
+			return
+		}
+		r.settings.TelemetrySettings.Logger.Info("bme280 device opened",
+			zap.String("device", r.cfg.Device))
+	}
+
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	data, err := r.bme.Read()
 	if err != nil {
 		r.settings.TelemetrySettings.Logger.Error("read bme280 device", zap.String("device", r.cfg.Device), zap.Error(err))
+		// Drop the handle so the next tick re-opens; the bus may have hot-unplugged.
+		_ = r.bme.Close()
+		r.bme = nil
 		return
 	}
 
