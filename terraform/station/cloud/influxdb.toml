@@ -1,24 +1,18 @@
-# Note the paths in this file are relative to the mount point configured via
-# nomad.  They map to /opt/influxdb and /etc/caspar.d/influxdb.
+# InfluxDB v2 configuration.  Loaded via INFLUXD_CONFIG_PATH set in
+# /etc/default/influxdb2; the path is /etc/influxdb/config.toml.
+#
+# TLS is terminated by Caddy on https://influx.casparwater.us, which
+# reverse-proxies to this loopback listener.  The old per-influxd TLS
+# certs (/etc/influxdb/casparwater_us.{pem,key}, and the
+# casparwater_certs/ tree in this module) are no longer in the data
+# path and can be removed.
+http-bind-address = "127.0.0.1:8087"
+
 query-concurrency = 1
 query-queue-size = 1
 session-length = 1200000
 
-# To update these is a headache.  Extract the p7b file from
-# the downloaded .zip, convert it to a .pem file and install it
-# for the server below.
-#
-# Also, add the root certificate (first ceritifcate, copied from
-# to a file named casparwater_us.crt in /usr/share/ca-certificates)
-# then run dpkg-reconfigure ca-certificates.
-#
-# If lucky, the new .pem can be verified, `openssl verify <file>.pem`
-#
-# And, don't use a passphrase.
-tls-cert = "/etc/influxdb/casparwater_us.pem"
-tls-key = "/etc/influxdb/casparwater_us.key"
-
-# This can be "debug"
+# Set to "debug" for verbose troubleshooting.
 log-level = "info"
 
 hardening-enabled = true

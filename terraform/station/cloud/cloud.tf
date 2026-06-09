@@ -22,11 +22,13 @@ locals {
   ssh_key  = pathexpand("~/.ssh/id_rsa")
 
   # Source files in this module, paired with the absolute destination on the host.
-  caddyfile_src  = "${path.module}/Caddyfile"
-  caddyfile_dst  = "/etc/caddy/Caddyfile"
-  deploy_key_src = "${path.module}/../watershop/deploy_key.pub"
-  setup_src      = "${path.module}/setup_script.sh"
-  teardown_src   = "${path.module}/teardown_script.sh"
+  caddyfile_src       = "${path.module}/Caddyfile"
+  caddyfile_dst       = "/etc/caddy/Caddyfile"
+  influxdb_config_src = "${path.module}/influxdb.toml"
+  influxdb_config_dst = "/etc/influxdb/config.toml"
+  deploy_key_src      = "${path.module}/../watershop/deploy_key.pub"
+  setup_src           = "${path.module}/setup_script.sh"
+  teardown_src        = "${path.module}/teardown_script.sh"
 
   host = tolist(linode_instance.debian12-us-west.ipv4)[0]
 }
@@ -155,16 +157,58 @@ resource "null_resource" "system_setup" {
   }
 }
 
+# Uploads /etc/influxdb/config.toml.  Backs up the live file before
+# overwriting so a manual rollback is one cp away.  Re-runs only when
+# the influxdb.toml content changes.
+resource "null_resource" "influxdb_config" {
+  triggers = {
+    config_hash = filesha256(local.influxdb_config_src)
+    host_id     = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [null_resource.system_setup]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
+  # cp -n keeps the first backup from being overwritten by later applies.
+  provisioner "remote-exec" {
+    inline = [
+      "cp -n ${local.influxdb_config_dst} ${local.influxdb_config_dst}.pre-caddy-terminated || true",
+    ]
+  }
+
+  provisioner "file" {
+    source      = local.influxdb_config_src
+    destination = local.influxdb_config_dst
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "systemctl restart influxdb",
+    ]
+  }
+}
+
 # Uploads /etc/caddy/Caddyfile.  Validates before reload to avoid breaking
 # the apex site; reload-or-restart handles the case where teardown stopped
-# caddy.  Re-runs only when the Caddyfile content changes.
+# caddy.  Re-runs only when the Caddyfile content changes.  Ordered AFTER
+# influxdb_config so a Phase 2-style apply (where both files change) brings
+# InfluxDB to its new port before Caddy retargets its upstream.
 resource "null_resource" "caddyfile" {
   triggers = {
     caddyfile_hash = filesha256(local.caddyfile_src)
     host_id        = linode_instance.debian12-us-west.id
   }
 
-  depends_on = [null_resource.system_setup]
+  depends_on = [
+    null_resource.system_setup,
+    null_resource.influxdb_config,
+  ]
 
   connection {
     type        = "ssh"

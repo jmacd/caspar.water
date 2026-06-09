@@ -14,15 +14,10 @@ casparwater.us {
 	encode zstd gzip
 }
 
-# Phase 1 of the InfluxDB TLS-termination migration: terminate TLS at
-# Caddy and proxy to InfluxDB's existing HTTPS listener on loopback.
-# Once all clients are migrated to this hostname, Phase 2 will switch
-# InfluxDB to plaintext on 127.0.0.1:8087 and drop tls_insecure_skip_verify.
+# InfluxDB v2 listens on plaintext 127.0.0.1:8087; Caddy terminates TLS
+# with a Let's Encrypt cert and reverse-proxies here.  See
+# terraform/station/cloud/influxdb.toml for the matching bind address.
 influx.casparwater.us {
-	reverse_proxy https://127.0.0.1:8086 {
-		transport http {
-			tls_insecure_skip_verify
-		}
-	}
+	reverse_proxy http://127.0.0.1:8087
 	encode zstd gzip
 }
