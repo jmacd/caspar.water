@@ -27,3 +27,16 @@ The aeration process works by removing carbon dioxide from the water through nat
 As CO₂ is removed, fewer hydrogen ions (H⁺) are present, effectively raising the water's pH level. Our water is served with pH measuring around 6.8.
 
 In winter months, we serve approximately 800 gallons per day. In summer months, we serve approximately 2,000 gallons per day.
+
+## Telemetry
+
+Five instruments report into our [monitoring](./monitoring.html) pipeline:
+four 4–20 mA current loops (well depth, system pressure, chlorine tank
+level, concrete tank level) feed a COTS MQTT–Sparkplug device, and an
+Atlas Scientific pH probe is read directly by a BeagleBone Black
+Industrial in the pumphouse. An OpenTelemetry Collector on the BBB
+forwards the merged stream over OTel Arrow to the gateway, which
+archives JSON to attached storage and forwards to a cloud InfluxDB
+behind a Caddy TLS proxy at `influx.casparwater.us`.
+
+{{ figure src="./img/telemetry-system.svg" caption="Caspar Water telemetry data flow: sensors → pumphouse BBB → gateway → cloud InfluxDB." /}}
