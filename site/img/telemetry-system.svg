@@ -1,8 +1,8 @@
-<svg viewBox="0 0 1240 660" xmlns="http://www.w3.org/2000/svg"
+<svg viewBox="0 0 1240 780" xmlns="http://www.w3.org/2000/svg"
      role="img" aria-labelledby="t d"
      font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <title id="t">Caspar Water telemetry system</title>
-  <desc id="d">Three sites and two OpenTelemetry collectors. A pumphouse collector with 1 i²c sensor and 4 4-20 mA sensors via an MQTT/Sparkplug device sends OTel Arrow over a low-bandwidth radio link to a gateway collector, which records JSON logs (consumed by a static site generator) and forwards live data over HTTPS to an InfluxDB on the same cloud machine that serves the public portal.</desc>
+  <desc id="d">Three sites and two OpenTelemetry collectors. A pump-house collector with one i²c pH sensor (Atlas) and four 4-20 mA sensors via an MQTT/Sparkplug device sends OTel Arrow over a low-bandwidth radio link to a gateway collector, which records JSON logs (consumed by a static site generator) and forwards live data over HTTPS to an InfluxDB on the same cloud machine that serves the public portal.</desc>
 
   <defs>
     <style>
@@ -11,9 +11,9 @@
       .node-title { font-size: 12px; font-weight: 500; fill: #1e293b; }
       .node-big   { font-size: 14px; font-weight: 600; fill: #1e293b; }
       .node-sub   { font-size: 10px; fill: #64748b; }
-      .col-title  { font-size: 12px; font-weight: 500; fill: #ffffff; }
-      .col-big    { font-size: 15px; font-weight: 600; fill: #ffffff; letter-spacing: 0.02em; }
-      .edge-label { font-size: 11px; fill: #475569; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+      .col-title  { font-size: 14px; font-weight: 500; fill: #ffffff; letter-spacing: 0.02em; }
+      .col-big    { font-size: 22px; font-weight: 700; fill: #ffffff; letter-spacing: 0.04em; }
+      .edge-label        { font-size: 11px; fill: #475569; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
       .edge-label-strong { font-size: 12.5px; font-weight: 600; fill: #0c4a6e; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
       .edge-label-sub    { font-size: 10.5px; fill: #475569; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
       .edge        { stroke: #64748b; stroke-width: 1.4; fill: none; }
@@ -44,9 +44,9 @@
   <!-- ============================================================
        Three site containers
        ============================================================ -->
-  <rect class="site" x="40"  y="108" width="290" height="472" rx="10"/>
-  <rect class="site" x="470" y="108" width="290" height="472" rx="10"/>
-  <rect class="site" x="830" y="108" width="370" height="472" rx="10"/>
+  <rect class="site" x="40"  y="108" width="290" height="600" rx="10"/>
+  <rect class="site" x="470" y="108" width="290" height="600" rx="10"/>
+  <rect class="site" x="830" y="108" width="370" height="600" rx="10"/>
 
   <!-- Site titles (above the boxes) -->
   <text class="site-title" x="185"  y="88" text-anchor="middle">PUMPHOUSE</text>
@@ -54,12 +54,12 @@
   <text class="site-title" x="1015" y="88" text-anchor="middle">CLOUD</text>
 
   <!-- Site sub-headers (inside, top) -->
-  <text class="site-sub" x="185"  y="130" text-anchor="middle">field site</text>
+  <text class="site-sub" x="185"  y="130" text-anchor="middle">pump house</text>
   <text class="site-sub" x="615"  y="130" text-anchor="middle">field site · attached storage</text>
   <text class="site-sub" x="1015" y="130" text-anchor="middle">single Linode VM</text>
 
   <!-- ============================================================
-       INTRA-SITE edges (drawn before nodes so node fills mask)
+       INTRA-SITE edges
        ============================================================ -->
 
   <!-- Pumphouse: 4 sensors -> MQTT/Sparkplug (short horizontals) -->
@@ -69,13 +69,13 @@
   <path class="edge" d="M 190 270 H 205" marker-end="url(#arr)"/>
 
   <!-- Pumphouse: MQTT/Sparkplug -> Collector -->
-  <path class="edge" d="M 260 285 V 320 H 188 V 345" marker-end="url(#arr)"/>
+  <path class="edge" d="M 260 285 V 350 H 185 V 400" marker-end="url(#arr)"/>
 
   <!-- Pumphouse: pH probe -> Collector (i²c) -->
-  <path class="edge" d="M 190 460 V 418" marker-end="url(#arr)"/>
+  <path class="edge" d="M 190 620 V 560" marker-end="url(#arr)"/>
 
   <!-- Gateway: Collector -> JSON archive (writes) -->
-  <path class="edge" d="M 615 345 V 232" marker-end="url(#arr)"/>
+  <path class="edge" d="M 615 400 V 260" marker-end="url(#arr)"/>
 
   <!-- ============================================================
        INTER-SITE edges
@@ -83,35 +83,35 @@
 
   <!-- Radio link: pumphouse collector -> gateway collector (wavy) -->
   <path class="edge-radio"
-        d="M 315 380 H 330 q 10 -10 20 0 t 20 0 t 20 0 t 20 0 t 20 0 t 20 0 t 20 0 H 485"
+        d="M 320 480 H 340 q 10 -10 20 0 t 20 0 t 20 0 t 20 0 t 20 0 t 20 0 H 480"
         marker-end="url(#arr-s)"/>
 
   <!-- HTTPS write: gateway collector -> cloud InfluxDB -->
-  <path class="edge-strong" d="M 740 380 H 875" marker-end="url(#arr-s)"/>
+  <path class="edge-strong" d="M 750 480 H 875" marker-end="url(#arr-s)"/>
 
   <!-- Static site generator: gateway JSON archive -> cloud Public Portal -->
-  <path class="edge-dash"   d="M 705 195 H 875" marker-end="url(#arr-d)"/>
+  <path class="edge-dash"   d="M 725 220 H 855" marker-end="url(#arr-d)"/>
 
   <!-- Operators -> Cloud (HTTPS) -->
-  <path class="edge" d="M 1040 605 V 580" marker-end="url(#arr)"/>
+  <path class="edge" d="M 1040 720 V 708" marker-end="url(#arr)"/>
 
   <!-- ============================================================
-       Nodes (sensors, devices, collectors, stores, actor)
+       Nodes
        ============================================================ -->
 
-  <!-- Pumphouse: 4 × 4-20 mA sensors -->
+  <!-- Pumphouse: 4 × 4-20 mA sensors (short labels) -->
   <g>
     <rect class="sensor" x="60" y="150" width="130" height="30" rx="5"/>
-    <text class="node-title" x="125" y="170" text-anchor="middle">Well depth · In-Situ</text>
+    <text class="node-title" x="125" y="170" text-anchor="middle">Depth</text>
 
     <rect class="sensor" x="60" y="185" width="130" height="30" rx="5"/>
-    <text class="node-title" x="125" y="205" text-anchor="middle">Pressure · Dwyer</text>
+    <text class="node-title" x="125" y="205" text-anchor="middle">Pressure</text>
 
     <rect class="sensor" x="60" y="220" width="130" height="30" rx="5"/>
-    <text class="node-title" x="125" y="240" text-anchor="middle">Chlorine · Banner</text>
+    <text class="node-title" x="125" y="240" text-anchor="middle">Chlorine</text>
 
     <rect class="sensor" x="60" y="255" width="130" height="30" rx="5"/>
-    <text class="node-title" x="125" y="275" text-anchor="middle">Tank level · Dwyer</text>
+    <text class="node-title" x="125" y="275" text-anchor="middle">Level</text>
   </g>
 
   <!-- Pumphouse: MQTT/Sparkplug device -->
@@ -120,70 +120,70 @@
   <text class="node-big" x="260" y="237" text-anchor="middle">Sparkplug</text>
   <text class="node-sub" x="260" y="259" text-anchor="middle">COTS device</text>
 
-  <!-- Pumphouse: OTel Collector (THE STAR #1) -->
-  <rect class="collector" x="60" y="345" width="255" height="70" rx="8"/>
-  <text class="col-title" x="187" y="373" text-anchor="middle">OpenTelemetry</text>
-  <text class="col-big"   x="187" y="395" text-anchor="middle">Collector</text>
+  <!-- Pumphouse: OTel Collector (THE STAR #1) — largest box in pumphouse -->
+  <rect class="collector" x="50" y="400" width="270" height="160" rx="10"/>
+  <text class="col-title" x="185" y="468" text-anchor="middle">OpenTelemetry</text>
+  <text class="col-big"   x="185" y="500" text-anchor="middle">Collector</text>
 
   <!-- Pumphouse: pH probe (i²c) -->
-  <rect class="sensor" x="120" y="460" width="140" height="42" rx="6"/>
-  <text class="node-title" x="190" y="478" text-anchor="middle">pH probe</text>
-  <text class="node-sub"   x="190" y="493" text-anchor="middle">Atlas Scientific</text>
+  <rect class="sensor" x="120" y="620" width="140" height="42" rx="6"/>
+  <text class="node-title" x="190" y="638" text-anchor="middle">pH</text>
+  <text class="node-sub"   x="190" y="653" text-anchor="middle">Atlas</text>
 
-  <!-- Gateway: JSON archive (paper-like card) -->
-  <rect class="archive" x="525" y="160" width="180" height="72" rx="6"/>
-  <text class="node-big" x="615" y="190" text-anchor="middle">JSON archive</text>
-  <text class="node-sub" x="615" y="208" text-anchor="middle">consumed by</text>
-  <text class="node-sub" x="615" y="221" text-anchor="middle">static site generator</text>
+  <!-- Gateway: JSON archive -->
+  <rect class="archive" x="505" y="180" width="220" height="80" rx="6"/>
+  <text class="node-big" x="615" y="212" text-anchor="middle">JSON archive</text>
+  <text class="node-sub" x="615" y="232" text-anchor="middle">consumed by</text>
+  <text class="node-sub" x="615" y="246" text-anchor="middle">static site generator</text>
 
-  <!-- Gateway: OTel Collector (THE STAR #2) -->
-  <rect class="collector" x="485" y="345" width="255" height="70" rx="8"/>
-  <text class="col-title" x="612" y="373" text-anchor="middle">OpenTelemetry</text>
-  <text class="col-big"   x="612" y="395" text-anchor="middle">Collector</text>
+  <!-- Gateway: OTel Collector (THE STAR #2) — largest box in gateway -->
+  <rect class="collector" x="480" y="400" width="270" height="160" rx="10"/>
+  <text class="col-title" x="615" y="468" text-anchor="middle">OpenTelemetry</text>
+  <text class="col-big"   x="615" y="500" text-anchor="middle">Collector</text>
 
-  <!-- Cloud: Public Portal (top) -->
-  <rect class="portal" x="875" y="160" width="280" height="72" rx="6"/>
-  <text class="node-big" x="1015" y="190" text-anchor="middle">Public Portal</text>
-  <text class="node-sub" x="1015" y="208" text-anchor="middle">casparwater.us</text>
-  <text class="node-sub" x="1015" y="221" text-anchor="middle">(static site + dashboards)</text>
+  <!-- Cloud: Public Portal -->
+  <rect class="portal" x="855" y="180" width="320" height="80" rx="6"/>
+  <text class="node-big" x="1015" y="212" text-anchor="middle">Public Portal</text>
+  <text class="node-sub" x="1015" y="232" text-anchor="middle">casparwater.us</text>
+  <text class="node-sub" x="1015" y="246" text-anchor="middle">(static site + dashboards)</text>
 
-  <!-- Cloud: InfluxDB cylinder (bottom) -->
+  <!-- Cloud: InfluxDB cylinder -->
   <g>
-    <ellipse class="store" cx="1015" cy="349" rx="140" ry="10"/>
-    <path class="store" d="M 875 349 V 411 a 140 10 0 0 0 280 0 V 349 z"/>
-    <ellipse cx="1015" cy="349" rx="140" ry="10" fill="none" stroke="#34a17a" stroke-width="1" opacity="0.5"/>
-    <text class="node-big" x="1015" y="380" text-anchor="middle">InfluxDB</text>
-    <text class="node-sub" x="1015" y="397" text-anchor="middle">influx.casparwater.us</text>
+    <ellipse class="store" cx="1015" cy="450" rx="140" ry="10"/>
+    <path class="store" d="M 875 450 V 520 a 140 10 0 0 0 280 0 V 450 z"/>
+    <ellipse cx="1015" cy="450" rx="140" ry="10" fill="none" stroke="#34a17a" stroke-width="1" opacity="0.5"/>
+    <text class="node-big" x="1015" y="488" text-anchor="middle">InfluxDB</text>
+    <text class="node-sub" x="1015" y="505" text-anchor="middle">influx.casparwater.us</text>
   </g>
 
   <!-- Operators (outside, below cloud) -->
-  <rect class="actor" x="970" y="605" width="140" height="42" rx="6"/>
-  <text class="node-title" x="1040" y="623" text-anchor="middle">Operators</text>
-  <text class="node-sub"   x="1040" y="638" text-anchor="middle">browser dashboards</text>
+  <rect class="actor" x="970" y="720" width="140" height="42" rx="6"/>
+  <text class="node-title" x="1040" y="738" text-anchor="middle">Operators</text>
+  <text class="node-sub"   x="1040" y="753" text-anchor="middle">browser dashboards</text>
 
   <!-- ============================================================
        Edge labels (drawn last, with halos)
        ============================================================ -->
 
   <!-- Radio link, prominent two-line label centered in the gap -->
-  <text class="edge-label-strong" x="400" y="350" text-anchor="middle">low-bandwidth radio link</text>
-  <text class="edge-label-sub"    x="400" y="412" text-anchor="middle">OpenTelemetry-Arrow Protocol</text>
+  <text class="edge-label-strong" x="400" y="450" text-anchor="middle">low-bandwidth radio link</text>
+  <text class="edge-label-sub"    x="400" y="512" text-anchor="middle">OpenTelemetry-Arrow Protocol</text>
 
   <!-- Pumphouse internal labels -->
   <text class="edge-label" x="223" y="306" text-anchor="start">Sparkplug B</text>
-  <text class="edge-label" x="198" y="442" text-anchor="start">i²c</text>
+  <text class="edge-label" x="198" y="592" text-anchor="start">i²c</text>
 
   <!-- Pumphouse sensor group label (above the column) -->
   <text class="node-sub" x="125" y="146" text-anchor="middle" style="font-style: italic;">4 × 4–20 mA loops</text>
 
   <!-- Gateway internal label -->
-  <text class="edge-label" x="623" y="290" text-anchor="start">writes</text>
+  <text class="edge-label" x="623" y="330" text-anchor="start">writes</text>
 
   <!-- Inter-site labels -->
-  <text class="edge-label-strong" x="807" y="370" text-anchor="middle">HTTPS write</text>
-  <text class="edge-label" x="790" y="185" text-anchor="middle">static site generator</text>
+  <text class="edge-label-strong" x="807" y="470" text-anchor="middle">HTTPS write</text>
+  <text class="edge-label" x="790" y="210" text-anchor="middle">static site generator</text>
 
   <!-- Operators label -->
-  <text class="edge-label" x="1050" y="595" text-anchor="start">HTTPS</text>
+  <text class="edge-label" x="1050" y="717" text-anchor="start">HTTPS</text>
 
 </svg>
