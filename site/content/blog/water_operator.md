@@ -3,6 +3,7 @@ title: Water Operator
 weight: 40
 layout: blog
 section: Blog
+image: "/img/backhoe.png"
 date: "2021-01-15"
 ---
 
