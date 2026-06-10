@@ -31,16 +31,9 @@ In winter months, we serve approximately 800 gallons per day. In summer months, 
 ## Telemetry
 
 Our [monitoring](./monitoring.html) pipeline spans three sites and is
-built around two OpenTelemetry Collectors. At the **pumphouse**, four
-4–20 mA current loops (well depth, system pressure, chlorine tank
-level, concrete tank level) feed a COTS MQTT–Sparkplug device and an
-Atlas Scientific pH probe is read directly over i²c; both streams are
-merged by a Collector on a BeagleBone Black Industrial. That Collector
-sends the data over a low-bandwidth radio link to the **gateway**
-using the OpenTelemetry-Arrow Protocol, where a second Collector
-archives JSON to attached storage (consumed by our static site
-generator) and forwards live data over HTTPS to the **cloud**: a
-single Linode VM that hosts both the InfluxDB instance at
-`influx.casparwater.us` and the public portal at `casparwater.us`.
+built around two OpenTelemetry Collectors.
 
-{{ figure src="./img/telemetry-system.svg" caption="Three sites, two OpenTelemetry Collectors: sensors merge at the pumphouse, traverse a radio link to the gateway, and reach the cloud as both an archival JSON stream and a live InfluxDB feed." /}}
+{{ figure src="./img/telemetry-system.svg" caption="Three sites, two
+OpenTelemetry Collectors: sensors merge at the pumphouse, traverse a
+radio link to the gateway, and reach the cloud as both an archival
+JSON stream and a live InfluxDB feed." /}}
