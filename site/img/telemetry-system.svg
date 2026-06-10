@@ -4,6 +4,8 @@
   <title id="t">Caspar Water telemetry system</title>
   <desc id="d">Three sites and two OpenTelemetry collectors. A pump-house collector with one i²c pH sensor (Atlas) and four 4-20 mA sensors via an MQTT/Sparkplug device sends OTel Arrow over a low-bandwidth radio link to a gateway collector, which records OTLP/JSON metrics that feed a Duckpond static site generator, and forwards live data over HTTPS to an InfluxDB on the same cloud machine that serves the public portal.</desc>
 
+  <rect x="0" y="0" width="1160" height="780" fill="#ffffff"/>
+
   <defs>
     <style>
       .site-title { font-size: 18px; font-weight: 700; fill: #0c4a6e; letter-spacing: 0.18em; }
