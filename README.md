@@ -4,37 +4,9 @@ System for managing and monitoring a small water system.
 
 ## Architecture
 
-```
-Gateway (linux.local)             Cloud (Linode / casparwater.us)
-┌───────────────────────┐        ┌──────────────────────────────┐
-│ OTel Collector         │        │ nginx (casparwater.us)       │
-│ → /home/data/*.json    │        │                              │
-│                        │        │ Duckpond (sitegen-only)      │
-│ Duckpond: water pond   │──R2──▶│ ├─ import water from R2      │
-│ ├─ logfile-ingest      │        │ ├─ import noyo from R2       │
-│ ├─ temporal-reduce     │        │ ├─ combined sitegen          │
-│ ├─ pump cycle analysis │        │ └─ atomic deploy → nginx     │
-│ └─ push to R2          │        │                              │
-│                        │        │ Site: /         (water)      │
-│ Duckpond: noyo pond    │──R2──▶│ Site: /noyo-harbor/ (noyo)   │
-│ ├─ HydroVu collection  │        └──────────────────────────────┘
-│ └─ push to R2          │
-└───────────────────────┘
-```
-
-## Repository Layout
-
-| Directory | Description |
-|-----------|-------------|
-| `site/` | Caspar Water website: content pages, blog, templates, images, duckpond configs |
-| `local/` | Local site generation for content/style development |
-| `cmd/` | OpenTelemetry collector custom components |
-| `collector/` | Compiled collector binary |
-| `terraform/station/gateway/` | Gateway provisioning (collector + duckpond water/noyo) |
-| `terraform/station/cloud/` | Cloud provisioning (cross-pond sitegen + nginx) |
-| `terraform/station/staging/` | Pre-release staging on watershop |
-| `opentelemetry-mqtt-sparkplug/` | Git submodule providing the MQTT Sparkplug-B receiver |
-| `measure/`, `model/`, `storage/`, `display/` | Go packages |
+<p align="center">
+  <img src="site/img/telemetry-system.svg" alt="Caspar Water telemetry system: a pumphouse OpenTelemetry collector sends data over a radio link to a gateway collector and Duckpond, which feeds a Caddy-served cloud VM (InfluxDB + static site content)." width="100%">
+</p>
 
 ## Components
 
@@ -56,6 +28,20 @@ Gateway (linux.local)             Cloud (Linode / casparwater.us)
 ### Billing
 - Custom billing program (`cmd/`)
 
+## Repository Layout
+
+| Directory | Description |
+|-----------|-------------|
+| `site/` | Caspar Water website: content pages, blog, templates, images, duckpond configs |
+| `local/` | Local site generation for content/style development |
+| `cmd/` | OpenTelemetry collector custom components |
+| `collector/` | Compiled collector binary |
+| `terraform/station/gateway/` | Gateway provisioning (collector + duckpond water/noyo) |
+| `terraform/station/cloud/` | Cloud provisioning (cross-pond sitegen + nginx) |
+| `terraform/station/staging/` | Pre-release staging on watershop |
+| `opentelemetry-mqtt-sparkplug/` | Git submodule providing the MQTT Sparkplug-B receiver |
+| `measure/`, `model/`, `storage/`, `display/` | Go packages |
+
 ## Operations
 
 | I want to... | Do this |
@@ -68,6 +54,3 @@ Gateway (linux.local)             Cloud (Linode / casparwater.us)
 | Deploy to cloud | `cd terraform/station/cloud && terraform apply` |
 | Reset one pond on gateway | SSH in, `./duckpond/water/teardown.sh && ./duckpond/water/setup.sh` |
 | Reset site pond on cloud | SSH in, `./duckpond/teardown.sh && ./duckpond/setup.sh` |
-
-## Under Development
-- UI1203 receiver (a.k.a. Sensus protocol), see https://github.com/jmacd/supruglue
