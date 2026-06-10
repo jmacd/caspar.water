@@ -16,7 +16,7 @@ processors:
 
 exporters:
   influxdb:
-    endpoint: "https://casparwater.us:8086"
+    endpoint: "https://influx.casparwater.us"
     org: "casparwater"
     bucket: "production"
     token: "${INFLUXD_TOKEN}"

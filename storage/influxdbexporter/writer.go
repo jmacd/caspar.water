@@ -33,7 +33,10 @@ type influxHTTPWriter struct {
 }
 
 func newInfluxHTTPWriter(config *Config, telemetrySettings component.TelemetrySettings) (*influxHTTPWriter, error) {
-	fmt.Println("InfluxDB exporter for", config.Org, config.Bucket, config.Token)
+	telemetrySettings.Logger.Info("InfluxDB exporter configured",
+		zap.String("org", config.Org),
+		zap.String("bucket", config.Bucket),
+		zap.Bool("token_set", config.Token != ""))
 	writeURL, err := composeWriteURL(config)
 	if err != nil {
 		return nil, err

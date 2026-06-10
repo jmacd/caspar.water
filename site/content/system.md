@@ -27,3 +27,13 @@ The aeration process works by removing carbon dioxide from the water through nat
 As CO₂ is removed, fewer hydrogen ions (H⁺) are present, effectively raising the water's pH level. Our water is served with pH measuring around 6.8.
 
 In winter months, we serve approximately 800 gallons per day. In summer months, we serve approximately 2,000 gallons per day.
+
+## Telemetry
+
+Our [monitoring](./monitoring.html) pipeline spans three sites and is
+built around two OpenTelemetry Collectors.
+
+{{ figure src="./img/telemetry-system.svg" caption="Three sites, two
+OpenTelemetry Collectors: sensors merge at the pumphouse, traverse a
+radio link to the gateway, and reach the cloud as both an archival
+JSON stream and a live InfluxDB feed." /}}

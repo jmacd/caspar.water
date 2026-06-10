@@ -4,3 +4,6 @@
 [submodule "duckpond"]
 	path = duckpond
 	url = git@github.com:jmacd/duckpond.git
+[submodule "opentelemetry-mqtt-sparkplug"]
+	path = opentelemetry-mqtt-sparkplug
+	url = git@github.com:jmacd/opentelemetry-mqtt-sparkplug.git

@@ -15,7 +15,7 @@ Owner/operator Joshua MacDonald is a software engineer with professional experie
 - **[System pressure](/data/system-pressure.html):** lets us observe dynamic pressure and see that the aeration pump is running.
 - **[pH level](/data/ph.html):** An in-tank probe measures the pH of the water, lets us see that our aeration process is effective.
 
-Operators access our [Influxdb](https://casparwater.us:8086) instance with live monitoring data collected through several OpenTelemetry Collectors.
+Operators access our [Influxdb](https://influx.casparwater.us) instance with live monitoring data collected through several OpenTelemetry Collectors.
 
 We have high-resolution well depth measurements dating back to August 2022, with which we can see the history of leaks, leak repairs, faucets left running, and other kinds of fine detail about our impact on the aquifer. See the [Well Depth History](/well-depth-history.html) page for an annotated 4-year timeline.
 

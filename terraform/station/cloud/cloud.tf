@@ -19,6 +19,18 @@ provider "linode" {
 locals {
   home     = "/home/jmacd"
   base_dir = "${local.home}/duckpond"
+  ssh_key  = pathexpand("~/.ssh/id_rsa")
+
+  # Source files in this module, paired with the absolute destination on the host.
+  caddyfile_src       = "${path.module}/Caddyfile"
+  caddyfile_dst       = "/etc/caddy/Caddyfile"
+  influxdb_config_src = "${path.module}/influxdb.toml"
+  influxdb_config_dst = "/etc/influxdb/config.toml"
+  deploy_key_src      = "${path.module}/../watershop/deploy_key.pub"
+  setup_src           = "${path.module}/setup_script.sh"
+  teardown_src        = "${path.module}/teardown_script.sh"
+
+  host = tolist(linode_instance.debian12-us-west.ipv4)[0]
 }
 
 resource "linode_instance" "debian12-us-west" {
@@ -26,36 +38,67 @@ resource "linode_instance" "debian12-us-west" {
   type   = "g6-nanode-1"
 }
 
-resource "null_resource" "cloud" {
+# DNS for the apex `casparwater.us` is managed elsewhere; we only own the
+# `influx` subdomain used by InfluxDB clients (Phase 1 of the TLS termination
+# migration documented in Caddyfile).
+data "linode_domain" "casparwater" {
+  domain = "casparwater.us"
+}
+
+resource "linode_domain_record" "influx" {
+  domain_id   = data.linode_domain.casparwater.id
+  name        = "influx"
+  record_type = "A"
+  target      = local.host
+  ttl_sec     = 300
+}
+
+# Reaps historical pond@*.timer units and leaked podman containers (cf.
+# remote-bandwidth-bug.md).  Re-runs only when the teardown script itself
+# changes, or when the underlying host is replaced.
+resource "null_resource" "teardown" {
+  triggers = {
+    script_hash = filesha256(local.teardown_src)
+    host_id     = linode_instance.debian12-us-west.id
+  }
+
   connection {
     type        = "ssh"
     user        = "root"
-    private_key = file(pathexpand("~/.ssh/id_rsa"))
-    host        = tolist(linode_instance.debian12-us-west.ipv4)[0]
-  }
-
-  # Push setup/teardown scripts
-  provisioner "file" {
-    source      = "setup_script.sh"
-    destination = "/tmp/setup_script.sh"
+    private_key = file(local.ssh_key)
+    host        = local.host
   }
 
   provisioner "file" {
-    source      = "teardown_script.sh"
+    source      = local.teardown_src
     destination = "/tmp/teardown_script.sh"
   }
 
-  # Teardown previous state (stops & removes any historical pond@*
-  # timers and the pond-site-prod volume that lived here before the
-  # cloud host was reduced to caddy + rsync target)
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/teardown_script.sh",
       "/tmp/teardown_script.sh",
     ]
   }
+}
 
-  # Create directory structure for the rsync'd site builds
+# Ensures /home/jmacd/duckpond/www exists, jmacd owns it, and the watershop
+# deploy key is in authorized_keys so site rsyncs land cleanly.
+resource "null_resource" "user_setup" {
+  triggers = {
+    deploy_key_hash = filesha256(local.deploy_key_src)
+    host_id         = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [null_resource.teardown]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
   provisioner "remote-exec" {
     inline = [
       "mkdir -p ${local.base_dir}/www",
@@ -64,9 +107,8 @@ resource "null_resource" "cloud" {
     ]
   }
 
-  # Install deploy public key so watershop can rsync as jmacd
   provisioner "file" {
-    source      = "${path.module}/../watershop/deploy_key.pub"
+    source      = local.deploy_key_src
     destination = "/tmp/cloud_deploy.pub"
   }
 
@@ -79,28 +121,111 @@ resource "null_resource" "cloud" {
       "rm /tmp/cloud_deploy.pub",
     ]
   }
+}
 
-  # Run setup (installs caddy + rsync)
+# Installs caddy + rsync if missing.  Idempotent; re-runs only when the
+# setup script changes.
+resource "null_resource" "system_setup" {
+  triggers = {
+    script_hash = filesha256(local.setup_src)
+    host_id     = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [null_resource.user_setup]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
+  provisioner "file" {
+    source      = local.setup_src
+    destination = "/tmp/setup_script.sh"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/setup_script.sh",
       "/tmp/setup_script.sh",
+      # teardown_script.sh stops caddy; setup may have just installed it but
+      # not started it.  Ensure it's enabled+running before the Caddyfile
+      # resource tries to reload.
+      "systemctl enable --now caddy",
+    ]
+  }
+}
+
+# Uploads /etc/influxdb/config.toml.  Backs up the live file before
+# overwriting so a manual rollback is one cp away.  Re-runs only when
+# the influxdb.toml content changes.
+resource "null_resource" "influxdb_config" {
+  triggers = {
+    config_hash = filesha256(local.influxdb_config_src)
+    host_id     = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [null_resource.system_setup]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
+  # cp -n keeps the first backup from being overwritten by later applies.
+  provisioner "remote-exec" {
+    inline = [
+      "cp -n ${local.influxdb_config_dst} ${local.influxdb_config_dst}.pre-caddy-terminated || true",
     ]
   }
 
-  # Push Caddyfile AFTER setup (caddy install writes default config)
   provisioner "file" {
-    source      = "Caddyfile"
-    destination = "/etc/caddy/Caddyfile"
+    source      = local.influxdb_config_src
+    destination = local.influxdb_config_dst
   }
 
   provisioner "remote-exec" {
     inline = [
-      "systemctl restart caddy",
+      "systemctl restart influxdb",
     ]
   }
+}
 
+# Uploads /etc/caddy/Caddyfile.  Validates before reload to avoid breaking
+# the apex site; reload-or-restart handles the case where teardown stopped
+# caddy.  Re-runs only when the Caddyfile content changes.  Ordered AFTER
+# influxdb_config so a Phase 2-style apply (where both files change) brings
+# InfluxDB to its new port before Caddy retargets its upstream.
+resource "null_resource" "caddyfile" {
   triggers = {
-    always_run = timestamp()
+    caddyfile_hash = filesha256(local.caddyfile_src)
+    host_id        = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [
+    null_resource.system_setup,
+    null_resource.influxdb_config,
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
+  provisioner "file" {
+    source      = local.caddyfile_src
+    destination = local.caddyfile_dst
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "caddy validate --config ${local.caddyfile_dst} --adapter caddyfile",
+      "systemctl reload-or-restart caddy",
+    ]
   }
 }

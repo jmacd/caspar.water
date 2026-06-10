@@ -13,3 +13,11 @@ casparwater.us {
 	# Compress responses
 	encode zstd gzip
 }
+
+# InfluxDB v2 listens on plaintext 127.0.0.1:8087; Caddy terminates TLS
+# with a Let's Encrypt cert and reverse-proxies here.  See
+# terraform/station/cloud/influxdb.toml for the matching bind address.
+influx.casparwater.us {
+	reverse_proxy http://127.0.0.1:8087
+	encode zstd gzip
+}
