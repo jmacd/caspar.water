@@ -340,6 +340,18 @@ resource "null_resource" "watershop" {
           "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
           "echo '[reset] ${name}: removing host dir'",
           "rm -rf ${local.home}/pond-${name}",
+          # Empty this instance's S3 backup bucket.  Post-D6 `pond backup
+          # add` refuses a bucket whose store_id does not match the local
+          # pond_id ("refusing to push into a foreign pond"); a reset
+          # gives the local pond a NEW pond_id, so the stale old-format
+          # pond left in the bucket would block the re-attach.  Emptying
+          # the bucket makes `backup add` see "not a Delta table" and
+          # re-initialize cleanly.  Instances with no bucket of their own
+          # (site-*: s3_url == "") have nothing to empty.  The bucket
+          # itself is (re)created by the `mb` step earlier in this apply.
+          local.instances[name].s3_url != ""
+          ? "echo '[reset] ${name}: emptying bucket ${local.instances[name].s3_url}' && (podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 rm ${local.instances[name].s3_url} --recursive --region us-east-1 2>&1 || true)"
+          : "echo '[reset] ${name}: no S3 bucket to empty'",
           # Selfmon-only: also wipe the per-pond JSONL source dir and
           # the rendered HTML output dir.  Both are no-ops for
           # containerized data ponds (path won't exist), but for a
@@ -374,6 +386,25 @@ resource "null_resource" "watershop" {
       # Apply selfmon configs natively
       [for name in local.selfmon_instance_names :
         "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond apply -f ${local.base_dir}/config/${name}.yaml"
+      ],
+      # (Re)attach S3 backup/import remotes.  Post-D6 duckpond removed the
+      # `remote` factory; backups and cross-pond imports are now CLI
+      # attachments (`pond backup add` / `pond remote add`).  Idempotent
+      # via --overwrite, so this runs on every apply.  attach-remotes.sh
+      # branches on instance type (producer backup vs site import) and on
+      # container-vs-native (selfmon) internally.
+      #
+      # ORDER MATTERS: a pull-mode `remote add` refuses a bucket that is
+      # not yet an initialized pond, so every producer (water/noyo/septic)
+      # must attach AND push its pond_init bundle before the site pond
+      # imports it.  Attach producers + selfmon first, the site last.
+      [for name in local.instance_names :
+        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+        if !startswith(name, "site-")
+      ],
+      [for name in local.instance_names :
+        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+        if startswith(name, "site-")
       ],
       # Enable and start container timers
       [for name in local.container_instance_names :

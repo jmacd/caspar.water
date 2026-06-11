@@ -1,11 +1,6 @@
 version: v1
 kind: mkdir
 metadata:
-  path: /system/run
----
-version: v1
-kind: mkdir
-metadata:
   path: /system/etc
 ---
 version: v1
@@ -197,20 +192,6 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl"
     pond_path:        /measure
----
-version: v1
-kind: mknod
-metadata:
-  path: /system/run/1-backup
-spec:
-  factory: remote
-  config:
-    region: "${env:S3_REGION}"
-    url: "${env:S3_URL}"
-    endpoint: "${env:S3_ENDPOINT}"
-    access_key: "${env:S3_ACCESS_KEY}"
-    secret_key: "${env:S3_SECRET_KEY}"
-    allow_http: ${env:S3_ALLOW_HTTP:-false}
 ---
 # Aggregated traffic series for sitegen / ad-hoc charting.
 #
