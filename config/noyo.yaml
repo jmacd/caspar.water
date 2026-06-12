@@ -33,6 +33,23 @@ spec:
 version: v1
 kind: mknod
 metadata:
+  path: /system/archive
+spec:
+  # Read-only HydroVu history committed to the noyo-blue-econ repo as Parquet
+  # .series archives (hydrovu/devices/<id>/<Name>_archive_YYYYMMDD.series).
+  # git-ingest exposes them as data-archetype (FileDynamic) nodes; the combine
+  # inputs below read them through a series:/// cast (see
+  # duckpond/docs/url-entry-type-casting.md) so the dashboards show history
+  # immediately while live collection back-fills the recent tail.
+  factory: git-ingest
+  config:
+    url: "https://github.com/jmacd/noyo-blue-econ.git"
+    ref: main
+    prefix: "hydrovu"
+---
+version: v1
+kind: mknod
+metadata:
   path: /system/etc/20-hydrovu
 spec:
   factory: hydrovu
@@ -130,11 +147,21 @@ spec:
               scope: Vulink
               range:
                 end: 2024-05-30T00:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_2*.series"
+              scope: Vulink
+              range:
+                end: 2024-05-30T00:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterVulink_3*.series"
               scope: Vulink
               range:
                 begin: 2024-05-30T00:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_3*.series"
+              scope: Vulink
+              range:
+                begin: 2024-05-30T00:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_2*.series"
+              scope: AT500_Surface
+            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_2*.series"
               scope: AT500_Surface
     
       - name: "FieldStation"
@@ -145,7 +172,15 @@ spec:
               scope: Vulink1
               range:
                 begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink1
+              range:
+                begin: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -153,7 +188,15 @@ spec:
               scope: Vulink2
               range:
                 begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink2
+              range:
+                begin: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Bottom
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Bottom
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -184,11 +227,19 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
-    
+            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+
       - name: "Princess"
         factory: "timeseries-join" 
         config:
@@ -197,7 +248,15 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
