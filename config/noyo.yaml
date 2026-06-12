@@ -33,7 +33,7 @@ spec:
 version: v1
 kind: mknod
 metadata:
-  path: /system/archive
+  path: /hydrovu-archive
 spec:
   # Read-only HydroVu history committed to the noyo-blue-econ repo as Parquet
   # .series archives (hydrovu/devices/<id>/<Name>_archive_YYYYMMDD.series).
@@ -55,6 +55,11 @@ spec:
   factory: hydrovu
   config:
     hydrovu_path: "/hydrovu"
+    # Read-only seed archives (git-ingested at /hydrovu-archive). On a freshly
+    # reset pond, find_youngest_timestamp queries these to resume live
+    # collection from the archive's youngest point instead of crawling from
+    # epoch. Layout: {archive_path}/devices/<id>/*.series.
+    archive_path: "/hydrovu-archive"
     max_points_per_run: 10000
     client_id: "${env:HYDRO_KEY_ID}"
     client_secret: "${env:HYDRO_KEY_VALUE}"
@@ -147,7 +152,7 @@ spec:
               scope: Vulink
               range:
                 end: 2024-05-30T00:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_2*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_2*.series"
               scope: Vulink
               range:
                 end: 2024-05-30T00:00:00Z
@@ -155,13 +160,13 @@ spec:
               scope: Vulink
               range:
                 begin: 2024-05-30T00:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_3*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_3*.series"
               scope: Vulink
               range:
                 begin: 2024-05-30T00:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_2*.series"
               scope: AT500_Surface
-            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_2*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_2*.series"
               scope: AT500_Surface
     
       - name: "FieldStation"
@@ -172,7 +177,7 @@ spec:
               scope: Vulink1
               range:
                 begin: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_1*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_1*.series"
               scope: Vulink1
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -180,7 +185,7 @@ spec:
               scope: AT500_Surface
               range:
                 begin: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_1*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -188,7 +193,7 @@ spec:
               scope: Vulink2
               range:
                 begin: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_4*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_4*.series"
               scope: Vulink2
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -196,7 +201,7 @@ spec:
               scope: AT500_Bottom
               range:
                 begin: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_3*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Bottom
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -227,7 +232,7 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_1*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_1*.series"
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
@@ -235,7 +240,7 @@ spec:
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_1*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
@@ -248,7 +253,7 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterVulink_4*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_4*.series"
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
@@ -256,7 +261,7 @@ spec:
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
-            - pattern: "series:///system/archive/devices/**/NoyoCenterAT500_3*.series"
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
