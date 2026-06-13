@@ -406,6 +406,31 @@ resource "null_resource" "watershop" {
         "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
         if startswith(name, "site-")
       ],
+      # Seed after a reset so the site never builds against an empty
+      # mount.  A fresh reset only pushes each producer's EMPTY pond_init
+      # bundle (attach-remotes `pond push origin`); real data lands only
+      # on the first producer timer tick.  If the site timer's first tick
+      # races ahead of that, the build sees "0 matches / table 'source'
+      # not found" and does not retry until its next 3h tick (cf.
+      # docs/remote-followup.md A1/B3).  To make the reinit deterministic,
+      # when a reset is in play we run each producer's ingest+push ONCE
+      # (run.sh; push-on-commit ships real data to its bucket), THEN build
+      # the site ONCE -- both before any timer is enabled.  run.sh aborts
+      # on selfmon (native, separate service), so selfmon is excluded.
+      # Skipped entirely on routine (non-reset) applies, where the mounts
+      # already hold data and the heavy site rebuild would be wasted.
+      length(var.reset_instances) > 0
+      ? concat(
+        [for name in local.instance_names :
+          "${local.base_dir}/config/scripts/run.sh ${name}"
+          if !startswith(name, "site-") && !lookup(local.instances[name], "selfmon", false)
+        ],
+        [for name in local.instance_names :
+          "${local.base_dir}/config/scripts/run.sh ${name}"
+          if startswith(name, "site-")
+        ],
+      )
+      : [],
       # Enable and start container timers
       [for name in local.container_instance_names :
         "systemctl --user enable --now pond@${name}.timer"
