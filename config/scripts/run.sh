@@ -67,3 +67,8 @@ case "${TYPE}" in
         exit 1
         ;;
 esac
+
+# Automatic maintenance after each successful run: checkpoint + vacuum
+# (both internally gated to run periodically).  Compact is manual-only
+# via 'pond maintain --compact' for now.
+${EXE} "${INSTANCE}" maintain
