@@ -143,7 +143,16 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-"${PONDBIN}" maintain
+# Maintain: checkpoint + vacuum every tick (gated internally),
+# compact weekly on Sunday mornings (3am UTC ~ 8pm PST Saturday).
+HOUR=$(date -u +%H)
+DAY=$(date -u +%u)  # 1=Mon, 7=Sun
+if [ "${DAY}" = "7" ] && [ "${HOUR}" = "03" ]; then
+    echo "Running weekly compact (Sunday 3am UTC)..."
+    "${PONDBIN}" maintain --compact
+else
+    "${PONDBIN}" maintain
+fi
 
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
