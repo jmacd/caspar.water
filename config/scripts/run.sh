@@ -69,6 +69,8 @@ case "${TYPE}" in
 esac
 
 # Automatic maintenance after each successful run: checkpoint + vacuum
-# (both internally gated to run periodically).  Compact is manual-only
-# via 'pond maintain --compact' for now.
-${EXE} "${INSTANCE}" maintain
+# (both internally gated to run periodically).  Also collapse data:series
+# files with more than 100 live versions into one merged version; the
+# threshold self-gates so only noisy files are touched.  Compact is
+# manual-only via 'pond maintain --compact' for now.
+${EXE} "${INSTANCE}" maintain --collapse-versions 100

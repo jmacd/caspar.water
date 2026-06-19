@@ -143,15 +143,16 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-# Maintain: checkpoint + vacuum every tick (gated internally),
+# Maintain: checkpoint + vacuum every tick (gated internally), collapse
+# data:series files with >100 live versions (threshold self-gates), and
 # compact weekly on Sunday mornings (3am UTC ~ 8pm PST Saturday).
 HOUR=$(date -u +%H)
 DAY=$(date -u +%u)  # 1=Mon, 7=Sun
 if [ "${DAY}" = "7" ] && [ "${HOUR}" = "03" ]; then
     echo "Running weekly compact (Sunday 3am UTC)..."
-    "${PONDBIN}" maintain --compact
+    "${PONDBIN}" maintain --compact --collapse-versions 100
 else
-    "${PONDBIN}" maintain
+    "${PONDBIN}" maintain --collapse-versions 100
 fi
 
 # Sitegen render, with wall-clock timing.  Output dir is owned by
