@@ -112,30 +112,17 @@ cd terraform/station/watershop
 terraform apply -var 'reset_instances=["water-staging"]'
 ```
 
-### Full clean reset (recover from stale data or after a producer reset)
+### Full clean reset (recover from stale data)
 
 Site-* instances aggregate from the producer ponds (water/noyo/septic) by
-importing each producer's S3 bucket as a separate remote. Each import tracks
-its own `last_pulled_seq:<url>` watermark, and cross-pond import is isolated
-per `pond_id` (duckpond post-D6 remote model, #80). A slow producer can no
-longer be masked by a faster one, and a producer's bundles never inflate the
-site's local seq space.
+importing each producer's S3 bucket. The cross-pond import is isolated per
+`pond_id` with a per-remote watermark (duckpond post-D6 remote model, #80), so
+a slow producer is never masked by a faster one during normal operation.
 
-Earlier versions of this runbook described two duckpond bugs here -- a global
-`max()` import watermark that masked slow producers, and "phantom" partition
-UUIDs that polluted that `max()` after a reset. Both were structural to the
-pre-D6 import and no longer apply: the watermark is per-remote and partitions
-are filtered by `pond_id`. Site-* no longer gradually masks producer data
-during normal operation.
-
-A reset must still include site-* alongside the producers. The site keeps a
-`last_pulled_seq:<producer-url>` watermark and only seeds it on first pull, so
-when a producer is wiped and re-inits (new `pond_id`, `txn_seq` restarts at 1)
-the site would otherwise skip the producer's fresh low-seq bundles and serve
-nothing. Resetting site-* together clears those watermarks so it re-bootstraps
-from each producer's fresh bucket. To reset a single producer without a full
-site reset, also clear the site's `last_pulled_seq:<that-url>` (or use
-`pond restart-from-compact`) so the site re-imports from the new pond.
+Reset all four prod ponds together. A reset gives each producer a new `pond_id`
+and restarts its `txn_seq` at 1; wiping site-prod alongside them clears its
+import state so it re-bootstraps cleanly from each producer's fresh bucket
+(testsuite `542-import-watermark-restore.sh`).
 
 ```bash
 # 1. Erase prod producer S3 buckets so each re-inits into an empty bucket.
