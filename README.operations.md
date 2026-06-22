@@ -112,26 +112,35 @@ cd terraform/station/watershop
 terraform apply -var 'reset_instances=["water-staging"]'
 ```
 
-### Full clean reset (recover from stale data, watermark drift, or phantom partitions)
+### Full clean reset (recover from stale data or after a producer reset)
 
-Site-* instances aggregate from producer ponds via S3 import. Two known
-duckpond bugs cause site-* to gradually mask producer data:
+Site-* instances aggregate from the producer ponds (water/noyo/septic) by
+importing each producer's S3 bucket as a separate remote. Each import tracks
+its own `last_pulled_seq:<url>` watermark, and cross-pond import is isolated
+per `pond_id` (duckpond post-D6 remote model, #80). A slow producer can no
+longer be masked by a faster one, and a producer's bundles never inflate the
+site's local seq space.
 
-1. The cross-pond import watermark is computed as `max()` across all imported
-   partitions instead of per-partition. Slower-growing producers
-   (water/noyo) get masked when faster ones (septic) advance their `txn_seq`
-   past them.
-2. After a producer-pond reset, the old pond's partition UUIDs persist in the
-   S3 bucket as "phantom" partitions. Site-* discovers them on next pull and
-   their stale watermarks pollute the `max()` calculation indefinitely.
+Earlier versions of this runbook described two duckpond bugs here -- a global
+`max()` import watermark that masked slow producers, and "phantom" partition
+UUIDs that polluted that `max()` after a reset. Both were structural to the
+pre-D6 import and no longer apply: the watermark is per-remote and partitions
+are filtered by `pond_id`. Site-* no longer gradually masks producer data
+during normal operation.
 
-The reliable recovery is to wipe **all** producer S3 buckets and reset **all**
-prod ponds together, so every producer restarts at `txn_seq = 1` in lockstep.
-With identical 1h intervals they drift only ~24 txns/day against each other
--- well below any practical masking threshold for at least a week.
+A reset must still include site-* alongside the producers. The site keeps a
+`last_pulled_seq:<producer-url>` watermark and only seeds it on first pull, so
+when a producer is wiped and re-inits (new `pond_id`, `txn_seq` restarts at 1)
+the site would otherwise skip the producer's fresh low-seq bundles and serve
+nothing. Resetting site-* together clears those watermarks so it re-bootstraps
+from each producer's fresh bucket. To reset a single producer without a full
+site reset, also clear the site's `last_pulled_seq:<that-url>` (or use
+`pond restart-from-compact`) so the site re-imports from the new pond.
 
 ```bash
-# 1. Erase prod producer S3 buckets (clears phantom partition UUIDs).
+# 1. Erase prod producer S3 buckets so each re-inits into an empty bucket.
+#    A reset gives the pond a new pond_id, and `pond backup add` refuses a
+#    bucket whose store_id still belongs to the old pond.
 config/scripts/reset.sh \
     terraform/station/watershop/env/water-prod.env \
     terraform/station/watershop/env/noyo-prod.env \
