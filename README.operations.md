@@ -142,20 +142,22 @@ cd terraform/station/watershop
 terraform apply -var deploy_production=true \
     -var 'reset_instances=["water-prod","noyo-prod","septic-prod","site-prod"]'
 
-# 3. Workaround for duckpond bug: terraform's idempotent-init skips
-#    `pond apply` for site-prod after the reset, leaving the pond
-#    initialized but with no factories.  Apply manually:
-ssh watershop.casparwater.us '/home/jmacd/duckpond/config/scripts/pond.sh \
-    site-prod apply -f /config/site.yaml'
-
-# 4. Workaround for duckpond bug: noyo-prod's first hydrovu collect from
-#    a fresh pond often fails with API timeout (asks for all history at
-#    startTime=0).  Retry once if it failed:
-ssh watershop.casparwater.us 'systemctl --user start pond@noyo-prod.service'
-
-# 5. Optionally trigger site-prod immediately instead of waiting up to 3h:
-ssh watershop.casparwater.us 'systemctl --user start pond@site-prod.service'
+# 3. Verify: all four prod timers active and first ticks outcome=ok.
+ssh watershop.casparwater.us 'systemctl --user list-timers "pond@*-prod*" --all'
 ```
+
+The manual fix-up steps this runbook used to list are no longer needed:
+
+- `pond apply` for site-prod runs unconditionally on every terraform apply
+  (`watershop.tf`), and the reset path seeds each producer's ingest+push and
+  builds the site once before any timer is enabled (commit `039e013`), so
+  site-prod comes up with factories and a built site without a manual apply or
+  an early manual trigger.
+- noyo-prod's first hydrovu collect no longer crawls HydroVu from epoch on a
+  fresh pond: live collection resumes from the git-ingested seed archives, and
+  a missing resume point now hard-fails with a clear message instead of issuing
+  the unbounded `startTime=0` query that timed the API out. This requires the
+  prod image to include duckpond jmacd/61 (or later).
 
 Total time to fresh data on cloud: ~10 min (bucket wipe + terraform) +
 ~1 min producer first ingest + ~10 min site-prod pull/build/rsync.
