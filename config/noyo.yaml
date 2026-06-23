@@ -370,12 +370,20 @@ spec:
       title: "Noyo Harbor Blue Economy"
       base_url: "${env:SITE_BASE_URL:-/noyo-harbor/}"
       github_url: "https://github.com/jmacd/noyo-blue-econ"
+      # Pin the chart duration buttons to default to one month on first load
+      # for every Noyo Harbor chart, overriding chart.js's adaptive default.
+      default_range: "1M"
     
     exports:
       - name: "params"
         pattern: "/reduced/single_param/*/*.series"
-      - name: "sites"
-        pattern: "/reduced/single_site/*/*.series"
+      # Sites view retired: as of late 2025 only the Field Station surface and
+      # bottom probes are in the water, so the per-site pages are stale or
+      # historical and only the by-parameter view is meaningful. The export,
+      # route, sidebar entry, and sites.md page are preserved (commented out)
+      # so the Sites tab can be restored verbatim if more probes are deployed.
+      # - name: "sites"
+      #   pattern: "/reduced/single_site/*/*.series"
     
     routes:
       - name: "home"
@@ -392,16 +400,18 @@ spec:
             slug: "$0"
             page: "/system/site/data.md"
             export: "params"
-      - name: "sites"
-        type: static
-        slug: "sites"
-        page: "/system/site/sites.md"
-        routes:
-          - name: "site-detail"
-            type: template
-            slug: "$0"
-            page: "/system/site/data.md"
-            export: "sites"
+      # Sites tab retired (see exports note above). Restore this route block to
+      # bring the per-site pages back.
+      # - name: "sites"
+      #   type: static
+      #   slug: "sites"
+      #   page: "/system/site/sites.md"
+      #   routes:
+      #     - name: "site-detail"
+      #       type: template
+      #       slug: "$0"
+      #       page: "/system/site/data.md"
+      #       export: "sites"
     
     partials:
       sidebar: "/system/site/sidebar.md"
@@ -420,17 +430,19 @@ spec:
             href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
           - label: "Tide"
             href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Tide.html"
-      - label: "Sites"
-        href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
-        children:
-          - label: "B-Dock"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
-          - label: "Field Station"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
-          - label: "Princess Seafood"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
-          - label: "Silver"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
+      # Sites tab retired (see exports note above). Restore this sidebar entry
+      # alongside the export and route blocks to bring the per-site pages back.
+      # - label: "Sites"
+      #   href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
+      #   children:
+      #     - label: "B-Dock"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
+      #     - label: "Field Station"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
+      #     - label: "Princess Seafood"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
+      #     - label: "Silver"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
     
     
     # Noyo Center for Marine Science theme

@@ -23,9 +23,8 @@ Real-time sensors measure:
 - **Salinity** — Indicates mixing of freshwater and seawater
 - **Temperature** — Affects oxygen levels and species habitat
 
-Use the navigation on the left to explore data **by parameter**
-(comparing all sites) or **by site** (viewing all parameters at one
-location).
+Use the navigation on the left to explore data **by parameter**,
+comparing the in-water monitoring probes.
 
 <script type="module">
 import * as L from "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/+esm";
