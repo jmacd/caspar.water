@@ -372,7 +372,7 @@ resource "null_resource" "watershop" {
       # we detect that condition on the host (via the volume's mountpoint)
       # and skip init in the no-op case.  Real init failures still surface.
       [for name in local.container_instance_names :
-        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init; fi"
+        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init --birthplace ${name}; fi"
       ],
       # Apply containerized instance configs
       [for name in local.container_instance_names :
@@ -381,7 +381,7 @@ resource "null_resource" "watershop" {
       # Initialize selfmon instances natively (POND comes from env file).
       # Same idempotent pattern as containerized instances above.
       [for name in local.selfmon_instance_names :
-        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init; fi"
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init --birthplace ${name}; fi"
       ],
       # Apply selfmon configs natively
       [for name in local.selfmon_instance_names :
