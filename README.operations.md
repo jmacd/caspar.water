@@ -138,25 +138,33 @@ cd terraform/station/watershop
 terraform apply -var deploy_production=true \
     -var 'reset_instances=["water-prod","noyo-prod","septic-prod","site-prod"]'
 
-# 3. Verify: all four prod timers active and first ticks outcome=ok.
+# 3. Verify (optional): terraform returns once timers are enabled; data
+#    populates asynchronously. Check first ticks once they land.
 ssh watershop.casparwater.us 'systemctl --user list-timers "pond@*-prod*" --all'
 ```
 
-The manual fix-up steps this runbook used to list are no longer needed:
+The reset is fully asynchronous. terraform wipes and re-inits the four prod
+ponds, attaches their remotes, then enables the timers and returns; it does
+not run a synchronous seed or block on any ingest or site build. Producer
+timers fire their first ingest immediately, and site-prod's first build is
+deferred about 5 minutes so it runs after the producers have populated their
+buckets. The manual fix-up steps this runbook used to list are no longer
+needed:
 
-- `pond apply` for site-prod runs unconditionally on every terraform apply
-  (`watershop.tf`), and the reset path seeds each producer's ingest+push and
-  builds the site once before any timer is enabled (commit `039e013`), so
-  site-prod comes up with factories and a built site without a manual apply or
-  an early manual trigger.
+- site-prod comes up without a manual `pond apply` or an early manual trigger:
+  `pond apply` for site-prod runs unconditionally on every terraform apply
+  (`watershop.tf`), and the deferred first build (terraform schedules a
+  one-shot `systemd-run --on-active=5min`) renders the site once producers
+  hold data, so there is no empty-source race.
 - noyo-prod's first hydrovu collect no longer crawls HydroVu from epoch on a
   fresh pond: live collection resumes from the git-ingested seed archives, and
   a missing resume point now hard-fails with a clear message instead of issuing
-  the unbounded `startTime=0` query that timed the API out. This requires the
-  prod image to include duckpond jmacd/61 (or later).
+  the unbounded `startTime=0` query that timed the API out (duckpond PR #90,
+  in the prod image).
 
-Total time to fresh data on cloud: ~10 min (bucket wipe + terraform) +
-~1 min producer first ingest + ~10 min site-prod pull/build/rsync.
+Total time to fresh data on cloud: terraform returns in ~2-3 min (reset +
+re-init + remote attach); producers ingest within ~1-2 min; site-prod builds
+~5 min after the apply and rsyncs to cloud (~10 min total), all unattended.
 
 The same recipe works for staging: substitute `-staging` for `-prod`
 throughout, and drop `-var deploy_production=true`.

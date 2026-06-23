@@ -406,38 +406,36 @@ resource "null_resource" "watershop" {
         "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
         if startswith(name, "site-")
       ],
-      # Seed after a reset so the site never builds against an empty
-      # mount.  A fresh reset only pushes each producer's EMPTY pond_init
-      # bundle (attach-remotes `pond push origin`); real data lands only
-      # on the first producer timer tick.  If the site timer's first tick
-      # races ahead of that, the build sees "0 matches / table 'source'
-      # not found" and does not retry until its next 3h tick (cf.
-      # docs/remote-followup.md A1/B3).  To make the reinit deterministic,
-      # when a reset is in play we run each producer's ingest+push ONCE
-      # (run.sh; push-on-commit ships real data to its bucket), THEN build
-      # the site ONCE -- both before any timer is enabled.  run.sh aborts
-      # on selfmon (native, separate service), so selfmon is excluded.
-      # Skipped entirely on routine (non-reset) applies, where the mounts
-      # already hold data and the heavy site rebuild would be wasted.
-      length(var.reset_instances) > 0
-      ? concat(
-        [for name in local.instance_names :
-          "${local.base_dir}/config/scripts/run.sh ${name}"
-          if !startswith(name, "site-") && !lookup(local.instances[name], "selfmon", false)
-        ],
-        [for name in local.instance_names :
-          "${local.base_dir}/config/scripts/run.sh ${name}"
-          if startswith(name, "site-")
-        ],
-      )
-      : [],
-      # Enable and start container timers
+      # Enable + start producer and selfmon timers.  Each timer's OnBootSec
+      # is already in the past, so starting a stopped timer fires its first
+      # run immediately and then settles onto the OnUnitActiveSec cadence.
+      # After a reset the timer was stopped, so this kicks the first ingest
+      # right away; on a routine apply the timer is already running and the
+      # enable --now is a no-op.  There is no synchronous seed: producers
+      # populate their buckets asynchronously, which is the same work the
+      # timer does every cycle.  terraform does not wait on any of it.
       [for name in local.container_instance_names :
         "systemctl --user enable --now pond@${name}.timer"
+        if !startswith(name, "site-")
       ],
-      # Enable and start selfmon timers
       [for name in local.selfmon_instance_names :
         "systemctl --user enable --now pond-selfmon@${name}.timer"
+      ],
+      # Site timers.  Starting a stopped site timer fires an immediate build.
+      # Right after a reset the producers have pushed only their empty
+      # pond_init bundle and have not ingested yet, so an immediate build
+      # would race them, fail "table 'source' not found", and then wait a
+      # full 3h interval.  For a site that was just reset, enable the timer
+      # but defer its first start by 5 minutes via a transient systemd timer
+      # so the producers kicked above have populated their buckets first.
+      # This is fire-and-forget: terraform schedules the deferred start and
+      # returns.  Sites not in the reset set already hold data and start
+      # immediately.
+      [for name in local.container_instance_names :
+        (contains(var.reset_instances, name)
+          ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=5min --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
+        : "systemctl --user enable --now pond@${name}.timer")
+        if startswith(name, "site-")
       ],
     )
   }
