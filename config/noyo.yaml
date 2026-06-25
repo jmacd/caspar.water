@@ -416,6 +416,13 @@ spec:
     partials:
       sidebar: "/system/site/sidebar.md"
     
+    # Friendly page titles for abbreviated parameter keys. The export key
+    # "DO" stays the URL slug (DO.html) while the page title/heading render
+    # as "Dissolved Oxygen". Other parameters are already full words, so they
+    # need no entry and fall back to the raw key.
+    labels:
+      DO: "Dissolved Oxygen"
+    
     sidebar:
       - label: "Home"
         href: "${env:SITE_BASE_URL:-/noyo-harbor/}"
@@ -460,6 +467,14 @@ spec:
       nav-btn: "rgba(26, 105, 133, 0.85)"
       nav-btn-hover: "rgba(26, 105, 133, 0.65)"
       nav-btn-active: "rgba(15, 52, 96, 0.9)"
-      nav-sub-btn: "rgba(26, 105, 133, 0.5)"
-      nav-sub-btn-hover: "rgba(26, 105, 133, 0.35)"
-      nav-sub-btn-active: "rgba(15, 52, 96, 0.85)"
+      # Sub-tabs use a neutral, low-contrast treatment: unselected tabs are
+      # transparent with only a soft grey outline (the sidebar background
+      # shows through), and the selected tab is a solid medium grey.  This
+      # keeps the parameter list calm while still clearly marking the current
+      # one, without competing with the blue/navy section colors above.
+      nav-sub-btn: "transparent"
+      nav-sub-btn-border: "#94a3b8"
+      nav-sub-btn-hover: "rgba(100, 116, 139, 0.12)"
+      # Solid grey selected sub-tab; dark enough for legible white label text
+      # (~4.8:1).
+      nav-sub-btn-active: "#64748b"

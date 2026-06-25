@@ -19,9 +19,10 @@ Harbor.
 
 Real-time sensors measure:
 
-- **Dissolved Oxygen (DO)** — Critical for marine life
-- **Salinity** — Indicates mixing of freshwater and seawater
-- **Temperature** — Affects oxygen levels and species habitat
+- [**Dissolved Oxygen (DO)**](params/DO.html) — Critical for marine life
+- [**Salinity**](params/Salinity.html) — Indicates mixing of freshwater and seawater
+- [**Temperature**](params/Temperature.html) — Affects oxygen levels and species habitat
+- [**Tide**](params/Tide.html) — Water depth at the probes, driven by ocean tides
 
 Use the navigation on the left to explore data **by parameter**,
 comparing the in-water monitoring probes.
