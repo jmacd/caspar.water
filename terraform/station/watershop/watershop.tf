@@ -340,6 +340,18 @@ resource "null_resource" "watershop" {
           "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
           "echo '[reset] ${name}: removing host dir'",
           "rm -rf ${local.home}/pond-${name}",
+          # Empty this instance's S3 backup bucket.  Post-D6 `pond backup
+          # add` refuses a bucket whose store_id does not match the local
+          # pond_id ("refusing to push into a foreign pond"); a reset
+          # gives the local pond a NEW pond_id, so the stale old-format
+          # pond left in the bucket would block the re-attach.  Emptying
+          # the bucket makes `backup add` see "not a Delta table" and
+          # re-initialize cleanly.  Instances with no bucket of their own
+          # (site-*: s3_url == "") have nothing to empty.  The bucket
+          # itself is (re)created by the `mb` step earlier in this apply.
+          local.instances[name].s3_url != ""
+          ? "echo '[reset] ${name}: emptying bucket ${local.instances[name].s3_url}' && (podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 rm ${local.instances[name].s3_url} --recursive --region us-east-1 2>&1 || true)"
+          : "echo '[reset] ${name}: no S3 bucket to empty'",
           # Selfmon-only: also wipe the per-pond JSONL source dir and
           # the rendered HTML output dir.  Both are no-ops for
           # containerized data ponds (path won't exist), but for a
@@ -360,7 +372,7 @@ resource "null_resource" "watershop" {
       # we detect that condition on the host (via the volume's mountpoint)
       # and skip init in the no-op case.  Real init failures still surface.
       [for name in local.container_instance_names :
-        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init; fi"
+        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init --birthplace ${name}; fi"
       ],
       # Apply containerized instance configs
       [for name in local.container_instance_names :
@@ -369,19 +381,61 @@ resource "null_resource" "watershop" {
       # Initialize selfmon instances natively (POND comes from env file).
       # Same idempotent pattern as containerized instances above.
       [for name in local.selfmon_instance_names :
-        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init; fi"
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; if [ -d \"$POND/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else /usr/bin/pond init --birthplace ${name}; fi"
       ],
       # Apply selfmon configs natively
       [for name in local.selfmon_instance_names :
         "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond apply -f ${local.base_dir}/config/${name}.yaml"
       ],
-      # Enable and start container timers
+      # (Re)attach S3 backup/import remotes.  Post-D6 duckpond removed the
+      # `remote` factory; backups and cross-pond imports are now CLI
+      # attachments (`pond backup add` / `pond remote add`).  Idempotent
+      # via --overwrite, so this runs on every apply.  attach-remotes.sh
+      # branches on instance type (producer backup vs site import) and on
+      # container-vs-native (selfmon) internally.
+      #
+      # ORDER MATTERS: a pull-mode `remote add` refuses a bucket that is
+      # not yet an initialized pond, so every producer (water/noyo/septic)
+      # must attach AND push its pond_init bundle before the site pond
+      # imports it.  Attach producers + selfmon first, the site last.
+      [for name in local.instance_names :
+        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+        if !startswith(name, "site-")
+      ],
+      [for name in local.instance_names :
+        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+        if startswith(name, "site-")
+      ],
+      # Enable + start producer and selfmon timers.  Each timer's OnBootSec
+      # is already in the past, so starting a stopped timer fires its first
+      # run immediately and then settles onto the OnUnitActiveSec cadence.
+      # After a reset the timer was stopped, so this kicks the first ingest
+      # right away; on a routine apply the timer is already running and the
+      # enable --now is a no-op.  There is no synchronous seed: producers
+      # populate their buckets asynchronously, which is the same work the
+      # timer does every cycle.  terraform does not wait on any of it.
       [for name in local.container_instance_names :
         "systemctl --user enable --now pond@${name}.timer"
+        if !startswith(name, "site-")
       ],
-      # Enable and start selfmon timers
       [for name in local.selfmon_instance_names :
         "systemctl --user enable --now pond-selfmon@${name}.timer"
+      ],
+      # Site timers.  Starting a stopped site timer fires an immediate build.
+      # Right after a reset the producers have pushed only their empty
+      # pond_init bundle and have not ingested yet, so an immediate build
+      # would race them, fail "table 'source' not found", and then wait a
+      # full 3h interval.  For a site that was just reset, enable the timer
+      # but defer its first start by 5 minutes via a transient systemd timer
+      # so the producers kicked above have populated their buckets first.
+      # This is fire-and-forget: terraform schedules the deferred start and
+      # returns.  Sites not in the reset set already hold data and start
+      # immediately.
+      [for name in local.container_instance_names :
+        (contains(var.reset_instances, name)
+          ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=5min --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
+        : "systemctl --user enable --now pond@${name}.timer")
+        if startswith(name, "site-")
       ],
     )
   }

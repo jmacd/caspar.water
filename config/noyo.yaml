@@ -1,11 +1,6 @@
 version: v1
 kind: mkdir
 metadata:
-  path: /system/run
----
-version: v1
-kind: mkdir
-metadata:
   path: /system/etc
 ---
 version: v1
@@ -38,16 +33,19 @@ spec:
 version: v1
 kind: mknod
 metadata:
-  path: /system/run/1-backup
+  path: /hydrovu-archive
 spec:
-  factory: remote
+  # Read-only HydroVu history committed to the noyo-blue-econ repo as Parquet
+  # .series archives (hydrovu/devices/<id>/<Name>_archive_YYYYMMDD.series).
+  # git-ingest exposes them as data-archetype (FileDynamic) nodes; the combine
+  # inputs below read them through a series:/// cast (see
+  # duckpond/docs/url-entry-type-casting.md) so the dashboards show history
+  # immediately while live collection back-fills the recent tail.
+  factory: git-ingest
   config:
-    region: "${env:S3_REGION}"
-    url: "${env:S3_URL}"
-    endpoint: "${env:S3_ENDPOINT}"
-    access_key: "${env:S3_ACCESS_KEY}"
-    secret_key: "${env:S3_SECRET_KEY}"
-    allow_http: ${env:S3_ALLOW_HTTP:-false}
+    url: "https://github.com/jmacd/noyo-blue-econ.git"
+    ref: main
+    prefix: "hydrovu"
 ---
 version: v1
 kind: mknod
@@ -57,6 +55,11 @@ spec:
   factory: hydrovu
   config:
     hydrovu_path: "/hydrovu"
+    # Read-only seed archives (git-ingested at /hydrovu-archive). On a freshly
+    # reset pond, find_youngest_timestamp queries these to resume live
+    # collection from the archive's youngest point instead of crawling from
+    # epoch. Layout: {archive_path}/devices/<id>/*.series.
+    archive_path: "/hydrovu-archive"
     max_points_per_run: 10000
     client_id: "${env:HYDRO_KEY_ID}"
     client_secret: "${env:HYDRO_KEY_VALUE}"
@@ -149,11 +152,21 @@ spec:
               scope: Vulink
               range:
                 end: 2024-05-30T00:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_2*.series"
+              scope: Vulink
+              range:
+                end: 2024-05-30T00:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterVulink_3*.series"
               scope: Vulink
               range:
                 begin: 2024-05-30T00:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_3*.series"
+              scope: Vulink
+              range:
+                begin: 2024-05-30T00:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_2*.series"
+              scope: AT500_Surface
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_2*.series"
               scope: AT500_Surface
     
       - name: "FieldStation"
@@ -164,7 +177,15 @@ spec:
               scope: Vulink1
               range:
                 begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink1
+              range:
+                begin: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -172,7 +193,15 @@ spec:
               scope: Vulink2
               range:
                 begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink2
+              range:
+                begin: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Bottom
+              range:
+                begin: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Bottom
               range:
                 begin: 2025-10-16T21:00:00Z
@@ -203,11 +232,19 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_1*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_1*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
-    
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_1*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+
       - name: "Princess"
         factory: "timeseries-join" 
         config:
@@ -216,7 +253,15 @@ spec:
               scope: Vulink
               range:
                 end: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterVulink_4*.series"
+              scope: Vulink
+              range:
+                end: 2025-10-16T21:00:00Z
             - pattern: "/hydrovu/devices/**/NoyoCenterAT500_3*.series"
+              scope: AT500_Surface
+              range:
+                end: 2025-10-16T21:00:00Z
+            - pattern: "series:///hydrovu-archive/devices/**/NoyoCenterAT500_3*.series"
               scope: AT500_Surface
               range:
                 end: 2025-10-16T21:00:00Z
@@ -325,12 +370,20 @@ spec:
       title: "Noyo Harbor Blue Economy"
       base_url: "${env:SITE_BASE_URL:-/noyo-harbor/}"
       github_url: "https://github.com/jmacd/noyo-blue-econ"
+      # Pin the chart duration buttons to default to one month on first load
+      # for every Noyo Harbor chart, overriding chart.js's adaptive default.
+      default_range: "1M"
     
     exports:
       - name: "params"
         pattern: "/reduced/single_param/*/*.series"
-      - name: "sites"
-        pattern: "/reduced/single_site/*/*.series"
+      # Sites view retired: as of late 2025 only the Field Station surface and
+      # bottom probes are in the water, so the per-site pages are stale or
+      # historical and only the by-parameter view is meaningful. The export,
+      # route, sidebar entry, and sites.md page are preserved (commented out)
+      # so the Sites tab can be restored verbatim if more probes are deployed.
+      # - name: "sites"
+      #   pattern: "/reduced/single_site/*/*.series"
     
     routes:
       - name: "home"
@@ -347,19 +400,28 @@ spec:
             slug: "$0"
             page: "/system/site/data.md"
             export: "params"
-      - name: "sites"
-        type: static
-        slug: "sites"
-        page: "/system/site/sites.md"
-        routes:
-          - name: "site-detail"
-            type: template
-            slug: "$0"
-            page: "/system/site/data.md"
-            export: "sites"
+      # Sites tab retired (see exports note above). Restore this route block to
+      # bring the per-site pages back.
+      # - name: "sites"
+      #   type: static
+      #   slug: "sites"
+      #   page: "/system/site/sites.md"
+      #   routes:
+      #     - name: "site-detail"
+      #       type: template
+      #       slug: "$0"
+      #       page: "/system/site/data.md"
+      #       export: "sites"
     
     partials:
       sidebar: "/system/site/sidebar.md"
+    
+    # Friendly page titles for abbreviated parameter keys. The export key
+    # "DO" stays the URL slug (DO.html) while the page title/heading render
+    # as "Dissolved Oxygen". Other parameters are already full words, so they
+    # need no entry and fall back to the raw key.
+    labels:
+      DO: "Dissolved Oxygen"
     
     sidebar:
       - label: "Home"
@@ -375,17 +437,19 @@ spec:
             href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
           - label: "Tide"
             href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Tide.html"
-      - label: "Sites"
-        href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
-        children:
-          - label: "B-Dock"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
-          - label: "Field Station"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
-          - label: "Princess Seafood"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
-          - label: "Silver"
-            href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
+      # Sites tab retired (see exports note above). Restore this sidebar entry
+      # alongside the export and route blocks to bring the per-site pages back.
+      # - label: "Sites"
+      #   href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/index.html"
+      #   children:
+      #     - label: "B-Dock"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/BDock.html"
+      #     - label: "Field Station"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/FieldStation.html"
+      #     - label: "Princess Seafood"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Princess.html"
+      #     - label: "Silver"
+      #       href: "${env:SITE_BASE_URL:-/noyo-harbor/}sites/Silver.html"
     
     
     # Noyo Center for Marine Science theme
@@ -403,6 +467,14 @@ spec:
       nav-btn: "rgba(26, 105, 133, 0.85)"
       nav-btn-hover: "rgba(26, 105, 133, 0.65)"
       nav-btn-active: "rgba(15, 52, 96, 0.9)"
-      nav-sub-btn: "rgba(26, 105, 133, 0.5)"
-      nav-sub-btn-hover: "rgba(26, 105, 133, 0.35)"
-      nav-sub-btn-active: "rgba(15, 52, 96, 0.85)"
+      # Sub-tabs use a neutral, low-contrast treatment: unselected tabs are
+      # transparent with only a soft grey outline (the sidebar background
+      # shows through), and the selected tab is a solid medium grey.  This
+      # keeps the parameter list calm while still clearly marking the current
+      # one, without competing with the blue/navy section colors above.
+      nav-sub-btn: "transparent"
+      nav-sub-btn-border: "#94a3b8"
+      nav-sub-btn-hover: "rgba(100, 116, 139, 0.12)"
+      # Solid grey selected sub-tab; dark enough for legible white label text
+      # (~4.8:1).
+      nav-sub-btn-active: "#64748b"

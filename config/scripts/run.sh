@@ -42,9 +42,9 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /content pull
         ${EXE} "${INSTANCE}" run /templates pull
         ${EXE} "${INSTANCE}" run /img pull
-        ${EXE} "${INSTANCE}" run /system/etc/10-water pull
-        ${EXE} "${INSTANCE}" run /system/etc/11-noyo pull
-        ${EXE} "${INSTANCE}" run /system/etc/12-septic pull
+        ${EXE} "${INSTANCE}" pull water
+        ${EXE} "${INSTANCE}" pull noyo
+        ${EXE} "${INSTANCE}" pull septic
         # Build site with atomic deploy
         DEPLOY_BASE="${BASE_DIR}/www/${INSTANCE}"
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -67,3 +67,10 @@ case "${TYPE}" in
         exit 1
         ;;
 esac
+
+# Automatic maintenance after each successful run: checkpoint + vacuum
+# (both internally gated to run periodically).  Also collapse data:series
+# files with more than 100 live versions into one merged version; the
+# threshold self-gates so only noisy files are touched.  Compact is
+# manual-only via 'pond maintain --compact' for now.
+${EXE} "${INSTANCE}" maintain --collapse-versions 100

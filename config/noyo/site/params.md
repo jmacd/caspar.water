@@ -5,4 +5,10 @@ layout: page
 
 # Water Quality Parameters
 
-Select a parameter from the sidebar to view time-series data across all monitoring sites.
+The Parameters landing page redirects to the first parameter (Dissolved
+Oxygen); `DO.html` is a sibling of this page so the relative redirect works
+under any `base_url`. The fallback link covers the no-JavaScript case.
+
+<script>window.location.replace("DO.html");</script>
+
+[View Dissolved Oxygen](DO.html)

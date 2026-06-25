@@ -4,11 +4,6 @@ metadata:
   path: /ingest
 ---
 version: v1
-kind: mkdir
-metadata:
-  path: /system/run
----
-version: v1
 kind: mknod
 metadata:
   path: /etc/ingest
@@ -18,20 +13,6 @@ spec:
     archived_pattern: /data/septicstation-*.json
     active_pattern: /data/septicstation.json
     pond_path: /ingest
----
-version: v1
-kind: mknod
-metadata:
-  path: /system/run/1-backup
-spec:
-  factory: remote
-  config:
-    region: "${env:S3_REGION}"
-    url: "${env:S3_URL}"
-    endpoint: "${env:S3_ENDPOINT}"
-    access_key: "${env:S3_ACCESS_KEY}"
-    secret_key: "${env:S3_SECRET_KEY}"
-    allow_http: ${env:S3_ALLOW_HTTP:-false}
 ---
 version: v1
 kind: mknod
@@ -54,7 +35,7 @@ spec:
       - name: "pumps"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
@@ -82,7 +63,7 @@ spec:
       - name: "cycle-times"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
@@ -110,7 +91,7 @@ spec:
       - name: "pump-modes"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
@@ -132,7 +113,7 @@ spec:
       - name: "flow-totals"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
@@ -166,7 +147,7 @@ spec:
       - name: "dose-zones"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
@@ -200,7 +181,7 @@ spec:
       - name: "environment"
         factory: "temporal-reduce"
         config:
-          in_pattern: "oteljson:///ingest/septicstation.json"
+          in_pattern: "oteljson:///ingest/septicstation*.json"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]

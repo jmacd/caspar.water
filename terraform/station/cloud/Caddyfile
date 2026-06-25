@@ -10,6 +10,14 @@ casparwater.us {
 	@vendor path /vendor/* /noyo-harbor/vendor/*
 	header @vendor Cache-Control "public, max-age=31536000, immutable"
 
+	# Everything that isn't a content-addressed vendor asset (HTML pages,
+	# parquet/.series data, including subsites like /noyo-harbor/data/*)
+	# uses content-stable names whose contents change on every build, so
+	# require revalidation (cheap 304 via ETag/Last-Modified) to avoid
+	# serving stale data.
+	@revalidate not path /vendor/* /noyo-harbor/vendor/*
+	header @revalidate Cache-Control "no-cache"
+
 	# Compress responses
 	encode zstd gzip
 }

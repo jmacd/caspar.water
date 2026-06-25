@@ -112,26 +112,22 @@ cd terraform/station/watershop
 terraform apply -var 'reset_instances=["water-staging"]'
 ```
 
-### Full clean reset (recover from stale data, watermark drift, or phantom partitions)
+### Full clean reset (recover from stale data)
 
-Site-* instances aggregate from producer ponds via S3 import. Two known
-duckpond bugs cause site-* to gradually mask producer data:
+Site-* instances aggregate from the producer ponds (water/noyo/septic) by
+importing each producer's S3 bucket. The cross-pond import is isolated per
+`pond_id` with a per-remote watermark (duckpond post-D6 remote model, #80), so
+a slow producer is never masked by a faster one during normal operation.
 
-1. The cross-pond import watermark is computed as `max()` across all imported
-   partitions instead of per-partition. Slower-growing producers
-   (water/noyo) get masked when faster ones (septic) advance their `txn_seq`
-   past them.
-2. After a producer-pond reset, the old pond's partition UUIDs persist in the
-   S3 bucket as "phantom" partitions. Site-* discovers them on next pull and
-   their stale watermarks pollute the `max()` calculation indefinitely.
-
-The reliable recovery is to wipe **all** producer S3 buckets and reset **all**
-prod ponds together, so every producer restarts at `txn_seq = 1` in lockstep.
-With identical 1h intervals they drift only ~24 txns/day against each other
--- well below any practical masking threshold for at least a week.
+Reset all four prod ponds together. A reset gives each producer a new `pond_id`
+and restarts its `txn_seq` at 1; wiping site-prod alongside them clears its
+import state so it re-bootstraps cleanly from each producer's fresh bucket
+(testsuite `542-import-watermark-restore.sh`).
 
 ```bash
-# 1. Erase prod producer S3 buckets (clears phantom partition UUIDs).
+# 1. Erase prod producer S3 buckets so each re-inits into an empty bucket.
+#    A reset gives the pond a new pond_id, and `pond backup add` refuses a
+#    bucket whose store_id still belongs to the old pond.
 config/scripts/reset.sh \
     terraform/station/watershop/env/water-prod.env \
     terraform/station/watershop/env/noyo-prod.env \
@@ -142,23 +138,33 @@ cd terraform/station/watershop
 terraform apply -var deploy_production=true \
     -var 'reset_instances=["water-prod","noyo-prod","septic-prod","site-prod"]'
 
-# 3. Workaround for duckpond bug: terraform's idempotent-init skips
-#    `pond apply` for site-prod after the reset, leaving the pond
-#    initialized but with no factories.  Apply manually:
-ssh watershop.casparwater.us '/home/jmacd/duckpond/config/scripts/pond.sh \
-    site-prod apply -f /config/site.yaml'
-
-# 4. Workaround for duckpond bug: noyo-prod's first hydrovu collect from
-#    a fresh pond often fails with API timeout (asks for all history at
-#    startTime=0).  Retry once if it failed:
-ssh watershop.casparwater.us 'systemctl --user start pond@noyo-prod.service'
-
-# 5. Optionally trigger site-prod immediately instead of waiting up to 3h:
-ssh watershop.casparwater.us 'systemctl --user start pond@site-prod.service'
+# 3. Verify (optional): terraform returns once timers are enabled; data
+#    populates asynchronously. Check first ticks once they land.
+ssh watershop.casparwater.us 'systemctl --user list-timers "pond@*-prod*" --all'
 ```
 
-Total time to fresh data on cloud: ~10 min (bucket wipe + terraform) +
-~1 min producer first ingest + ~10 min site-prod pull/build/rsync.
+The reset is fully asynchronous. terraform wipes and re-inits the four prod
+ponds, attaches their remotes, then enables the timers and returns; it does
+not run a synchronous seed or block on any ingest or site build. Producer
+timers fire their first ingest immediately, and site-prod's first build is
+deferred about 5 minutes so it runs after the producers have populated their
+buckets. The manual fix-up steps this runbook used to list are no longer
+needed:
+
+- site-prod comes up without a manual `pond apply` or an early manual trigger:
+  `pond apply` for site-prod runs unconditionally on every terraform apply
+  (`watershop.tf`), and the deferred first build (terraform schedules a
+  one-shot `systemd-run --on-active=5min`) renders the site once producers
+  hold data, so there is no empty-source race.
+- noyo-prod's first hydrovu collect no longer crawls HydroVu from epoch on a
+  fresh pond: live collection resumes from the git-ingested seed archives, and
+  a missing resume point now hard-fails with a clear message instead of issuing
+  the unbounded `startTime=0` query that timed the API out (duckpond PR #90,
+  in the prod image).
+
+Total time to fresh data on cloud: terraform returns in ~2-3 min (reset +
+re-init + remote attach); producers ingest within ~1-2 min; site-prod builds
+~5 min after the apply and rsyncs to cloud (~10 min total), all unattended.
 
 The same recipe works for staging: substitute `-staging` for `-prod`
 throughout, and drop `-var deploy_production=true`.

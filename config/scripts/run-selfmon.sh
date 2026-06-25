@@ -143,7 +143,29 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-"${PONDBIN}" maintain
+# Maintain every tick: checkpoint + vacuum (gated internally), compact
+# small parquet files, and collapse data:series files with >100 live
+# versions (threshold self-gates).
+#
+# --compact runs every tick on purpose.  The control table gains one
+# small record-parquet per control commit and is otherwise NEVER merged
+# (post-commit auto-maintain and a plain `pond maintain` both pass
+# compact=false), so without per-tick compaction its add-file count grows
+# without bound and every force=true checkpoint must re-list all of them,
+# bloating {POND}/control to many GB of checkpoint parquets.  Compacting
+# each tick keeps the control add-file count -- and therefore checkpoint
+# size -- bounded, which also keeps default log retention harmless.  This
+# is the aggressive-maintenance mode selfmon exists to exercise.
+#
+# --prune shrinks the control table's logical ROW count, which compaction
+# alone never does: compaction merges add-files but the append-only
+# lifecycle log grows ~3-6 rows per transaction forever.  Pruning deletes
+# replicated history at/below a safe horizon in this same checkpoint +
+# vacuum pass.  selfmon has no push remote, so --allow-no-remote enables
+# retention-only pruning (keep the most recent --keep-txns transactions;
+# pruned history is unrecoverable, which is fine for selfmon).
+"${PONDBIN}" maintain --compact --collapse-versions 100 \
+    --prune --allow-no-remote --keep-txns 1000
 
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
