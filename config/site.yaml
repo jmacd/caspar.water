@@ -211,7 +211,7 @@ spec:
           - label: "pH"
             href: "${env:SITE_BASE_URL:-/}data/ph.html"
           - label: "Data Explorer"
-            href: "${env:SITE_BASE_URL:-/}explore.html"
+            href: "${env:SITE_BASE_URL:-/}explore/"
       - "Software"
       - "Operator"
       - "Thanks"
