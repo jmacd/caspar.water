@@ -387,6 +387,13 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond apply -f ${local.base_dir}/config/${name}.yaml"
       ],
+      # selfmon commits every minute, so bound the DATA _delta_log too (not just
+      # control): 1 day of retention keeps the journal table from external-
+      # sorting weeks of commit JSONs into the spill pool and OOMing.  selfmon
+      # is fully pushed every tick, so its commit log is never needed for diffs.
+      [for name in local.selfmon_instance_names :
+        "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond config set maintenance.data_log_retention_minutes 1440"
+      ],
       # (Re)attach S3 backup/import remotes.  Post-D6 duckpond removed the
       # `remote` factory; backups and cross-pond imports are now CLI
       # attachments (`pond backup add` / `pond remote add`).  Idempotent
