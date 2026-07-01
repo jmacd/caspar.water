@@ -120,6 +120,24 @@ spec:
                 slug: "$0"
                 page: "/templates/data.md"
                 export: "septic-metrics"
+          - name: "explore"
+            type: static
+            slug: "explore"
+            page: "/templates/explore.md"
+            export: "metrics"
+    
+    explore:
+      url: "explore/"
+      datasets:
+        - export: "metrics"
+          table: "water"
+          label: "Water reduced metrics"
+        - export: "septic-metrics"
+          table: "septic"
+          label: "Septic reduced metrics"
+        - export: "analysis"
+          table: "analysis"
+          label: "Analysis"
     
     partials:
       sidebar: "/templates/sidebar.md"
@@ -192,6 +210,8 @@ spec:
             href: "${env:SITE_BASE_URL:-/}data/chlorine-level.html"
           - label: "pH"
             href: "${env:SITE_BASE_URL:-/}data/ph.html"
+          - label: "Data Explorer"
+            href: "${env:SITE_BASE_URL:-/}explore/"
       - "Software"
       - "Operator"
       - "Thanks"

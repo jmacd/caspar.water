@@ -71,6 +71,7 @@ esac
 # Automatic maintenance after each successful run: checkpoint + vacuum
 # (both internally gated to run periodically).  Also collapse data:series
 # files with more than 100 live versions into one merged version; the
-# threshold self-gates so only noisy files are touched.  Compact is
-# manual-only via 'pond maintain --compact' for now.
-${EXE} "${INSTANCE}" maintain --collapse-versions 100
+# threshold self-gates so only noisy files are touched.  --compact merges
+# the data table's add-files (self-gated to noisy partitions) and is recorded
+# as a pushable Compact bundle, so the data volume stays maintained on remotes.
+${EXE} "${INSTANCE}" maintain --compact --collapse-versions 100
