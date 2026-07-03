@@ -367,6 +367,12 @@ resource "null_resource" "watershop" {
           "echo '[reset] ${name}: done'",
         ])
       ],
+      # Refresh the container image once at deploy time.  pond.sh now uses
+      # --pull=missing, so a terraform apply after a new image is promoted must
+      # explicitly pull it; timer ticks then keep it current via --pull-image.
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} --pull-image"
+      ],
       # Initialize containerized instances if not already initialized.
       # `pond init` errors with "Pond already exists" on a populated pond;
       # we detect that condition on the host (via the volume's mountpoint)

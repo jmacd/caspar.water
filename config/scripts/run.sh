@@ -20,6 +20,15 @@ fi
 TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 
+# Refresh the container image once per tick.  pond.sh uses --pull=missing for
+# the per-command runs below, so without this the image would never update on a
+# timer tick; with it, exactly one registry check happens per tick (instead of
+# one per sub-command).  Selfmon runs natively and has no image.
+case "${TYPE}" in
+    *selfmon) : ;;
+    *) ${EXE} "${INSTANCE}" --pull-image ;;
+esac
+
 case "${TYPE}" in
     noyo)
         ${EXE} "${INSTANCE}" run /laketech/data pull

@@ -30,14 +30,23 @@ case "$(uname -m)" in
 esac
 
 # Image selection: staging uses latest, prod uses the promoted image.
-# Both are mutable tags pulled with --pull=newer, so `systemctl restart`
-# (or the next timer tick) picks up new images automatically.
+# Both are mutable tags.  run.sh refreshes the image once per timer tick via
+# `pond.sh <instance> --pull-image`; the individual `podman run` invocations
+# below use --pull=missing so they reuse the already-pulled local image instead
+# of each re-checking the registry (which GHCR counts as a download).
 if [[ "${INSTANCE}" == *-staging ]]; then
     IMAGE="ghcr.io/jmacd/duckpond/duckpond:latest-${ARCH}"
 else
     IMAGE="ghcr.io/jmacd/duckpond/duckpond:prod-${ARCH}"
 fi
-PULL="--pull=newer"
+
+# One-shot image refresh: fetch the mutable tag once (a single registry check)
+# so the per-command runs in this tick can use --pull=missing.
+if [ "${1:-}" = "--pull-image" ]; then
+    exec podman pull "${IMAGE}"
+fi
+
+PULL="--pull=missing"
 
 # Volume name from env file (POND_VOLUME)
 VOLUME="${POND_VOLUME:-pond-${INSTANCE}}"
