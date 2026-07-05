@@ -32,6 +32,13 @@ fi
 : "${POND:?POND must be set in ${ENV_FILE}}"
 export POND
 
+# Expose the selfmon instance name to measure-pond.sh so its self-probe
+# selects the pond-selfmon@ systemd units instead of the pond@ units used
+# by container ponds.  Without this the selfmon pond's own status card
+# reads timer.active from a nonexistent pond@<instance>.timer and is
+# perpetually classified red.
+export SELFMON_INSTANCE="${INSTANCE}"
+
 # ── Pre-tick maintain: trim the delta log BEFORE anything reads it ──
 # This is the ONLY maintain per tick, and it runs FIRST on purpose.
 # Every commit appends an uncheckpointed entry to the Delta log; listing
