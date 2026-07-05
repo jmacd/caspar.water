@@ -82,10 +82,22 @@ locals {
     }
     watershop-selfmon = {
       s3         = local.staging_s3
+      # s3_url provisions a MinIO bucket and the S3_* env used to resolve
+      # credentials, but attach-remotes.sh intentionally does NOT attach a
+      # backup remote for selfmon: run-selfmon.sh prunes aggressively with
+      # --allow-no-remote, which is incompatible with a push backup because
+      # the post-commit push reads already-vacuumed files and holds the
+      # write.lock, blocking compaction.  The bucket therefore stays
+      # unused; kept only so the reset path can still empty it.
       s3_url     = "s3://watershop-selfmon"
       interval   = "1min"
       boot_delay = "30s"
-      extra_env  = "SELFMON=1"
+      # POND_MEMORY_LIMIT_MB raises the tlogfs FairSpillPool above its
+      # 512MiB default so resolving /logs/journal, which holds hundreds of
+      # per-unit jsonl files, has room for its ~207MiB external sort instead
+      # of OOMing.  Requires a pond binary built on or after 2026-06-30,
+      # commit a84fb9bc; older binaries ignore this and stay at 512MiB.
+      extra_env  = "SELFMON=1\nPOND_MEMORY_LIMIT_MB=2048"
       selfmon    = true
     }
   }
