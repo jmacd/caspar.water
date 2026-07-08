@@ -3,7 +3,7 @@
 	url = git@github.com:jmacd/noyo-blue-econ.git
 [submodule "duckpond"]
 	path = duckpond
-	url = git@github.com:jmacd/duckpond.git
+	url = git@github.com:jmacd/watertown.git
 [submodule "opentelemetry-mqtt-sparkplug"]
 	path = opentelemetry-mqtt-sparkplug
 	url = git@github.com:jmacd/opentelemetry-mqtt-sparkplug.git

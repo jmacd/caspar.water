@@ -287,10 +287,10 @@ resource "null_resource" "watershop" {
         # disturb containers for instances we're leaving alone.
         join(" ; ", concat(
           [for name in local.container_instance_names :
-            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true"
+            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman kill 2>/dev/null || true"
           ],
           [for name in local.container_instance_names :
-            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true"
+            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman rm -f 2>/dev/null || true"
           ],
         )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
