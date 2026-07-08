@@ -1,5 +1,5 @@
 [Unit]
-Description=DuckPond self-monitoring %i (native)
+Description=Watertown self-monitoring %i (native)
 After=network-online.target
 Wants=network-online.target
 
@@ -11,5 +11,5 @@ MemoryAccounting=yes
 # of small files open during backup/scan.  Bump the per-process limit
 # well above the default 1024 so we can keep growing while we measure.
 LimitNOFILE=65536
-ExecStart=/home/jmacd/duckpond/config/scripts/run-selfmon.sh %i
+ExecStart=/home/jmacd/watertown/config/scripts/run-selfmon.sh %i
 Environment=HOME=/home/jmacd

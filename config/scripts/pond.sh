@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pond.sh -- Podman wrapper for duckpond instances.
+# pond.sh -- Podman wrapper for watertown instances.
 #
 # Usage: pond.sh <instance> [pond-args...]
 #
@@ -11,7 +11,7 @@ INSTANCE=$1
 shift
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
-# Base dir is the duckpond deployment root (parent of config/)
+# Base dir is the watertown deployment root (parent of config/)
 BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
 ENV_FILE="${BASE_DIR}/env/${INSTANCE}.env"
 
@@ -35,9 +35,9 @@ esac
 # below use --pull=missing so they reuse the already-pulled local image instead
 # of each re-checking the registry (which GHCR counts as a download).
 if [[ "${INSTANCE}" == *-staging ]]; then
-    IMAGE="ghcr.io/jmacd/duckpond/duckpond:latest-${ARCH}"
+    IMAGE="ghcr.io/jmacd/watertown/watertown:latest-${ARCH}"
 else
-    IMAGE="ghcr.io/jmacd/duckpond/duckpond:prod-${ARCH}"
+    IMAGE="ghcr.io/jmacd/watertown/watertown:prod-${ARCH}"
 fi
 
 # One-shot image refresh: fetch the mutable tag once (a single registry check)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh -- Run a duckpond instance (called by systemd timer).
+# run.sh -- Run a watertown instance (called by systemd timer).
 #
 # Usage: run.sh <instance>
 set -ex
@@ -73,7 +73,7 @@ case "${TYPE}" in
         ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf
         # For production: deploy to cloud host via rsync + atomic symlink
         if [[ "${INSTANCE}" == *-prod ]] && [ -n "${CLOUD_HOST}" ]; then
-            CLOUD_WWW="/home/jmacd/duckpond/www"
+            CLOUD_WWW="/home/jmacd/watertown/www"
             CLOUD_BUILD="${CLOUD_WWW}/build-${TIMESTAMP}"
             # Seed the remote build from the current one so rsync transfers only
             # changed partition files rather than the whole tree every tick.

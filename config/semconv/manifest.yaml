@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Weaver registry manifest for the duckpond / caspar.water semantic
+# Weaver registry manifest for the watertown / caspar.water semantic
 # conventions.  Validate with:
 #
 #   docker run --rm -v "$PWD:/work" otel/weaver:latest \
@@ -12,7 +12,7 @@
 name: caspar.water
 description: |
   Semantic conventions for self-monitoring metrics emitted by
-  duckpond ponds running on the Caspar Water Company infrastructure.
+  watertown ponds running on the Caspar Water Company infrastructure.
   Names are also the canonical column-suffix shape consumed by the
   sitegen chart.js renderer (`<scope>.<param>.<unit>`); the registry
   tells consumers what instrument kind a given `<param>.<unit>` pair

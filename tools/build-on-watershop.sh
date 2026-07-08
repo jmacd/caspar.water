@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# build-on-watershop.sh -- push the current duckpond branch and build a
+# build-on-watershop.sh -- push the current watertown branch and build a
 # Debian package for it natively on watershop (arm64).  The resulting
-# .deb lands at ~/src/duckpond/target/debian/duckpond_<ver>_arm64.deb on
+# .deb lands at ~/src/watertown/target/debian/watertown_<ver>_arm64.deb on
 # watershop.  By default also `dpkg -i`'s it.  Use --no-install to
 # stop after the build.
 #
@@ -16,12 +16,12 @@
 # Usage:
 #   tools/build-on-watershop.sh                      # build + install
 #   tools/build-on-watershop.sh --no-install         # build only
-#   DUCKPOND_DIR=/path/to/duckpond tools/...         # override worktree
+#   WATERTOWN_DIR=/path/to/watertown tools/...         # override worktree
 #   WATERSHOP_HOST=other.host    tools/...           # override target
 #
 set -euo pipefail
 
-DUCKPOND_DIR=${DUCKPOND_DIR:-$(cd "$(dirname "$0")/../duckpond" && pwd)}
+WATERTOWN_DIR=${WATERTOWN_DIR:-$(cd "$(dirname "$0")/../watertown" && pwd)}
 WATERSHOP_HOST=${WATERSHOP_HOST:-watershop.casparwater.us}
 INSTALL=1
 for arg in "$@"; do
@@ -35,10 +35,10 @@ for arg in "$@"; do
     esac
 done
 
-cd "${DUCKPOND_DIR}"
+cd "${WATERTOWN_DIR}"
 
 if [ ! -e .git ]; then
-    echo "ERROR: ${DUCKPOND_DIR} is not a git worktree" >&2
+    echo "ERROR: ${WATERTOWN_DIR} is not a git worktree" >&2
     exit 1
 fi
 
@@ -49,7 +49,7 @@ if [ "${BRANCH}" = "HEAD" ]; then
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-    echo "WARNING: ${DUCKPOND_DIR} has uncommitted changes; only" >&2
+    echo "WARNING: ${WATERTOWN_DIR} has uncommitted changes; only" >&2
     echo "         committed history on '${BRANCH}' will be built." >&2
     echo "         Press Ctrl-C within 3s to abort." >&2
     sleep 3
@@ -65,14 +65,14 @@ git push origin "${BRANCH}"
 # we don't bother to vary the cargo-deb revision per build.
 REMOTE_SCRIPT=$(cat <<EOF
 set -euo pipefail
-cd ~/src/duckpond
+cd ~/src/watertown
 git fetch origin ${BRANCH}
 git checkout ${BRANCH}
 git reset --hard ${LOCAL_SHA}
 . \$HOME/.cargo/env
 make vendor
 cargo deb -p cmd
-ls -la target/debian/duckpond_*_arm64.deb | tail -1
+ls -la target/debian/watertown_*_arm64.deb | tail -1
 EOF
 )
 
@@ -82,7 +82,7 @@ ssh "${WATERSHOP_HOST}" bash -s <<<"${REMOTE_SCRIPT}"
 if [ "${INSTALL}" = "1" ]; then
     echo "==> installing freshly built deb on ${WATERSHOP_HOST}"
     ssh "${WATERSHOP_HOST}" \
-        "DEB=\$(ls -t ~/src/duckpond/target/debian/duckpond_*_arm64.deb | head -1) && sudo dpkg -i \"\${DEB}\" && /usr/bin/pond --version"
+        "DEB=\$(ls -t ~/src/watertown/target/debian/watertown_*_arm64.deb | head -1) && sudo dpkg -i \"\${DEB}\" && /usr/bin/pond --version"
 else
-    echo "==> --no-install: deb left in ~/src/duckpond/target/debian/ on ${WATERSHOP_HOST}"
+    echo "==> --no-install: deb left in ~/src/watertown/target/debian/ on ${WATERSHOP_HOST}"
 fi

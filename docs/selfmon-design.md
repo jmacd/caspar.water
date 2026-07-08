@@ -1,6 +1,6 @@
 # Selfmon: design and current limitations
 
-`watershop-selfmon` is a self-monitoring duckpond instance running on
+`watershop-selfmon` is a self-monitoring watertown instance running on
 `watershop.casparwater.us`. Every ~60 s it probes each local pond and
 the host journal, joins the resulting time-series, and renders a tiny
 static dashboard served by Caddy at `/selfmon/`.
@@ -188,7 +188,7 @@ specific factory kind.
 
 ### Semantic conventions
 
-`config/semconv/duckpond-pond.yaml` is the authoritative metric-name
+`config/semconv/watertown-pond.yaml` is the authoritative metric-name
 registry. Gauges are the default and intentionally omitted; only
 non-gauge metrics (counter, updowncounter) need entries. Sitegen's
 `metric_registry` mirrors the non-gauge entries -- keep them in sync.
@@ -245,7 +245,7 @@ ticks.
 
 ### 3. Status-grid re-runs full SQL each render
 
-`run_status_grid_queries` (`duckpond/crates/sitegen/src/factory.rs`,
+`run_status_grid_queries` (`watertown/crates/sitegen/src/factory.rs`,
 ~lines 681 and 738) issues two queries per (unit, glob): a
 `MAX(...)`-style status query and a `LIMIT N ORDER BY DESC` tail
 query. With currently ~9 ponds × 2 globs = ~18 queries per sitegen
@@ -258,7 +258,7 @@ local MinIO each tick. That is a real S3 write per pond per tick (the
 post-commit `remote` factory in `push` mode writing to
 `http://watershop.casparwater.us:9000/watershop-selfmon`, **not** R2).
 Under sustained load these pushes contend with whatever else is
-running on the host. We accept this -- exercising duckpond under
+running on the host. We accept this -- exercising watertown under
 resource constraints and continuous growth is part of the experiment.
 
 ### 5. `Run summary` is not yet observable per-factory
@@ -318,7 +318,7 @@ state; not done today.
   into `run-selfmon.sh` because it had no env-scoping reason to be
   separate. `measure-pond.sh` stays standalone because it re-sources
   each pond's env.
-- **`journalctl --merge` is correct.** All duckpond units on watershop
+- **`journalctl --merge` is correct.** All watertown units on watershop
   run as user units; system units are unrelated. The merge flag was
   the fix for the empty-status-grid bug we hit during deployment.
 
@@ -329,14 +329,14 @@ state; not done today.
 | Selfmon config | `config/watershop-selfmon.yaml` |
 | Tick orchestrator | `config/scripts/run-selfmon.sh` |
 | Per-pond probe | `config/scripts/measure-pond.sh` |
-| Semantic conventions | `config/semconv/duckpond-pond.yaml` |
+| Semantic conventions | `config/semconv/watertown-pond.yaml` |
 | Sitegen templates (status / metrics / sidebar) | `config/selfmon/site/*.md` |
-| `pond_status_grid` shortcode | `duckpond/crates/sitegen/src/shortcodes.rs` |
-| `Health::classify` | `duckpond/crates/sitegen/src/shortcodes.rs` |
-| `run_status_grid_queries` (journal + perf enrichment) | `duckpond/crates/sitegen/src/factory.rs` |
-| `extract_pond_name` (unit -> `{pond}` placeholder) | `duckpond/crates/sitegen/src/factory.rs` |
-| Local-time hydration script | `duckpond/crates/sitegen/assets/relative-time.js` |
-| `journal-ingest` factory | `duckpond/crates/provider/src/factory/journal_ingest.rs` |
-| `Run summary` log line | `duckpond/crates/cmd/src/main.rs`, `commands/run_summary.rs` |
-| Format cache (the source of limitation #1) | `duckpond/crates/provider/src/format_cache.rs` |
+| `pond_status_grid` shortcode | `watertown/crates/sitegen/src/shortcodes.rs` |
+| `Health::classify` | `watertown/crates/sitegen/src/shortcodes.rs` |
+| `run_status_grid_queries` (journal + perf enrichment) | `watertown/crates/sitegen/src/factory.rs` |
+| `extract_pond_name` (unit -> `{pond}` placeholder) | `watertown/crates/sitegen/src/factory.rs` |
+| Local-time hydration script | `watertown/crates/sitegen/assets/relative-time.js` |
+| `journal-ingest` factory | `watertown/crates/provider/src/factory/journal_ingest.rs` |
+| `Run summary` log line | `watertown/crates/cmd/src/main.rs`, `commands/run_summary.rs` |
+| Format cache (the source of limitation #1) | `watertown/crates/provider/src/format_cache.rs` |
 | Deploy | `tools/deploy-watershop.sh` |

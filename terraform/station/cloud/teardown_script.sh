@@ -1,6 +1,6 @@
 #!/bin/sh
 # teardown_script.sh -- Stop services before redeployment, and remove
-# any residual duckpond state from previous deployments that ran a
+# any residual watertown state from previous deployments that ran a
 # pond on this host.  The cloud host is now caddy + rsync target only;
 # the pond@site-prod that used to live here was orphaned and was the
 # source of the R2 bandwidth bleed (cf. remote-bandwidth-bug.md).

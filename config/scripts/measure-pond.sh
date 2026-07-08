@@ -11,7 +11,7 @@
 # every other pond's series via `timeseries-join`.
 #
 # The column names match the canonical metric_name values defined
-# in config/semconv/duckpond-pond.yaml, namely:
+# in config/semconv/watertown-pond.yaml, namely:
 #
 #   committed.txn_ids   counter        cumulative commit count
 #   parquet.files       updowncounter  *.parquet under POND
@@ -108,7 +108,7 @@ fi
 
     PONDBIN=/usr/bin/pond
     if [ ! -x "${PONDBIN}" ]; then
-        echo "ERROR: ${PONDBIN} not installed; run install-duckpond.sh" >&2
+        echo "ERROR: ${PONDBIN} not installed; run install-watertown.sh" >&2
         exit 1
     fi
     export POND   # pond CLI reads $POND
@@ -140,7 +140,7 @@ fi
     [ -z "${TXN_SEQ}" ] && TXN_SEQ=0
 
     # ── peak RSS of previous tick ─────────────────────────────────
-    # Stored in bytes (see config/semconv/duckpond-pond.yaml: unit By).
+    # Stored in bytes (see config/semconv/watertown-pond.yaml: unit By).
     # Source line emitted by pond CLI to stderr at process exit:
     #   "Peak memory usage: NN.NN MB"
     # Container ponds run via pond@<name>.service; the selfmon pond runs
@@ -237,7 +237,7 @@ fi
     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     # Single JSON line, append.  Column names match metric_name
-    # entries in config/semconv/duckpond-pond.yaml.
+    # entries in config/semconv/watertown-pond.yaml.
     printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"timer.active":%s,"last_run.seconds_ago":%s,"timer.interval_s":%s}\n' \
         "${TS}" "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" \
         "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \

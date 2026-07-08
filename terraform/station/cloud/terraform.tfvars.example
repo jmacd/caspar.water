@@ -4,7 +4,7 @@
 # This file is gitignored — credentials stay local.
 #
 # The cloud host serves the static site (rsync'd from watershop) via
-# caddy.  It does not run any duckpond instance and so does not need
+# caddy.  It does not run any watertown instance and so does not need
 # R2 credentials.
 
 # Linode API token

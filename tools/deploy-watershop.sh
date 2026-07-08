@@ -5,7 +5,7 @@
 #   1. tools/build-on-watershop.sh (push branch, remote cargo-deb on
 #      watershop, dpkg -i the freshly built /usr/bin/pond).
 #   2. terraform apply in terraform/station/watershop (re-pushes
-#      config + env, re-runs install-duckpond.sh which always picks
+#      config + env, re-runs install-watertown.sh which always picks
 #      the newest .deb in target/debian/, re-applies the
 #      watershop-selfmon.yaml).
 #
@@ -51,7 +51,7 @@ for arg in "$@"; do
     esac
 done
 
-echo "==> building duckpond on watershop"
+echo "==> building watertown on watershop"
 "${REPO_ROOT}/tools/build-on-watershop.sh"
 
 if [ "${RUN_TF}" = "0" ]; then

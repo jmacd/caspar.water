@@ -4,7 +4,7 @@
 
 LOCAL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "${LOCAL_DIR}/.." && pwd)
-export DUCKPOND_ROOT="${REPO_ROOT}/duckpond"
+export WATERTOWN_ROOT="${REPO_ROOT}/watertown"
 export CARGO="cargo run -p cmd --"
 
 # Git content source (local repo, current branch)

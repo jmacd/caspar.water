@@ -116,7 +116,7 @@ terraform apply -var 'reset_instances=["water-staging"]'
 
 Site-* instances aggregate from the producer ponds (water/noyo/septic) by
 importing each producer's S3 bucket. The cross-pond import is isolated per
-`pond_id` with a per-remote watermark (duckpond post-D6 remote model, #80), so
+`pond_id` with a per-remote watermark (watertown post-D6 remote model, #80), so
 a slow producer is never masked by a faster one during normal operation.
 
 Reset all four prod ponds together. A reset gives each producer a new `pond_id`
@@ -159,7 +159,7 @@ needed:
 - noyo-prod's first hydrovu collect no longer crawls HydroVu from epoch on a
   fresh pond: live collection resumes from the git-ingested seed archives, and
   a missing resume point now hard-fails with a clear message instead of issuing
-  the unbounded `startTime=0` query that timed the API out (duckpond PR #90,
+  the unbounded `startTime=0` query that timed the API out (watertown PR #90,
   in the prod image).
 
 Total time to fresh data on cloud: terraform returns in ~2-3 min (reset +

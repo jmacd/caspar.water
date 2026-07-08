@@ -1,6 +1,6 @@
 locals {
   home     = "/home/${var.user}"
-  base_dir = "${local.home}/duckpond"
+  base_dir = "${local.home}/watertown"
 
   # All instances currently use MinIO on watershop.  Production previously
   # used Cloudflare R2 (see prod_s3 below), but we are running prod against
@@ -146,7 +146,7 @@ resource "local_file" "env_files" {
   content = join("\n", [
     "POND_VOLUME=pond-${each.key}",
     "POND=${local.home}/pond-${each.key}",
-    "SELFMON_METRICS_DIR=/var/log/duckpond-selfmon/${each.key}",
+    "SELFMON_METRICS_DIR=/var/log/watertown-selfmon/${each.key}",
     "S3_URL=${each.value.s3_url}",
     "S3_ENDPOINT=${each.value.s3.endpoint}",
     "S3_REGION=${each.value.s3.region}",
@@ -189,7 +189,7 @@ resource "local_file" "timer_files" {
   file_permission = "0644"
   content         = <<-EOT
 [Unit]
-Description=DuckPond ${each.key} (every ${each.value.interval})
+Description=Watertown ${each.key} (every ${each.value.interval})
 
 [Timer]
 OnBootSec=${each.value.boot_delay}
@@ -287,10 +287,10 @@ resource "null_resource" "watershop" {
         # disturb containers for instances we're leaving alone.
         join(" ; ", concat(
           [for name in local.container_instance_names :
-            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman kill 2>/dev/null || true"
+            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman kill 2>/dev/null || true"
           ],
           [for name in local.container_instance_names :
-            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/duckpond/duckpond' | xargs -r podman rm -f 2>/dev/null || true"
+            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman rm -f 2>/dev/null || true"
           ],
         )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
@@ -298,17 +298,17 @@ resource "null_resource" "watershop" {
         "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
-      # Install the duckpond .deb (built natively on watershop by
+      # Install the watertown .deb (built natively on watershop by
       # tools/build-on-watershop.sh).  Always installs the newest .deb
       # in target/debian/; selfmon is local-experimental, no version
       # pinning.  Skipped if there is no selfmon instance to run.
       length(local.selfmon_instance_names) > 0
-      ? ["${local.base_dir}/config/scripts/install-duckpond.sh"]
+      ? ["${local.base_dir}/config/scripts/install-watertown.sh"]
       : [],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).
       [for name in local.selfmon_instance_names :
-        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/duckpond-selfmon/${name}"
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/watertown-selfmon/${name}"
       ],
       # Sitegen output dirs served by Caddy at /selfmon/.  Owned by
       # ${var.user} so the per-tick render writes here without sudo.
@@ -373,7 +373,7 @@ resource "null_resource" "watershop" {
           # Caddy keeps serving stale HTML files (e.g. orphan
           # status.html after a route rename) from prior runs.
           "echo '[reset] ${name}: wiping selfmon metrics source'",
-          "rm -rf /var/log/duckpond-selfmon/${name}",
+          "rm -rf /var/log/watertown-selfmon/${name}",
           "echo '[reset] ${name}: wiping selfmon rendered output'",
           "rm -rf /var/www/selfmon/${name}",
           "echo '[reset] ${name}: done'",
@@ -412,7 +412,7 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond config set maintenance.data_log_retention_minutes 1440"
       ],
-      # (Re)attach S3 backup/import remotes.  Post-D6 duckpond removed the
+      # (Re)attach S3 backup/import remotes.  Post-D6 watertown removed the
       # `remote` factory; backups and cross-pond imports are now CLI
       # attachments (`pond backup add` / `pond remote add`).  Idempotent
       # via --overwrite, so this runs on every apply.  attach-remotes.sh

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# reset.sh -- Erase S3 bucket for a duckpond instance (run locally).
+# reset.sh -- Erase S3 bucket for a watertown instance (run locally).
 #
 # Usage: reset.sh <env-file> [env-file...]
 #   e.g., reset.sh env/water-staging.env
@@ -18,11 +18,11 @@ fi
 # sourced below set POND=<pond data dir> and would clobber it.
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "${SCRIPTS}/../.." && pwd)
-POND_BIN="${REPO_ROOT}/duckpond/target/release/pond"
+POND_BIN="${REPO_ROOT}/watertown/target/release/pond"
 
 if [ ! -x "${POND_BIN}" ]; then
     echo "Building pond..."
-    (cd "${REPO_ROOT}/duckpond" && cargo build --release -p cmd)
+    (cd "${REPO_ROOT}/watertown" && cargo build --release -p cmd)
 fi
 
 for ENV_FILE in "$@"; do

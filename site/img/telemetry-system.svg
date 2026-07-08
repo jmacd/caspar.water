@@ -2,7 +2,7 @@
      role="img" aria-labelledby="t d"
      font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <title id="t">Caspar Water telemetry system</title>
-  <desc id="d">Three sites and two OpenTelemetry collectors. A pump-house collector with one i²c pH sensor (Atlas) and four 4-20 mA sensors via an MQTT/Sparkplug device sends OTel Arrow over a low-bandwidth radio link to a gateway collector, which records OTLP/JSON metrics that feed a Duckpond static site generator, and forwards live data over HTTPS to an InfluxDB on the same cloud machine that serves the public portal.</desc>
+  <desc id="d">Three sites and two OpenTelemetry collectors. A pump-house collector with one i²c pH sensor (Atlas) and four 4-20 mA sensors via an MQTT/Sparkplug device sends OTel Arrow over a low-bandwidth radio link to a gateway collector, which records OTLP/JSON metrics that feed a Watertown static site generator, and forwards live data over HTTPS to an InfluxDB on the same cloud machine that serves the public portal.</desc>
 
   <rect x="0" y="0" width="1160" height="780" fill="#ffffff"/>
 
@@ -88,7 +88,7 @@
   <!-- Gateway: Collector -> metrics disk -->
   <path class="edge" d="M 580 320 V 398" marker-end="url(#arr)"/>
 
-  <!-- Gateway: metrics disk -> Duckpond -->
+  <!-- Gateway: metrics disk -> Watertown -->
   <path class="edge" d="M 580 489 V 540" marker-end="url(#arr)"/>
 
   <!-- ============================================================
@@ -103,7 +103,7 @@
   <!-- HTTPS write: gateway collector -> cloud InfluxDB -->
   <path class="edge-strong" d="M 715 250 H 795 V 445 H 865" marker-end="url(#arr-s)"/>
 
-  <!-- Static site content: gateway Duckpond -> cloud Site content -->
+  <!-- Static site content: gateway Watertown -> cloud Site content -->
   <path class="edge-strong" d="M 715 594 H 865" marker-end="url(#arr-s)"/>
 
   <!-- Cloud: Caddy -> InfluxDB (center) and Static Content (right, routed under InfluxDB) -->
@@ -158,7 +158,7 @@
   <text class="col-big"   x="580" y="292" text-anchor="middle">Collector</text>
   <text class="enclosure-label" x="455" y="347" text-anchor="start">Linux x86</text>
 
-  <!-- Gateway: metrics disk (upper) and Duckpond region (lower) -->
+  <!-- Gateway: metrics disk (upper) and Watertown region (lower) -->
   <g>
     <ellipse class="archive" cx="580" cy="410" rx="110" ry="9"/>
     <path class="archive" d="M 470 410 V 480 a 110 9 0 0 0 220 0 V 410 z"/>
@@ -166,10 +166,10 @@
     <text class="node-big" x="580" y="458" text-anchor="middle">OTLP/JSON Metrics</text>
   </g>
 
-  <!-- Gateway: Duckpond (static site generator) -->
+  <!-- Gateway: Watertown (static site generator) -->
   <rect class="enclosure" x="437" y="540" width="286" height="150" rx="12"/>
   <rect class="device" x="445" y="544" width="270" height="100" rx="10"/>
-  <text class="node-big" x="580" y="592" text-anchor="middle">Duckpond</text>
+  <text class="node-big" x="580" y="592" text-anchor="middle">Watertown</text>
   <text class="node-sub" x="580" y="611" text-anchor="middle">Filing System</text>
   <text class="enclosure-label" x="455" y="668" text-anchor="start">Linux ARM</text>
 

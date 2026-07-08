@@ -1,5 +1,5 @@
 casparwater.us {
-	root * /home/jmacd/duckpond/www/current
+	root * /home/jmacd/watertown/www/current
 
 	# Extensionless URLs: try path, then path.html, then directory
 	try_files {path} {path}.html {path}/
