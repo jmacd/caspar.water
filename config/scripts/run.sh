@@ -20,6 +20,15 @@ fi
 TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 
+# Refresh the container image once per tick.  pond.sh uses --pull=missing for
+# the per-command runs below, so without this the image would never update on a
+# timer tick; with it, exactly one registry check happens per tick (instead of
+# one per sub-command).  Selfmon runs natively and has no image.
+case "${TYPE}" in
+    *selfmon) : ;;
+    *) ${EXE} "${INSTANCE}" --pull-image ;;
+esac
+
 case "${TYPE}" in
     noyo)
         ${EXE} "${INSTANCE}" run /laketech/data pull
@@ -50,6 +59,14 @@ case "${TYPE}" in
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"
+        # Seed the new build's data/ from the previous build so the sitegen
+        # export can reconcile per-partition: unchanged partitions are reused
+        # (hardlinked) and only changed partitions are rewritten. Hardlinks are
+        # safe because the export publishes rewritten partitions via
+        # temp-then-rename, never modifying a shared inode in place.
+        if [ -d "${DEPLOY_BASE}/current/data" ]; then
+            cp -al "${DEPLOY_BASE}/current/data" "${DEPLOY_DIR}/data"
+        fi
         SITE_BUILD_DIR="${DEPLOY_DIR}" ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build /www
         ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
         # Clean old builds (keep last 3)
@@ -58,6 +75,9 @@ case "${TYPE}" in
         if [[ "${INSTANCE}" == *-prod ]] && [ -n "${CLOUD_HOST}" ]; then
             CLOUD_WWW="/home/jmacd/duckpond/www"
             CLOUD_BUILD="${CLOUD_WWW}/build-${TIMESTAMP}"
+            # Seed the remote build from the current one so rsync transfers only
+            # changed partition files rather than the whole tree every tick.
+            ssh "${CLOUD_HOST}" "mkdir -p '${CLOUD_BUILD}'; if [ -d '${CLOUD_WWW}/current' ]; then cp -al \"\$(readlink -f '${CLOUD_WWW}/current')/.\" '${CLOUD_BUILD}/'; fi"
             rsync -az --delete "${DEPLOY_DIR}/" "${CLOUD_HOST}:${CLOUD_BUILD}/"
             ssh "${CLOUD_HOST}" "ln -sfn '${CLOUD_BUILD}' '${CLOUD_WWW}/current' && ls -dt '${CLOUD_WWW}'/build-* | tail -n +4 | xargs rm -rf"
         fi

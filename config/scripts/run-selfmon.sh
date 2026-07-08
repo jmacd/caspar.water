@@ -32,6 +32,50 @@ fi
 : "${POND:?POND must be set in ${ENV_FILE}}"
 export POND
 
+# Expose the selfmon instance name to measure-pond.sh so its self-probe
+# selects the pond-selfmon@ systemd units instead of the pond@ units used
+# by container ponds.  Without this the selfmon pond's own status card
+# reads timer.active from a nonexistent pond@<instance>.timer and is
+# perpetually classified red.
+export SELFMON_INSTANCE="${INSTANCE}"
+
+# ── Pre-tick maintain: trim the delta log BEFORE anything reads it ──
+# This is the ONLY maintain per tick, and it runs FIRST on purpose.
+# Every commit appends an uncheckpointed entry to the Delta log; listing
+# or resolving /logs/journal re-reads all of them through a DataFusion
+# external sort.  When maintain ran LAST instead, a single out-of-memory
+# abort under `set -e` skipped it, so uncheckpointed versions accumulated
+# across ticks until that sort exceeded the memory pool and every tick
+# wedged permanently on the first read.  Running maintain first checkpoints
+# the log so the rest of this tick reads a small checkpoint; the handful of
+# versions this tick then appends before sitegen reads are trimmed by the
+# next tick's pass.  A failure here is non-fatal so the tick still proceeds
+# and retries next minute.
+#
+# --compact runs every tick on purpose.  The control table gains one
+# small record-parquet per control commit and is otherwise NEVER merged:
+# post-commit auto-maintain and a plain `pond maintain` both pass
+# compact=false, so without per-tick compaction its add-file count grows
+# without bound and every force=true checkpoint must re-list all of them,
+# bloating {POND}/control to many GB of checkpoint parquets.  Compacting
+# each tick keeps the control add-file count -- and therefore checkpoint
+# size -- bounded, which also keeps default log retention harmless.  This
+# is the aggressive-maintenance mode selfmon exists to exercise.
+#
+# --prune shrinks the control table's logical ROW count, which compaction
+# alone never does: compaction merges add-files but the append-only
+# lifecycle log grows ~3-6 rows per transaction forever.  Pruning deletes
+# replicated history at/below a safe horizon in this same checkpoint +
+# vacuum pass.  selfmon has no push remote, so --allow-no-remote enables
+# retention-only pruning: keep the most recent --keep-txns transactions.
+# Pruned history is unrecoverable, which is fine for selfmon.
+#
+# --collapse-versions 100 collapses data:series files with >100 live
+# versions; the threshold self-gates.
+"${PONDBIN}" maintain --compact --collapse-versions 100 \
+    --prune --allow-no-remote --keep-txns 1000 \
+    || echo "WARNING: pre-tick maintain failed" >&2
+
 # Bootstrap: on first run there is no journal cursor, and journalctl
 # would dump the entire host history at once, blowing the binary's
 # 3GiB allocation cap.  Seed the cursor at "now" so we ingest only
@@ -117,9 +161,13 @@ for envf in "${BASE_DIR}/env"/*.env; do
         echo "WARNING: measure-pond.sh ${pond_name} failed" >&2
 done
 
-# Ingest external sources.
-"${PONDBIN}" run /system/etc/journal push
-"${PONDBIN}" run /system/etc/caddy-access push
+# Ingest external sources.  Non-fatal: a transient failure in one source
+# must not abort the tick before the pre-sitegen maintain runs, which is
+# what historically let uncheckpointed versions pile up and wedge the pond.
+"${PONDBIN}" run /system/etc/journal push \
+    || echo "WARNING: journal ingest failed" >&2
+"${PONDBIN}" run /system/etc/caddy-access push \
+    || echo "WARNING: caddy-access ingest failed" >&2
 
 # Ingest per-pond perf jsonl.  One mknod per pond + _self because
 # logfile-ingest selects exactly ONE active file per mknod.  Mknods
@@ -143,29 +191,9 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-# Maintain every tick: checkpoint + vacuum (gated internally), compact
-# small parquet files, and collapse data:series files with >100 live
-# versions (threshold self-gates).
-#
-# --compact runs every tick on purpose.  The control table gains one
-# small record-parquet per control commit and is otherwise NEVER merged
-# (post-commit auto-maintain and a plain `pond maintain` both pass
-# compact=false), so without per-tick compaction its add-file count grows
-# without bound and every force=true checkpoint must re-list all of them,
-# bloating {POND}/control to many GB of checkpoint parquets.  Compacting
-# each tick keeps the control add-file count -- and therefore checkpoint
-# size -- bounded, which also keeps default log retention harmless.  This
-# is the aggressive-maintenance mode selfmon exists to exercise.
-#
-# --prune shrinks the control table's logical ROW count, which compaction
-# alone never does: compaction merges add-files but the append-only
-# lifecycle log grows ~3-6 rows per transaction forever.  Pruning deletes
-# replicated history at/below a safe horizon in this same checkpoint +
-# vacuum pass.  selfmon has no push remote, so --allow-no-remote enables
-# retention-only pruning (keep the most recent --keep-txns transactions;
-# pruned history is unrecoverable, which is fine for selfmon).
-"${PONDBIN}" maintain --compact --collapse-versions 100 \
-    --prune --allow-no-remote --keep-txns 1000
+# Maintenance already ran at the top of this tick; sitegen reads the pond
+# as-is.  The few versions appended since that pass are collapsed by the
+# next tick's pre-tick maintain.
 
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.

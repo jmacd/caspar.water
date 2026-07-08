@@ -61,13 +61,26 @@ TYPE="${INSTANCE%-staging}"
 TYPE="${TYPE%-prod}"
 
 case "${TYPE}" in
-    water|septic|noyo|watershop-selfmon)
-        # Producer (and selfmon): push-mirror this pond to its own bucket.
+    water|septic|noyo)
+        # Producer: push-mirror this pond to its own bucket.
         echo "[attach] ${INSTANCE}: backup add origin ${S3_URL}"
         pond backup add origin "${S3_URL}" "${s3_opts[@]}" --overwrite
         # Seed the remote with the pond_init bundle so consumers (site)
         # can pull immediately, before the first data-collection tick.
         pond push origin
+        ;;
+    watershop-selfmon)
+        # selfmon is local-experimental and deliberately has NO backup
+        # remote.  run-selfmon.sh maintains it with `--prune
+        # --allow-no-remote`, which aggressively vacuums local history
+        # every tick; that is fundamentally incompatible with a push
+        # backup, because the post-commit auto-push then tries to read
+        # files the prune already deleted and fails, and the concurrent
+        # push holds the control write.lock so the next maintain cannot
+        # compact -- which lets the delta log grow until resolving
+        # /logs/journal exceeds the DataFusion memory pool and the pond
+        # wedges.  Attaching no remote keeps maintenance lock-free.
+        echo "[attach] ${INSTANCE}: local-experimental, no backup remote"
         ;;
     site)
         # Consumer: cross-pond import each producer's bucket read-through

@@ -35,6 +35,20 @@ if [ ! -f "${ENV_FILE}" ]; then
     exit 1
 fi
 
+# Select the systemd unit prefix for this pond's liveness probes.  The
+# selfmon pond runs under pond-selfmon@<instance>.{timer,service} while
+# every container pond runs under pond@<name>.{timer,service}.
+# run-selfmon.sh exports SELFMON_INSTANCE with its own instance name so
+# this probe targets the correct units when it measures the selfmon pond
+# itself.  Any other pond, or an unset SELFMON_INSTANCE, uses pond@.
+# Without this the selfmon pond's own status card read timer.active from
+# a nonexistent pond@<instance>.timer and was perpetually classified red.
+if [ "${POND_NAME}" = "${SELFMON_INSTANCE:-}" ]; then
+    UNIT_PREFIX="pond-selfmon@"
+else
+    UNIT_PREFIX="pond@"
+fi
+
 # Source env file.  The probed pond's env, NOT the selfmon pond's.
 # We need POND (the storage path) to find this pond's data.
 (
@@ -44,13 +58,9 @@ fi
     # shellcheck disable=SC1090
     source "${ENV_FILE}"
     set +a
-    # SELFMON leaks in from run-selfmon.sh (which sources the selfmon
-    # env with `set -a`).  measure-pond.sh is only ever called for
-    # non-selfmon ponds (the selfmon pond is the inlined `_self`
-    # block in run-selfmon.sh) so SELFMON has no meaning here, and
-    # leaving it set causes us to look up `pond-selfmon@<name>.*`
-    # systemd units below, which do not exist for water-prod etc.
-    unset SELFMON
+    # Systemd unit selection uses UNIT_PREFIX, computed above from
+    # SELFMON_INSTANCE, so the leaked SELFMON marker from the selfmon
+    # env is no longer consulted here.
 
     : "${POND:?POND must be set in ${ENV_FILE}}"
 
@@ -133,10 +143,12 @@ fi
     # Stored in bytes (see config/semconv/duckpond-pond.yaml: unit By).
     # Source line emitted by pond CLI to stderr at process exit:
     #   "Peak memory usage: NN.NN MB"
-    # Containerized ponds run via `pond@.service`.  (The selfmon pond
-    # itself runs via `pond-selfmon@.service` but is measured by the
-    # `_self` block in run-selfmon.sh, not by this script.)
-    UNIT="pond@${POND_NAME}.service"
+    # Container ponds run via pond@<name>.service; the selfmon pond runs
+    # via pond-selfmon@<instance>.service.  UNIT_PREFIX selects the right
+    # one.  The _self block in run-selfmon.sh contributes selfmon-only
+    # metrics such as read.seconds and sitegen.seconds; this script still
+    # probes the selfmon pond for the generic size, txn, and timer rows.
+    UNIT="${UNIT_PREFIX}${POND_NAME}.service"
     PEAK_RSS_BYTES=$(journalctl --user -u "${UNIT}" \
         --no-pager -n 200 --since "5 minutes ago" 2>/dev/null \
         | grep -oE 'Peak memory usage: [0-9.]+ MB' \
@@ -168,8 +180,8 @@ fi
     #   last_run.seconds_ago   wall-clock seconds since the service's
     #                          most recent ExecMainExitTimestamp; -1
     #                          if the service has never run.
-    TIMER_UNIT="pond@${POND_NAME}.timer"
-    SERVICE_UNIT="pond@${POND_NAME}.service"
+    TIMER_UNIT="${UNIT_PREFIX}${POND_NAME}.timer"
+    SERVICE_UNIT="${UNIT_PREFIX}${POND_NAME}.service"
 
     if [ "$(systemctl --user is-active "${TIMER_UNIT}" 2>/dev/null)" = active ]; then
         TIMER_ACTIVE=1

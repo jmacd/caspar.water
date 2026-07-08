@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="520" viewBox="0 0 980 520" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#444"/>
+    </marker>
+    <marker id="arrowR" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#c0392b"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#2e7d32"/>
+    </marker>
+    <style>
+      .box { fill:#ffffff; stroke:#333; stroke-width:1.5; }
+      .panel { fill:#f4f7fb; stroke:#3a6ea5; stroke-width:2; stroke-dasharray:6 4; }
+      .label { font-size:12.5px; fill:#222; }
+      .sub { font-size:11px; fill:#555; }
+      .wire { stroke:#444; stroke-width:1.6; fill:none; }
+      .pwr { stroke:#c0392b; stroke-width:2; fill:none; }
+      .pwrlbl { font-size:11px; fill:#c0392b; font-weight:bold; }
+      .datlbl { font-size:11px; fill:#1b3a5b; font-weight:bold; }
+      .net { stroke:#2e7d32; stroke-width:2; fill:none; }
+      .netlbl { font-size:11px; fill:#2e7d32; font-weight:bold; }
+    </style>
+  </defs>
+
+  <text x="490" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1b3a5b">
+    Noyo Marine Center — Onsite Water-Quality Data Collection
+  </text>
+
+  <!-- ===== FIELD: probes ===== -->
+  <text x="110" y="72" text-anchor="middle" class="sub" font-weight="bold">In water (harbor)</text>
+
+  <rect x="20" y="90" width="180" height="60" rx="8" class="box"/>
+  <text x="110" y="114" text-anchor="middle" class="label" font-weight="bold">Aqua TROLL 500 #1</text>
+  <text x="110" y="133" text-anchor="middle" class="sub">Modbus addr A · 8–36 VDC</text>
+
+  <rect x="20" y="172" width="180" height="60" rx="8" class="box"/>
+  <text x="110" y="196" text-anchor="middle" class="label" font-weight="bold">Aqua TROLL 500 #2</text>
+  <text x="110" y="215" text-anchor="middle" class="sub">Modbus addr B · 8–36 VDC</text>
+
+  <rect x="20" y="256" width="180" height="56" rx="8" class="box" stroke-dasharray="4 3"/>
+  <text x="110" y="279" text-anchor="middle" class="sub" font-weight="bold">3rd probe / future site</text>
+  <text x="110" y="297" text-anchor="middle" class="sub">via BeaglePlay network</text>
+
+  <!-- shared RS-485 bus trunk: probes joined, then into panel -->
+  <path class="wire" d="M200,120 H230 V202 H200"/>
+  <line class="wire" x1="230" y1="120" x2="230" y2="202"/>
+  <path class="wire" d="M230,161 H295" marker-end="url(#arrow)"/>
+  <text x="262" y="138" text-anchor="middle" class="datlbl">RS-485</text>
+  <text x="262" y="153" text-anchor="middle" class="sub">Modbus RTU</text>
+  <text x="262" y="178" text-anchor="middle" class="sub">120 Ω · 19200 8N1</text>
+
+  <!-- ===== ENCLOSURE PANEL ===== -->
+  <rect x="300" y="84" width="450" height="368" rx="10" class="panel"/>
+  <text x="525" y="106" text-anchor="middle" class="sub" font-weight="bold" fill="#3a6ea5">
+    DIN-rail enclosure (wall-mounted)
+  </text>
+
+  <!-- AC-DC supply -->
+  <rect x="325" y="124" width="185" height="58" rx="8" class="box"/>
+  <text x="417" y="148" text-anchor="middle" class="label" font-weight="bold">24 VDC supply</text>
+  <text x="417" y="166" text-anchor="middle" class="sub">DIN-rail AC-DC, 15–30 W</text>
+
+  <!-- buck -->
+  <rect x="555" y="124" width="170" height="58" rx="8" class="box"/>
+  <text x="640" y="148" text-anchor="middle" class="label" font-weight="bold">24→5 V buck</text>
+  <text x="640" y="166" text-anchor="middle" class="sub">USB-C, 5 V / 3 A</text>
+
+  <!-- RS485 click -->
+  <rect x="325" y="320" width="185" height="58" rx="8" class="box"/>
+  <text x="417" y="344" text-anchor="middle" class="label" font-weight="bold">RS485 Click</text>
+  <text x="417" y="362" text-anchor="middle" class="sub">mikroBUS, 3.3 V</text>
+
+  <!-- beagleplay -->
+  <rect x="555" y="250" width="170" height="170" rx="8" class="box"/>
+  <text x="640" y="275" text-anchor="middle" class="label" font-weight="bold">BeaglePlay</text>
+  <text x="640" y="293" text-anchor="middle" class="sub">TI AM625 · Linux</text>
+  <line x1="571" y1="304" x2="709" y2="304" stroke="#ccc"/>
+  <text x="640" y="324" text-anchor="middle" class="sub" font-weight="bold">Duckpond</text>
+  <text x="640" y="342" text-anchor="middle" class="sub">OS: 16 GB eMMC</text>
+  <text x="640" y="360" text-anchor="middle" class="sub">data: high-endurance microSD</text>
+  <text x="640" y="385" text-anchor="middle" class="sub">Eth · Wi-Fi · sub-GHz</text>
+  <text x="640" y="403" text-anchor="middle" class="sub">(harbor expansion)</text>
+
+  <!-- AC mains in -->
+  <path class="pwr" d="M417,84 V124" marker-end="url(#arrowR)"/>
+  <text x="427" y="79" class="pwrlbl">AC mains</text>
+
+  <!-- 24V to probes (down, out left of panel, up to probes) -->
+  <path class="pwr" d="M325,153 H285 V350 H110 V232" marker-end="url(#arrowR)"/>
+  <text x="250" y="343" text-anchor="middle" class="pwrlbl">24 VDC → probe power</text>
+
+  <!-- 24V to buck -->
+  <path class="pwr" d="M510,153 H555" marker-end="url(#arrowR)"/>
+  <text x="532" y="146" text-anchor="middle" class="pwrlbl">24 V</text>
+
+  <!-- buck to beagleplay USB-C -->
+  <path class="pwr" d="M640,182 V250" marker-end="url(#arrowR)"/>
+  <text x="678" y="220" text-anchor="middle" class="pwrlbl">5 V USB-C</text>
+
+  <!-- RS485 click to beagleplay UART -->
+  <path class="wire" d="M510,349 H555" marker-end="url(#arrow)"/>
+  <text x="532" y="342" text-anchor="middle" class="datlbl">UART</text>
+
+  <!-- ===== INTERNET / PORTAL ===== -->
+  <rect x="800" y="250" width="160" height="62" rx="8" class="box"/>
+  <text x="880" y="276" text-anchor="middle" class="label" font-weight="bold">Internet</text>
+  <text x="880" y="295" text-anchor="middle" class="sub">Ethernet / Wi-Fi</text>
+
+  <path class="net" d="M725,300 H800" marker-end="url(#arrowG)"/>
+  <text x="762" y="293" text-anchor="middle" class="netlbl">publish</text>
+
+  <rect x="800" y="360" width="160" height="62" rx="8" class="box"/>
+  <text x="880" y="386" text-anchor="middle" class="label" font-weight="bold">Public portal</text>
+  <text x="880" y="405" text-anchor="middle" class="sub">casparwater.us/noyo-harbor</text>
+
+  <path class="net" d="M880,312 V360" marker-end="url(#arrowG)"/>
+
+  <!-- legend -->
+  <line class="pwr" x1="20" y1="478" x2="55" y2="478"/>
+  <text x="62" y="482" class="sub">power (DC)</text>
+  <line class="wire" x1="150" y1="478" x2="185" y2="478"/>
+  <text x="192" y="482" class="sub">RS-485 / UART data</text>
+  <line class="net" x1="330" y1="478" x2="365" y2="478"/>
+  <text x="372" y="482" class="sub">network</text>
+  <text x="455" y="482" class="sub">Excluded: In-Situ probe cables / RS-485 adapters; site internet link.  Software, install &amp; operation: donated.</text>
+</svg>
