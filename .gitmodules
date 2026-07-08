@@ -1,8 +1,8 @@
 [submodule "noyo-blue-econ"]
 	path = noyo-blue-econ
 	url = git@github.com:jmacd/noyo-blue-econ.git
-[submodule "duckpond"]
-	path = duckpond
+[submodule "watertown"]
+	path = watertown
 	url = git@github.com:jmacd/watertown.git
 [submodule "opentelemetry-mqtt-sparkplug"]
 	path = opentelemetry-mqtt-sparkplug

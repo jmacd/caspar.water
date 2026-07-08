@@ -9,7 +9,7 @@ Part of an open-source platform for small water system operations:
 | Repository | Purpose | Stack |
 |------------|---------|-------|
 | [caspar.water](https://github.com/jmacd/caspar.water) | Telemetry, monitoring, billing, website | Go, OpenTelemetry, MQTT/Sparkplug |
-| [duckpond](https://github.com/jmacd/duckpond) | Time-series data lake, SQL transforms, site generation | Rust, Arrow, Delta Lake, Observable |
+| [watertown](https://github.com/jmacd/watertown) | Time-series data lake, SQL transforms, site generation | Rust, Arrow, Delta Lake, Observable |
 | [supruglue](https://github.com/jmacd/supruglue) | Real-time hardware I/O (meter reading, pump control) | C, TI PRU, BeagleBone |
 
 Built and tested on the Caspar Water System in Mendocino County, CA,
@@ -42,7 +42,7 @@ browser-based hydraulic simulator with no commercial software required.
 
 The platform already handles real-time sensor data (supruglue →
 caspar.water OTel collector), time-series storage and SQL transforms
-(duckpond), and browser-based visualization with WASM (duckpond
+(watertown), and browser-based visualization with WASM (watertown
 sitegen → Observable Framework + DuckDB WASM). The hydraulic model
 adds one new capability: **simulation** — answering "what if?"
 questions about the distribution network.
@@ -58,7 +58,7 @@ questions about the distribution network.
                     └──────────────────┬──────────────────────────┘
                                        │
                     ┌──────────────────▼──────────────────────────┐
-  duckpond          │ Data lake: Arrow/Parquet, SQL transforms     │
+  watertown          │ Data lake: Arrow/Parquet, SQL transforms     │
                     │ Site generation: Observable Framework pages  │
                     └──────────────────┬──────────────────────────┘
                                        │
@@ -78,7 +78,7 @@ questions about the distribution network.
 ```
 QGIS + GeoPackage  (operator's working data)
     │
-    ├──► GeoJSON ──► website map + duckpond sitegen
+    ├──► GeoJSON ──► website map + watertown sitegen
     │
     └──► .inp    ──► epanet-js WASM simulation (in browser)
                  ──► QGIS Gusnet plugin (desktop validation)
@@ -467,8 +467,8 @@ Any operator's .inp model can be loaded and simulated client-side.
 ### How it fits with the existing platform
 
 The platform already runs WASM in the browser (DuckDB WASM via
-duckpond's Observable Framework sites). epanet-js is another WASM
-module alongside it. Duckpond's sitegen can generate the page that
+watertown's Observable Framework sites). epanet-js is another WASM
+module alongside it. Watertown's sitegen can generate the page that
 hosts both:
 
 - **DuckDB WASM** queries real pressure history from Parquet files
@@ -477,7 +477,7 @@ hosts both:
   "here's what happens if three hoses turn on"
 
 The OTel collector already records `water_pressure` metrics.
-Duckpond already reduces and exports that data as Parquet.
+Watertown already reduces and exports that data as Parquet.
 The simulation model gives that data predictive context.
 
 ### Basic usage
@@ -525,7 +525,7 @@ two files (GeoJSON + .inp) alongside the web page.
 If the system has pressure sensors reporting to the OTel collector,
 the model can be calibrated against reality:
 
-1. Query duckpond for historical pressure at monitored junctions
+1. Query watertown for historical pressure at monitored junctions
 2. Run the EPANET model with known demand patterns
 3. Compare simulated vs. measured pressure
 4. Adjust pipe roughness coefficients until they converge

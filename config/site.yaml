@@ -53,7 +53,7 @@ spec:
       title: "Caspar Water"
       base_url: "${env:SITE_BASE_URL:-/}"
       site_url: "https://casparwater.us"
-      github_url: "https://github.com/jmacd/duckpond"
+      github_url: "https://github.com/jmacd/watertown"
     
     content:
       - name: "pages"

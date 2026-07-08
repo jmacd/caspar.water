@@ -3,10 +3,10 @@
 #
 # The cloud host's only job is to serve the static site (built and
 # rsync'd in from the watershop pond) plus terminate TLS via caddy.
-# It does NOT run any duckpond instance -- that lived here historically
+# It does NOT run any watertown instance -- that lived here historically
 # but caused redundant R2 imports (cf. caspar.water remote-bandwidth-bug
 # investigation).  Watershop's pond@site-prod builds and rsyncs the
-# site to ${HOME}/duckpond/www/build-<ts>/ then atomically retargets
+# site to ${HOME}/watertown/www/build-<ts>/ then atomically retargets
 # the 'current' symlink, so this host needs only caddy + rsync over SSH.
 set -e
 

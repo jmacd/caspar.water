@@ -1,10 +1,10 @@
 [Unit]
-Description=DuckPond %i
+Description=Watertown %i
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 MemoryAccounting=yes
-ExecStart=/home/jmacd/duckpond/config/scripts/run.sh %i
+ExecStart=/home/jmacd/watertown/config/scripts/run.sh %i
 Environment=HOME=/home/jmacd

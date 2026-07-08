@@ -37,19 +37,19 @@ including:
 - Terraform definitions for cloud and station computer infrastructure
   (station, gateway, cloud).
 
-#### Duckpond
+#### Watertown
 
-[Duckpond](https://github.com/jmacd/duckpond) is a "local-first" Rust
+[Watertown](https://github.com/jmacd/watertown) is a "local-first" Rust
 software system and site generator that manages timeseries and tabular
 data from a variety of sources, based on DataFusion for query,
 Deltalake for transactions, and Parquet for columnar storage.
 
-Duckpond is being used to publish water monitoring data collected by
+Watertown is being used to publish water monitoring data collected by
 the [Noyo Harbor Blue Economy](https://noyooceancollective.org/)
 project in a volunteer collaboration, see [our demo
 site](https://casparwater.us/noyo-harbor).
 
-Duckpond is being used to publish this site, including our
+Watertown is being used to publish this site, including our
 [high-resolution water monitoring data](./data/well-depth.html).
 
 #### Supruglue

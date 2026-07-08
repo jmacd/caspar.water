@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Self-monitoring metrics for duckpond ponds.
+# Self-monitoring metrics for watertown ponds.
 #
 # Convention reminder.  The selfmon collector writes per-pond JSON
 # rows whose column names are the metric_name values defined here
@@ -20,12 +20,12 @@
 groups:
   # ── Attributes ───────────────────────────────────────────────────
 
-  - id: registry.duckpond
+  - id: registry.watertown
     type: attribute_group
-    brief: "Identification attributes for duckpond self-monitoring."
+    brief: "Identification attributes for watertown self-monitoring."
     stability: experimental
     attributes:
-      - id: duckpond.pond.scope
+      - id: watertown.pond.scope
         type: string
         stability: experimental
         brief: >
@@ -44,7 +44,7 @@ groups:
           - watershop-selfmon
         requirement_level: required
 
-      - id: duckpond.process.scope
+      - id: watertown.process.scope
         type: string
         stability: experimental
         brief: >
@@ -56,7 +56,7 @@ groups:
 
   # ── Per-pond counters (monotonic) ────────────────────────────────
 
-  - id: metric.duckpond.pond.committed
+  - id: metric.watertown.pond.committed
     type: metric
     metric_name: committed.txn_ids
     stability: experimental
@@ -64,9 +64,9 @@ groups:
     instrument: counter
     unit: "{txn_id}"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
-  - id: metric.duckpond.pond.aborted
+  - id: metric.watertown.pond.aborted
     type: metric
     metric_name: aborted.txn_ids
     stability: experimental
@@ -74,11 +74,11 @@ groups:
     instrument: counter
     unit: "{txn_id}"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
   # ── Per-pond updowncounters (current-state, summable) ────────────
 
-  - id: metric.duckpond.pond.parquet
+  - id: metric.watertown.pond.parquet
     type: metric
     metric_name: parquet.files
     stability: experimental
@@ -89,9 +89,9 @@ groups:
     instrument: updowncounter
     unit: "{file}"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
-  - id: metric.duckpond.pond.delta_log
+  - id: metric.watertown.pond.delta_log
     type: metric
     metric_name: delta_log.files
     stability: experimental
@@ -102,9 +102,9 @@ groups:
     instrument: updowncounter
     unit: "{file}"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
-  - id: metric.duckpond.pond.size
+  - id: metric.watertown.pond.size
     type: metric
     metric_name: size.bytes
     stability: experimental
@@ -112,9 +112,9 @@ groups:
     instrument: updowncounter
     unit: "By"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
-  - id: metric.duckpond.pond.peak_rss
+  - id: metric.watertown.pond.peak_rss
     type: metric
     metric_name: peak_rss.bytes
     stability: experimental
@@ -130,11 +130,11 @@ groups:
     instrument: updowncounter
     unit: "By"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope
 
   # ── Selfmon-process scope (no pond attribute) ────────────────────
 
-  - id: metric.duckpond.sitegen.peak_rss
+  - id: metric.watertown.sitegen.peak_rss
     type: metric
     metric_name: sitegen_peak_rss.bytes
     stability: experimental
@@ -142,7 +142,7 @@ groups:
     instrument: updowncounter
     unit: "By"
     attributes:
-      - ref: duckpond.process.scope
+      - ref: watertown.process.scope
 
   # ── Status-only liveness fields ──────────────────────────────────
   #
@@ -152,7 +152,7 @@ groups:
   # the per-pond health classification.  They originate in
   # measure-pond.sh's systemctl probes rather than the pond CLI.
 
-  - id: metric.duckpond.pond.timer_interval
+  - id: metric.watertown.pond.timer_interval
     type: metric
     metric_name: timer.interval_s
     stability: experimental
@@ -168,4 +168,4 @@ groups:
     instrument: gauge
     unit: "s"
     attributes:
-      - ref: duckpond.pond.scope
+      - ref: watertown.pond.scope

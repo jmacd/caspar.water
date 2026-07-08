@@ -128,7 +128,7 @@ matrices. A billing system that processes customer accounts and
 generates invoices. A Hugo-based public website. Terraform
 definitions for cloud and station infrastructure.
 
-**duckpond** — A "very small data lake" in Rust. ACID-transactional
+**watertown** — A "very small data lake" in Rust. ACID-transactional
 time-series storage on Apache Arrow and Delta Lake. SQL-based data
 transformations. A static site generator that produces Observable
 Framework pages with DuckDB WASM — interactive data visualization
@@ -149,7 +149,7 @@ adopt wholesale — requires filling specific gaps:
 
 Integrate rtlamr with the OTel collector. A truck with a Raspberry
 Pi and an RTL-SDR dongle drives the service area. Meter readings
-flow through MQTT to the collector, into duckpond, and out to
+flow through MQTT to the collector, into watertown, and out to
 billing. The hardware cost is under $100. The supruglue UI1203
 reader handles wired meter interfaces; rtlamr handles wireless.
 Together they cover both deployment models.
@@ -186,7 +186,7 @@ no open tool provides.
 
 Generate the California eAR from operational data already in the
 system — connections, sources, water quality results, customer
-charges, conservation metrics. The data exists in duckpond; the
+charges, conservation metrics. The data exists in watertown; the
 task is formatting it for the state's submission portal. Each state
 has its own requirements, but the underlying data model is broadly
 similar. Start with California, abstract later.
@@ -299,5 +299,5 @@ The immediate roadmap:
 7. Document everything so the next system can adopt it
 
 The code is at github.com/jmacd/caspar.water,
-github.com/jmacd/duckpond, and github.com/jmacd/supruglue.
+github.com/jmacd/watertown, and github.com/jmacd/supruglue.
 Apache-2.0 license. Contributions welcome.

@@ -76,7 +76,7 @@
   <text x="640" y="275" text-anchor="middle" class="label" font-weight="bold">BeaglePlay</text>
   <text x="640" y="293" text-anchor="middle" class="sub">TI AM625 · Linux</text>
   <line x1="571" y1="304" x2="709" y2="304" stroke="#ccc"/>
-  <text x="640" y="324" text-anchor="middle" class="sub" font-weight="bold">Duckpond</text>
+  <text x="640" y="324" text-anchor="middle" class="sub" font-weight="bold">Watertown</text>
   <text x="640" y="342" text-anchor="middle" class="sub">OS: 16 GB eMMC</text>
   <text x="640" y="360" text-anchor="middle" class="sub">data: high-endurance microSD</text>
   <text x="640" y="385" text-anchor="middle" class="sub">Eth · Wi-Fi · sub-GHz</text>

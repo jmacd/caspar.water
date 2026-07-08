@@ -13,7 +13,7 @@ http://watershop.casparwater.us, http://:80 {
 		encode zstd gzip
 	}
 
-	root * /home/jmacd/duckpond/www/site-staging/current
+	root * /home/jmacd/watertown/www/site-staging/current
 
 	# Webserver-style JSON access log to a rolling file under
 	# /var/log/caddy/. Read by the watershop-selfmon pond's

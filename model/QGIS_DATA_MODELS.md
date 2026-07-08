@@ -328,7 +328,7 @@ WHERE nodes.rowid IN (
 
 ### Why GeoPackage matters
 
-- **It's just SQLite.** You already know SQLite (duckpond uses it
+- **It's just SQLite.** You already know SQLite (watertown uses it
   conceptually, your billing uses CSV but could use SQLite). You can
   query a GeoPackage with the `sqlite3` CLI, Python, Go, Rust, or
   any language with SQLite bindings.
@@ -856,7 +856,7 @@ these. Install with `brew install gdal` (macOS).
 | **supruglue**    | Sensor locations (meters, sensors)    | Attributes (lat/lon in config) |
 | **caspar.water** | OTel collector, pressure monitoring   | Metrics (OTel → InfluxDB) |
 |                  | Website hosting                       | Hugo static site  |
-| **duckpond**     | Time-series storage & analysis        | Arrow/Parquet     |
+| **watertown**     | Time-series storage & analysis        | Arrow/Parquet     |
 |                  | Site generation (Observable)          | Markdown + data   |
 | **QGIS**         | Network authoring & management        | GeoPackage        |
 | **Website**      | Interactive hydraulic model           | GeoJSON + .inp    |
@@ -873,7 +873,7 @@ Physical system
     ├── caspar.water (OTel) ──► pressure, pH, flow metrics
     │                           │
     │                           ▼
-    ├── duckpond ──► time-series storage ──► Observable charts
+    ├── watertown ──► time-series storage ──► Observable charts
     │
     │
     ├── QGIS + GeoPackage ──► network model (static/structural)
@@ -891,7 +891,7 @@ Physical system
    GeoPackage, exported to GeoJSON and .inp.
 
 2. **Operational/temporal** (changes constantly): pressure readings,
-   flow rates, tank levels, chlorine residual. Lives in duckpond
+   flow rates, tank levels, chlorine residual. Lives in watertown
    (Arrow/Parquet), visualized via Observable.
 
 The hydraulic model bridges both: it uses structural data (pipe

@@ -18,7 +18,7 @@ provider "linode" {
 
 locals {
   home     = "/home/jmacd"
-  base_dir = "${local.home}/duckpond"
+  base_dir = "${local.home}/watertown"
   ssh_key  = pathexpand("~/.ssh/id_rsa")
 
   # Source files in this module, paired with the absolute destination on the host.
@@ -82,7 +82,7 @@ resource "null_resource" "teardown" {
   }
 }
 
-# Ensures /home/jmacd/duckpond/www exists, jmacd owns it, and the watershop
+# Ensures /home/jmacd/watertown/www exists, jmacd owns it, and the watershop
 # deploy key is in authorized_keys so site rsyncs land cleanly.
 resource "null_resource" "user_setup" {
   triggers = {

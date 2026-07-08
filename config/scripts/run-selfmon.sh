@@ -198,8 +198,8 @@ fi
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
 # Vendor assets (DuckDB-WASM, Plot, D3) are installed at
-# /usr/share/duckpond/vendor by the duckpond .deb (see
-# install-duckpond.sh), which is where sitegen's find_vendor_dir()
+# /usr/share/watertown/vendor by the watertown .deb (see
+# install-watertown.sh), which is where sitegen's find_vendor_dir()
 # searches for them.
 SITE_OUT="/var/www/selfmon/${INSTANCE}"
 SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"

@@ -11,7 +11,7 @@ This site monitors an Orenco septic system via Modbus registers,
 collected by an [OpenTelemetry collector](https://opentelemetry.io/)
 running on a BeaglePlay ARM64 board (`septicplaystation.local`),
 exported as OtelJSON, and ingested into
-[DuckPond](https://github.com/jmacd/caspar.water).
+[Watertown](https://github.com/jmacd/caspar.water).
 
 ## Data Groups
 

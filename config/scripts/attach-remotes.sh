@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # attach-remotes.sh -- (re)attach S3 backup/import remotes for an instance.
 #
-# Post-D6 duckpond removed the `factory: remote` config node and replaced
+# Post-D6 watertown removed the `factory: remote` config node and replaced
 # it with two top-level CLI verbs:
 #
 #   pond backup add <name> <url> [s3 opts]          (push mirror backup)

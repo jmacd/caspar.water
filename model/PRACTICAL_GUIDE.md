@@ -34,7 +34,7 @@ doesn't care how they were made. Any tool in the ecosystem —
 ogr2ogr, QGIS, PostGIS — can also consume what we produce,
 because we write standard formats (GeoJSON, GeoPackage, .inp).
 
-This follows the duckpond pattern: source data in simple files,
+This follows the watertown pattern: source data in simple files,
 factory methods produce derived outputs, everything is reproducible
 from the source.
 
@@ -560,7 +560,7 @@ results = sim.run_sim()
 # Model says:
 model_psi = results.node['pressure'].loc[0, 'PRESS-PT']
 
-# OTel says (query from duckpond or InfluxDB):
+# OTel says (query from watertown or InfluxDB):
 measured_psi = 48.0  # from system_pressure_value at low-demand time
 
 print(f"Model: {model_psi:.1f} PSI")

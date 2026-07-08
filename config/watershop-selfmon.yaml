@@ -201,7 +201,7 @@ spec:
 #      mirrored jsonl, casts every column to its proper type, and
 #      emits a typed FileSeries.  Column names are un-prefixed and
 #      match the canonical `<param>.<unit>` from the semconv
-#      registry (config/semconv/duckpond-pond.yaml).  Pond name is
+#      registry (config/semconv/watertown-pond.yaml).  Pond name is
 #      NOT in the column -- timeseries-join attaches it as a scope.
 #
 #   2. The cross-pond `perf` `timeseries-join`.  FULL OUTER JOINs
@@ -375,7 +375,7 @@ spec:
       base_url: "/selfmon/"
     # Metric instrument-kind registry.  Mirrors the non-gauge entries
     # of the canonical Weaver semconv registry at
-    # config/semconv/duckpond-pond.yaml -- keep these in sync.
+    # config/semconv/watertown-pond.yaml -- keep these in sync.
     # chart.js applies a per-kind transform: counter -> first-difference
     # rate per scope; updowncounter -> identity (today; future: spatial
     # sum); gauge or missing -> identity.

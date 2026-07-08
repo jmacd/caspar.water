@@ -45,7 +45,7 @@ Economy project in 2024, Joshua began developing software to download
 data from the manufacturer's website and publish it to a portal.
 
 Today, the software is a complete platform for collecting, archiving
-and publishing telemetry data. Duckpond is designed to operate at low
+and publishing telemetry data. Watertown is designed to operate at low
 cost, with flexible options for off-site storage.
 
 Open-source software is popular with users for avoiding vendor

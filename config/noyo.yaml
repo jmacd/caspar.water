@@ -39,7 +39,7 @@ spec:
   # .series archives (hydrovu/devices/<id>/<Name>_archive_YYYYMMDD.series).
   # git-ingest exposes them as data-archetype (FileDynamic) nodes; the combine
   # inputs below read them through a series:/// cast (see
-  # duckpond/docs/url-entry-type-casting.md) so the dashboards show history
+  # watertown/docs/url-entry-type-casting.md) so the dashboards show history
   # immediately while live collection back-fills the recent tail.
   factory: git-ingest
   config:

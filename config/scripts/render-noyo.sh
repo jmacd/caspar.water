@@ -19,7 +19,7 @@
 #   --port N     Preview port (default: 8802)
 #
 # Environment overrides (all optional):
-#   POND_BIN     Path to the pond binary (default: duckpond/target/release/pond,
+#   POND_BIN     Path to the pond binary (default: watertown/target/release/pond,
 #                falling back to `pond` on PATH)
 #   GIT_REF      Branch/ref git-ingest pulls from (default: current branch).
 #                NOTE: git-ingest fetches from the remote, so commit and PUSH
@@ -54,13 +54,13 @@ done
 CALLER_GIT_REF="${GIT_REF:-}"
 
 # --- locate the pond binary ---
-POND_BIN="${POND_BIN:-${BASE_DIR}/duckpond/target/release/pond}"
+POND_BIN="${POND_BIN:-${BASE_DIR}/watertown/target/release/pond}"
 if [ ! -x "${POND_BIN}" ]; then
     if command -v pond >/dev/null 2>&1; then
         POND_BIN=$(command -v pond)
     else
         echo "ERROR: pond binary not found at ${POND_BIN} and not on PATH." >&2
-        echo "       Build it: (cd ${BASE_DIR}/duckpond && cargo build -p cmd --release)" >&2
+        echo "       Build it: (cd ${BASE_DIR}/watertown && cargo build -p cmd --release)" >&2
         exit 1
     fi
 fi

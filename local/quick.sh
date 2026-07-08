@@ -10,12 +10,12 @@ set -e
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "${SCRIPTS}/.." && pwd)
-DUCKPOND_ROOT="${REPO_ROOT}/duckpond"
-POND_BIN="${DUCKPOND_ROOT}/target/debug/pond"
+WATERTOWN_ROOT="${REPO_ROOT}/watertown"
+POND_BIN="${WATERTOWN_ROOT}/target/debug/pond"
 
 if [ ! -x "${POND_BIN}" ]; then
     echo "Building pond binary..."
-    (cd "${DUCKPOND_ROOT}" && cargo build --bin pond)
+    (cd "${WATERTOWN_ROOT}" && cargo build --bin pond)
 fi
 
 BUILDDIR="${SCRIPTS}/build"
