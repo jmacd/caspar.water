@@ -1,0 +1,9 @@
+[Unit]
+Description=Watertown selfmon deb auto-update %i (native)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/jmacd/watertown/config/scripts/update-selfmon.sh %i
+Environment=HOME=/home/jmacd

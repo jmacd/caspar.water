@@ -81,7 +81,7 @@ locals {
       extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
     watershop-selfmon = {
-      s3         = local.staging_s3
+      s3 = local.staging_s3
       # s3_url provisions a MinIO bucket and the S3_* env used to resolve
       # credentials, but attach-remotes.sh intentionally does NOT attach a
       # backup remote for selfmon: run-selfmon.sh prunes aggressively with
@@ -97,8 +97,8 @@ locals {
       # per-unit jsonl files, has room for its ~207MiB external sort instead
       # of OOMing.  Requires a pond binary built on or after 2026-06-30,
       # commit a84fb9bc; older binaries ignore this and stay at 512MiB.
-      extra_env  = "SELFMON=1\nPOND_MEMORY_LIMIT_MB=2048"
-      selfmon    = true
+      extra_env = "SELFMON=1\nPOND_MEMORY_LIMIT_MB=2048\nDEB_CHANNEL=latest"
+      selfmon   = true
     }
   }
 
@@ -273,6 +273,11 @@ resource "null_resource" "watershop" {
         # Install systemd unit templates (container + selfmon native)
         "cp ${local.base_dir}/config/systemd/pond@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/config/systemd/pond-selfmon@.service ${local.home}/.config/systemd/user/",
+        # Selfmon deb auto-update units (native): hourly oras pull + dpkg -i
+        # of the newest pond .deb OCI artifact.  Template units activated
+        # per selfmon instance below.
+        "cp ${local.base_dir}/config/systemd/pond-selfmon-update@.service ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond-selfmon-update@.timer ${local.home}/.config/systemd/user/",
         # Drop ONLY units whose instance name is no longer in the
         # configured set (e.g. retired watershop-selfmon-{staging,prod}
         # split).  Configured-but-not-deployed instances (e.g. -prod
@@ -298,6 +303,12 @@ resource "null_resource" "watershop" {
         "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
         "systemctl --user daemon-reload",
       ],
+      # Install the pinned `oras` client used by update-selfmon.sh to pull
+      # the pond .deb OCI artifact.  Only needed where a selfmon instance
+      # runs the hourly auto-update timer.
+      length(local.selfmon_instance_names) > 0
+      ? ["${local.base_dir}/config/scripts/install-oras.sh"]
+      : [],
       # Install the watertown .deb (built natively on watershop by
       # tools/build-on-watershop.sh).  Always installs the newest .deb
       # in target/debian/; selfmon is local-experimental, no version
@@ -449,6 +460,12 @@ resource "null_resource" "watershop" {
       ],
       [for name in local.selfmon_instance_names :
         "systemctl --user enable --now pond-selfmon@${name}.timer"
+      ],
+      # Hourly deb auto-update timer for each selfmon instance.  OnBootSec is
+      # in the past, so enable --now fires a first update check immediately
+      # and then settles onto the 1h cadence.
+      [for name in local.selfmon_instance_names :
+        "systemctl --user enable --now pond-selfmon-update@${name}.timer"
       ],
       # Site timers.  Starting a stopped site timer fires an immediate build.
       # Right after a reset the producers have pushed only their empty
