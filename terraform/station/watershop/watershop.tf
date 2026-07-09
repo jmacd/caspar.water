@@ -302,8 +302,12 @@ resource "null_resource" "watershop" {
       # tools/build-on-watershop.sh).  Always installs the newest .deb
       # in target/debian/; selfmon is local-experimental, no version
       # pinning.  Skipped if there is no selfmon instance to run.
+      # `|| exit 1` because remote-exec runs the whole inline list as one
+      # shell WITHOUT `set -e`; without it a failed deb install (the
+      # script exits non-zero) is masked by later commands and the apply
+      # wrongly reports success.
       length(local.selfmon_instance_names) > 0
-      ? ["${local.base_dir}/config/scripts/install-watertown.sh"]
+      ? ["${local.base_dir}/config/scripts/install-watertown.sh || exit 1"]
       : [],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).
