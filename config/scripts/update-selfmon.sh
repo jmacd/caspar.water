@@ -62,7 +62,11 @@ if [ -z "${DEB}" ] || [ ! -f "${DEB}" ]; then
     exit 0
 fi
 
-NEW_VER=$(dpkg-deb -f "${DEB}" Version)
+NEW_VER=$(dpkg-deb -f "${DEB}" Version 2>/dev/null || echo "")
+if [ -z "${NEW_VER}" ]; then
+    echo "update-selfmon: could not read version from ${DEB}; skipping" >&2
+    exit 0
+fi
 INSTALLED=$(dpkg-query -W -f='${Version}' watertown 2>/dev/null || echo "")
 
 if [ -n "${INSTALLED}" ] && dpkg --compare-versions "${NEW_VER}" le "${INSTALLED}"; then

@@ -19,7 +19,7 @@ case "$(uname -m)" in
     *) echo "install-oras: unsupported arch $(uname -m)" >&2; exit 1 ;;
 esac
 
-if command -v oras >/dev/null 2>&1 && oras version 2>/dev/null | grep -q "${ORAS_VERSION}"; then
+if command -v oras >/dev/null 2>&1 && oras version 2>/dev/null | grep -qw "${ORAS_VERSION}"; then
     echo "install-oras: oras ${ORAS_VERSION} already installed"
     exit 0
 fi

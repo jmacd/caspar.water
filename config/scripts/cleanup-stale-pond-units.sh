@@ -25,11 +25,11 @@ is_kept() {
 
 KEEP=("$@")
 
-systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.timer' 2>/dev/null \
+systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.timer' 'pond-selfmon-update@*.timer' 2>/dev/null \
     | awk '{print $1}' \
     | while read -r unit; do
         # Strip prefix and .timer suffix to recover the instance name.
-        name=$(echo "$unit" | sed -E 's/^pond(-selfmon)?@(.*)\.timer$/\2/')
+        name=$(echo "$unit" | sed -E 's/^pond(-selfmon(-update)?)?@(.*)\.timer$/\3/')
         if ! is_kept "$name" "${KEEP[@]}"; then
             echo "Disabling stale unit: $unit (name=$name)"
             systemctl --user disable --now "$unit" 2>/dev/null || true
@@ -40,14 +40,18 @@ systemctl --user list-units --all --no-legend 'pond@*.timer' 'pond-selfmon@*.tim
 shopt -s nullglob
 for f in "$HOME/.config/systemd/user"/pond@*.timer \
          "$HOME/.config/systemd/user"/pond-selfmon@*.timer \
+         "$HOME/.config/systemd/user"/pond-selfmon-update@*.timer \
          "$HOME/.config/systemd/user"/pond@*.service \
-         "$HOME/.config/systemd/user"/pond-selfmon@*.service; do
+         "$HOME/.config/systemd/user"/pond-selfmon@*.service \
+         "$HOME/.config/systemd/user"/pond-selfmon-update@*.service; do
     base=$(basename "$f")
-    # pond@.service / pond-selfmon@.service are the templates -- keep them.
+    # pond@.service / pond-selfmon@.service / pond-selfmon-update@.{service,timer}
+    # are the templates -- keep them.
     case "$base" in
         pond@.service|pond-selfmon@.service) continue ;;
+        pond-selfmon-update@.service|pond-selfmon-update@.timer) continue ;;
     esac
-    name=$(echo "$base" | sed -E 's/^pond(-selfmon)?@(.*)\.(timer|service)$/\2/')
+    name=$(echo "$base" | sed -E 's/^pond(-selfmon(-update)?)?@(.*)\.(timer|service)$/\3/')
     if ! is_kept "$name" "${KEEP[@]}"; then
         echo "Removing stale unit file: $base (name=$name)"
         rm -f "$f"
