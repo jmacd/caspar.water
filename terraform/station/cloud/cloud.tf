@@ -125,13 +125,23 @@ resource "null_resource" "user_setup" {
 
 # Installs caddy + rsync if missing.  Idempotent; re-runs only when the
 # setup script changes.
+#
+# Depends on teardown DIRECTLY, not just transitively through user_setup.
+# teardown ends by stopping caddy; system_setup and caddyfile then start it
+# back up.  When user_setup is not in a given change set its dependency edge
+# is already satisfied, so a transitive-only order lets teardown race the
+# start steps and its trailing `systemctl stop caddy` can win, leaving caddy
+# down.  A direct edge forces teardown to finish first.
 resource "null_resource" "system_setup" {
   triggers = {
     script_hash = filesha256(local.setup_src)
     host_id     = linode_instance.debian12-us-west.id
   }
 
-  depends_on = [null_resource.user_setup]
+  depends_on = [
+    null_resource.user_setup,
+    null_resource.teardown,
+  ]
 
   connection {
     type        = "ssh"
