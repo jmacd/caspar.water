@@ -144,3 +144,7 @@ AutomationDirect order that covers the enclosure and all panel wiring.
 sheltered location. Exterior or wash-down placement would require a weather-rated
 enclosure (e.g. a NEMA 4X polycarbonate box), at higher cost.
 
+## Schematic
+
+![Onsite water-quality data collection schematic](noyo-data-collection-schematic.svg)
+
