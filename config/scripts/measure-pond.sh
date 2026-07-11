@@ -101,7 +101,7 @@ fi
     if [ ! -d "${POND}" ]; then
         echo "measure-pond: '${POND_NAME}' has no POND dir at ${POND}; emitting zero row" >&2
         TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0,"timer.active":0,"last_run.seconds_ago":-1,"timer.interval_s":0}\n' \
+        printf '{"ts":"%s","committed.txn_ids":0,"parquet.files":0,"delta_log.files":0,"size.bytes":0,"list.seconds":0,"peak_rss.bytes":0,"run.seconds":0,"run.wall_s":0,"timer.active":0,"last_run.seconds_ago":-1,"timer.interval_s":0}\n' \
             "${TS}" >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
         exit 0
     fi
@@ -203,6 +203,28 @@ fi
         LAST_RUN_AGO=-1
     fi
 
+    # ── full run duration (run.wall_s) ────────────────────────────
+    # Wall-clock seconds the service's most recent run took, from
+    # systemd's ExecMainStartTimestamp and ExecMainExitTimestamp.  The
+    # selfmon status grid adds this to the timer interval when deciding
+    # "overdue", because with OnUnitActiveSec the true period between
+    # successful runs is `interval + run duration`; a unit whose run
+    # outlasts its interval would otherwise be permanently yellow.
+    # Reported as 0 when either timestamp is missing or the service is
+    # mid-run (exit older than start).
+    START_TS=$(systemctl --user show "${SERVICE_UNIT}" \
+        -p ExecMainStartTimestamp --value 2>/dev/null)
+    RUN_WALL_S=0
+    if [ -n "${START_TS}" ] && [ "${START_TS}" != "n/a" ] \
+        && [ -n "${EXIT_TS}" ] && [ "${EXIT_TS}" != "n/a" ]; then
+        START_EPOCH=$(date -d "${START_TS}" +%s 2>/dev/null)
+        EXIT_EPOCH=$(date -d "${EXIT_TS}" +%s 2>/dev/null)
+        if [ -n "${START_EPOCH}" ] && [ -n "${EXIT_EPOCH}" ] \
+            && [ "${EXIT_EPOCH}" -ge "${START_EPOCH}" ] 2>/dev/null; then
+            RUN_WALL_S=$(( EXIT_EPOCH - START_EPOCH ))
+        fi
+    fi
+
     # Configured timer interval (OnUnitActiveSec), in integer seconds.
     # Drives the status grid's "stale = 2x interval" health threshold
     # so the page knows what "overdue" means without per-unit YAML
@@ -238,9 +260,9 @@ fi
 
     # Single JSON line, append.  Column names match metric_name
     # entries in config/semconv/watertown-pond.yaml.
-    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"timer.active":%s,"last_run.seconds_ago":%s,"timer.interval_s":%s}\n' \
+    printf '{"ts":"%s","committed.txn_ids":%s,"parquet.files":%s,"delta_log.files":%s,"size.bytes":%s,"list.seconds":%s,"peak_rss.bytes":%s,"run.seconds":%s,"run.wall_s":%s,"timer.active":%s,"last_run.seconds_ago":%s,"timer.interval_s":%s}\n' \
         "${TS}" "${TXN_SEQ}" "${PARQUET_FILES}" "${DELTA_LOG_FILES}" \
         "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \
-        "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" "${TIMER_INTERVAL_S}" \
+        "${RUN_WALL_S}" "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" "${TIMER_INTERVAL_S}" \
         >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
 )

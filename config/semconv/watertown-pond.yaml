@@ -169,3 +169,24 @@ groups:
     unit: "s"
     attributes:
       - ref: watertown.pond.scope
+
+  - id: metric.watertown.pond.run_wall
+    type: metric
+    metric_name: run.wall_s
+    stability: experimental
+    brief: >
+      Wall-clock duration of the pond service's most recent run, in
+      integer seconds.
+    note: >
+      Captured by `measure-pond.sh` as `ExecMainExitTimestamp -
+      ExecMainStartTimestamp` from `systemctl --user show <unit>`.
+      The selfmon status grid adds this to `timer.interval_s` before
+      applying its 2x "overdue" threshold, because with
+      `OnUnitActiveSec` the true period between successful runs is
+      `interval + run duration`; without it, a unit whose run outlasts
+      its timer interval would be permanently marked yellow.  Reported
+      as 0 when the timestamps are missing or the service is mid-run.
+    instrument: gauge
+    unit: "s"
+    attributes:
+      - ref: watertown.pond.scope
