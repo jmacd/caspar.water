@@ -11,9 +11,10 @@ Noyo Marine Center currently collects water-quality data from two
 multi-parameter probes located at its Field Station dock originally
 funded through grants to Noyo Ocean Collective.
 
-This proposes that Noyo Marine Center purchase computer equipment to
-operate the probes directly and to publish its water quality data
-to the Noyo Marine Center website.
+This proposal requests that Noyo Marine Center purchase computer
+equipment to operate the probes directly and to publish its water
+quality data to the Noyo Marine Center website using software
+supported by Caspar Water Company.
 
 ## Background
 
@@ -28,13 +29,14 @@ study, one was removed from service.
 ## Engineering
 
 Joshua is a Principal Software Engineer at Microsoft with a specialty
-in open-source telemetry systems. He is a member of the OpenTelemetry
-technical committee, an industry association under the Linux
-foundation responsible for software telemetry protocols.
+in open-source telemetry systems. He is a founding member of the
+OpenTelemetry project, an industry association under the Linux
+foundation responsible for software telemetry protocols, where he
+a member of the Technical Committee.
 
 Joshua became the owner/operator of Caspar Water Company in 2021, when
 he began to create open-source software to manage operations at Caspar
-Water Company as a way to lower cost for users.
+Water Company.
 
 ## Open-Source Software
 
@@ -86,14 +88,20 @@ The system will draw up to 25W of power, approximately 0.6kW daily,
 
 ### Cabling
 
-In-Situ cables are expensive and sold by the foot. It appears that
-Noyo Marine Center enough existing cable to reach the dock from a
-location inside the Field Station. 
+In-Situ cables are expensive and sold by the foot. Noyo Marine Center
+has enough existing cable to reach the dock from a location inside the
+Field Station. For two probes to be connected, two cables will be required.
 
-https://in-situ.com/us/rugged-cable-splitter
+While not necessary, In-Situ sells a [cable splitter
+accessory](https://in-situ.com/us/rugged-cable-splitter) that enables
+two probes to be connected through one cable run.
 
+## Support
 
-
+Joshua volunteers to assemble, configure, operate, and monitor the new
+hardware for at least 24 months. He will work with Noyo Marine Center
+staff to document the system and to deliver backup and publishing
+options that meet their needs.
 
 ## Bill of materials
 
@@ -101,7 +109,7 @@ Approximate single-unit prices, USD, excluding tax and shipping. Three
 small orders: the compute parts, the power supplies, and one
 AutomationDirect order that covers the enclosure and all panel wiring.
 
-**Compute** — *SparkFun / DigiKey / Mouser*
+**Compute** — *[Mouser](https://www.mouser.com/)*
 
 | Part | Part number | Qty | Price |
 |------|-------------|----:|------:|
@@ -109,26 +117,26 @@ AutomationDirect order that covers the enclosure and all panel wiring.
 | Mikroe RS485 Click, 3.3 V | MIKROE-986 | 1 | $22 |
 | SanDisk 128GB MAX Endurance microSDXC | SDSQQVR-128G | 1 | $57 |
 
-**Power** — *DigiKey / Mouser*
+**Power** — *[Mouser](https://www.mouser.com/)*
 
 | Part | Part number | Qty | Price |
 |------|-------------|----:|------:|
 | Mean Well 5 V DIN supply (computer) | HDR-30-5 | 1 | $20 |
 | Mean Well 24 V DIN supply (probes) | HDR-15-24 | 1 | $20 |
 
-**Enclosure and panel wiring** — *all from [AutomationDirect](https://www.automationdirect.com) in one order*
+**Enclosure** — *[AutomationDirect](https://www.automationdirect.com)*
 
 | Part | Part number | Qty | Price |
 |------|-------------|----:|------:|
 | Steel enclosure, NEMA 1 indoor, ~10×8×4 in, screw cover[^enc] | B100804 | 1 | $30 |
 | Steel back panel (DIN backing plate) | SPB1008 | 1 | $12 |
-| DIN rail, 35 mm steel, 1 m (cut to fit) | DN-R35S1 | 1 | $8 |
+| DIN rail, 35 mm steel, 1 m | DN-R35S1 | 1 | $8 |
 | DIN-rail end brackets | DN-EB35 | 2 | $2 |
 | Feed-through terminal blocks, 12 AWG | DN-T12 | 6 | $6 |
-| Ground terminal block (green/yellow) | DN-G12 | 2 | $4 |
-| Enclosure grounding lug kit (any 10–14 AWG panel-bond lug) | — | 1 | $6 |
-| DIN-rail mount for the BeaglePlay (C45 snap clips + M3 nylon standoffs, from Amazon) | — | 1 | $8 |
-| Fasteners (M4 screws for rail, panel studs are included) | — | 1 | $4 |
+| Ground terminal block | DN-G12 | 2 | $4 |
+| Enclosure grounding lug kit (10–14 AWG) | — | 1 | $6 |
+| DIN-rail mount for the BeaglePlay (C45 snap clips, M3 standoffs) | — | 1 | $8 |
+| Fasteners (M4 screws for rail) | — | 1 | $4 |
 
 **Approximate total: ~$300**
 
