@@ -39,16 +39,15 @@
   <text x="110" y="215" text-anchor="middle" class="sub">Modbus addr B · 8–36 VDC</text>
 
   <rect x="20" y="256" width="180" height="56" rx="8" class="box" stroke-dasharray="4 3"/>
-  <text x="110" y="279" text-anchor="middle" class="sub" font-weight="bold">3rd probe / future site</text>
-  <text x="110" y="297" text-anchor="middle" class="sub">via BeaglePlay network</text>
+  <text x="110" y="279" text-anchor="middle" class="sub" font-weight="bold">Future remote sensors</text>
+  <text x="110" y="297" text-anchor="middle" class="sub">via BeaglePlay wireless</text>
 
-  <!-- shared RS-485 bus trunk: probes joined, then into panel -->
-  <path class="wire" d="M200,120 H230 V202 H200"/>
-  <line class="wire" x1="230" y1="120" x2="230" y2="202"/>
-  <path class="wire" d="M230,161 H295" marker-end="url(#arrow)"/>
-  <text x="262" y="138" text-anchor="middle" class="datlbl">RS-485</text>
-  <text x="262" y="153" text-anchor="middle" class="sub">Modbus RTU</text>
-  <text x="262" y="178" text-anchor="middle" class="sub">120 Ω · 19200 8N1</text>
+  <!-- probe cable: RS-485 data + 24 V power share one In-Situ cable to the panel -->
+  <path class="wire" d="M200,120 H250"/>
+  <path class="wire" d="M200,202 H250"/>
+  <path class="wire" d="M250,120 V349 H325" marker-end="url(#arrow)"/>
+  <text x="250" y="113" text-anchor="middle" class="datlbl">RS-485</text>
+  <text x="150" y="345" text-anchor="middle" class="sub">RS-485: Modbus RTU · 19200 8N1</text>
 
   <!-- ===== ENCLOSURE PANEL ===== -->
   <rect x="300" y="84" width="450" height="368" rx="10" class="panel"/>
@@ -56,15 +55,15 @@
     DIN-rail enclosure (wall-mounted)
   </text>
 
-  <!-- AC-DC supply -->
+  <!-- 24 V AC-DC supply (probes) -->
   <rect x="325" y="124" width="185" height="58" rx="8" class="box"/>
   <text x="417" y="148" text-anchor="middle" class="label" font-weight="bold">24 VDC supply</text>
-  <text x="417" y="166" text-anchor="middle" class="sub">DIN-rail AC-DC, 15–30 W</text>
+  <text x="417" y="166" text-anchor="middle" class="sub">Mean Well HDR-15-24</text>
 
-  <!-- buck -->
+  <!-- 5 V AC-DC supply (computer) -->
   <rect x="555" y="124" width="170" height="58" rx="8" class="box"/>
-  <text x="640" y="148" text-anchor="middle" class="label" font-weight="bold">24→5 V buck</text>
-  <text x="640" y="166" text-anchor="middle" class="sub">USB-C, 5 V / 3 A</text>
+  <text x="640" y="148" text-anchor="middle" class="label" font-weight="bold">5 VDC supply</text>
+  <text x="640" y="166" text-anchor="middle" class="sub">Mean Well HDR-30-5</text>
 
   <!-- RS485 click -->
   <rect x="325" y="320" width="185" height="58" rx="8" class="box"/>
@@ -78,23 +77,21 @@
   <line x1="571" y1="304" x2="709" y2="304" stroke="#ccc"/>
   <text x="640" y="324" text-anchor="middle" class="sub" font-weight="bold">Watertown</text>
   <text x="640" y="342" text-anchor="middle" class="sub">OS: 16 GB eMMC</text>
-  <text x="640" y="360" text-anchor="middle" class="sub">data: high-endurance microSD</text>
+  <text x="640" y="360" text-anchor="middle" class="sub">data: 128 GB high-endurance microSD</text>
   <text x="640" y="385" text-anchor="middle" class="sub">Eth · Wi-Fi · sub-GHz</text>
   <text x="640" y="403" text-anchor="middle" class="sub">(harbor expansion)</text>
 
-  <!-- AC mains in -->
-  <path class="pwr" d="M417,84 V124" marker-end="url(#arrowR)"/>
-  <text x="427" y="79" class="pwrlbl">AC mains</text>
+  <!-- AC mains in, feeding both DC supplies -->
+  <path class="pwr" d="M417,70 V124" marker-end="url(#arrowR)"/>
+  <line class="pwr" x1="417" y1="94" x2="640" y2="94"/>
+  <path class="pwr" d="M640,94 V124" marker-end="url(#arrowR)"/>
+  <text x="427" y="66" class="pwrlbl">AC mains</text>
 
-  <!-- 24V to probes (down, out left of panel, up to probes) -->
-  <path class="pwr" d="M325,153 H285 V350 H110 V232" marker-end="url(#arrowR)"/>
-  <text x="250" y="343" text-anchor="middle" class="pwrlbl">24 VDC → probe power</text>
+  <!-- 24 V power tapped onto the probe cable -->
+  <path class="pwr" d="M325,161 H250" marker-end="url(#arrowR)"/>
+  <text x="286" y="178" text-anchor="middle" class="pwrlbl">24 VDC → probes</text>
 
-  <!-- 24V to buck -->
-  <path class="pwr" d="M510,153 H555" marker-end="url(#arrowR)"/>
-  <text x="532" y="146" text-anchor="middle" class="pwrlbl">24 V</text>
-
-  <!-- buck to beagleplay USB-C -->
+  <!-- 5 V supply to beagleplay USB-C -->
   <path class="pwr" d="M640,182 V250" marker-end="url(#arrowR)"/>
   <text x="678" y="220" text-anchor="middle" class="pwrlbl">5 V USB-C</text>
 
