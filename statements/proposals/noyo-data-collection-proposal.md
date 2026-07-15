@@ -1,8 +1,8 @@
 # Proposal: Onsite Water-Quality Data Collection for Noyo Marine Center
 
 > **Prepared for:** Noyo Marine Center — Noyo Harbor water-quality monitoring project
-> **Prepared by:** Joshua MacDonald — volunteer; Principal Software Engineer, Microsoft; owner/operator, Caspar Water Company
-> **Date:** 2026-06-28
+> **Prepared by:** Joshua MacDonald, volunteer; Principal Software Engineer, Microsoft; owner/operator, Caspar Water Company
+> **Date:** 2026-07-15
 > **Status:** Hardware purchase proposal
 
 ## Summary
@@ -28,14 +28,14 @@ study, one was removed from service.
 
 ## Engineering
 
-Joshua is a Principal Software Engineer at Microsoft with a specialty
-in open-source telemetry systems. He is a founding member of the
-OpenTelemetry project, an industry association under the Linux
-foundation responsible for software telemetry protocols, where he
-a member of the Technical Committee.
+I am a Principal Software Engineer at Microsoft with a specialty in
+open-source telemetry systems. I am a founding member of the
+**OpenTelemetry** project, an industry association under the Linux
+Foundation that is responsible for software telemetry protocols. I am
+a standing member of the OpenTelemetry Technical Committee.
 
-Joshua became the owner/operator of Caspar Water Company in 2021, when
-he began to create open-source software to manage operations at Caspar
+I became the owner/operator of Caspar Water Company in 2021, when I
+began to create open-source software to manage operations at Caspar
 Water Company.
 
 ## Open-Source Software
@@ -43,17 +43,19 @@ Water Company.
 Open-source software is software whose underlying source code is
 licensed for public use, allowing anyone to view, modify, share, and
 redistribute the original work. After learning about Noyo Harbor Blue
-Economy project in 2024, Joshua began developing software to download
-data from the manufacturer's website and publish it to a portal.
+Economy project in 2024, I began developing software to download data
+from the manufacturer's website and publish it to a portal. The portal
+is live at [casparwater.us/noyo-harbor](https://casparwater.us/noyo-harbor/params/DO.html).
 
 Today, the software is a complete platform for collecting, archiving
-and publishing telemetry data. Watertown is designed to operate at low
-cost, with flexible options for off-site storage.
+and publishing telemetry data on your scale. The software (named
+"Watertown") is designed to operate at low cost as its primary
+objective, and it has flexible options for off-site storage.
 
 Open-source software is popular with users for avoiding vendor
 "lock-in". Because this software is licensed to the public, Noyo
 Marine Center will be able to build and operate the software itself if
-for any reason Joshua is no longer able to volunteer.
+for any reason I am no longer able to volunteer.
 
 ## Detailed design
 
@@ -83,8 +85,8 @@ The computer and accessories will be powered through a standard 120V
 outlet using two AC:DC power supplies, Mean Well HDR-15-24 for the
 probes and HDR-30-5 for the computer.
 
-The system will draw up to 25W of power, approximately 0.6kW daily,
-220 kW or approximately $100 yearly to operate.
+The system will draw up to 25W of power, approximately 0.6kWh daily,
+220 kWh or approximately $100 yearly to operate.
 
 ### Cabling
 
@@ -92,14 +94,16 @@ In-Situ cables are expensive and sold by the foot. Noyo Marine Center
 has enough existing cable to reach the dock from a location inside the
 Field Station. For two probes to be connected, two cables will be required.
 
-While not necessary, In-Situ sells a [cable splitter
+In-Situ sells a [cable splitter
 accessory](https://in-situ.com/us/rugged-cable-splitter) that enables
-two probes to be connected through one cable run.
+two probes to be connected through one cable run, however we are also
+able to chain the two probes (in one RS-485 series) provided that
+both cables can reach the computer.
 
 ## Support
 
-Joshua volunteers to assemble, configure, operate, and monitor the new
-hardware for at least 24 months. He will work with Noyo Marine Center
+I volunteer to assemble, configure, operate, and monitor the new
+hardware for at least 24 months. I will work with Noyo Marine Center
 staff to document the system and to deliver backup and publishing
 options that meet their needs.
 
@@ -147,4 +151,3 @@ enclosure (e.g. a NEMA 4X polycarbonate box), at higher cost.
 ## Schematic
 
 ![Onsite water-quality data collection schematic](noyo-data-collection-schematic.svg)
-
