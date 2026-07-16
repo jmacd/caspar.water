@@ -4,6 +4,7 @@ weight: 10
 layout: blog
 section: Blog
 date: "2025-01-01"
+image: "/img/logo.svg"
 ---
 
 I thought I should keep a blog.

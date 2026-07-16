@@ -4,6 +4,7 @@ weight: 5
 layout: blog
 section: Blog
 date: "2026-07-16"
+image: "/img/noyo-center-logo.png"
 ---
 
 Caspar Water is volunteering with our partner, the

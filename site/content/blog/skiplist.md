@@ -4,6 +4,7 @@ weight: 70
 layout: blog
 section: Blog
 date: "2013-01-31"
+image: "/img/logo.svg"
 ---
 
 Balanced trees an essential data structure that we learn early in a
