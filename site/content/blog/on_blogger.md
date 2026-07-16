@@ -4,6 +4,7 @@ weight: 20
 layout: blog
 section: Blog
 date: "2025-01-10"
+image: "/img/logo.svg"
 ---
 
 Once in a while you find someone still posting on Blogger. They want a
