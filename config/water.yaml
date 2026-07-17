@@ -422,3 +422,72 @@ spec:
               END as duty_cycle
             FROM with_interval wi
             ORDER BY timestamp
+---
+version: v1
+kind: mknod
+metadata:
+  path: /annotations
+spec:
+  factory: dynamic-dir
+  config:
+    # Annotation interval series for Caspar Water.
+    #
+    # These sql-derived-series produce *interval* datasets (one row per period
+    # with start_time, end_time, label) rather than per-sample timeseries.  The
+    # sitegen "annotation layer" reads them as a shaded background band drawn
+    # behind any timeseries chart on the same pond (see site.yaml: the
+    # `leak-periods` export bound via `annotations:` on the water data route).
+    #
+    # Kept in a dedicated dynamic-dir (not /analysis) so the analysis overlay
+    # route does not generate a page for them.
+    entries:
+      # -- Leak Periods --------------------------------------------------------------
+      #
+      # Classifies each overnight low-demand hour as "no-leak" (system pressure
+      # stays flat) or "leak" (pressure drifts) to overlay on any water chart.
+      #
+      #   start_time  - hour bucket start (TIMESTAMP)
+      #   end_time    - hour bucket end (TIMESTAMP)
+      #   label       - 'no-leak' when the in-hour pressure range is small,
+      #                 else 'leak'
+      #   range_psi   - max-min system pressure in the hour (for tuning)
+      #
+      # Window: UTC hours 09-11 fall in the overnight low-demand period in
+      # Caspar's local time (US Pacific) year-round, when steady demand should
+      # leave a leak-free system at a near-constant pressure.  The 2.0 flatness
+      # threshold and the window are heuristics -- tune against real data.
+      #
+      - name: "leak-periods"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            source: "oteljson:///ingest/casparwater*.json"
+          query: >-
+            WITH src AS (
+              SELECT timestamp, system_pressure_value AS pressure
+              FROM source
+              WHERE system_pressure_value IS NOT NULL
+            ),
+            night AS (
+              SELECT timestamp, pressure,
+                date_trunc('hour', timestamp) AS hour_start
+              FROM src
+              WHERE EXTRACT(HOUR FROM timestamp) BETWEEN 9 AND 11
+            ),
+            per_hour AS (
+              SELECT
+                hour_start AS start_time,
+                hour_start + INTERVAL 1 HOUR AS end_time,
+                COUNT(*) AS n,
+                MAX(pressure) - MIN(pressure) AS range_psi
+              FROM night
+              GROUP BY hour_start
+              HAVING COUNT(*) >= 10
+            )
+            SELECT
+              start_time,
+              end_time,
+              CASE WHEN range_psi <= 2.0 THEN 'no-leak' ELSE 'leak' END AS label,
+              range_psi
+            FROM per_hour
+            ORDER BY start_time
