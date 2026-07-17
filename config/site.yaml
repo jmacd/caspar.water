@@ -66,8 +66,8 @@ spec:
         pattern: "/sources/water/reduced/*/*/*.series"
       - name: "analysis"
         pattern: "/sources/water/analysis/*"
-      - name: "leak-periods"
-        pattern: "/sources/water/annotations/leak-periods*"
+      - name: "water-overlay"
+        pattern: "/sources/water/annotations/water-overlay*"
       - name: "septic-metrics"
         pattern: "/sources/septic/reduced/*/*/*.series"
     
@@ -104,7 +104,7 @@ spec:
                 slug: "$0"
                 page: "/templates/data.md"
                 export: "metrics"
-                annotations: "leak-periods"
+                annotations: "water-overlay"
           - name: "analysis"
             type: static
             slug: "analysis"

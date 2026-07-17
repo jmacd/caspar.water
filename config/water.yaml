@@ -430,64 +430,126 @@ metadata:
 spec:
   factory: dynamic-dir
   config:
-    # Annotation interval series for Caspar Water.
+    # Overlay interval series for Caspar Water.
     #
-    # These sql-derived-series produce *interval* datasets (one row per period
-    # with start_time, end_time, label) rather than per-sample timeseries.  The
-    # sitegen "annotation layer" reads them as a shaded background band drawn
-    # behind any timeseries chart on the same pond (see site.yaml: the
-    # `leak-periods` export bound via `annotations:` on the water data route).
+    # These sql-derived-series produce *interval* datasets (one row per period)
+    # rather than per-sample timeseries.  The sitegen "annotation layer" reads
+    # them as shaded background bands drawn behind any timeseries chart on the
+    # same pond (see site.yaml: the `water-overlay` export bound via
+    # `annotations:` on the water data route).
     #
     # Kept in a dedicated dynamic-dir (not /analysis) so the analysis overlay
     # route does not generate a page for them.
     entries:
-      # -- Leak Periods --------------------------------------------------------------
+      # -- Water system overlay (merged system-status timeline) ----------------------
       #
-      # Classifies each overnight low-demand hour as "no-leak" (system pressure
-      # stays flat) or "leak" (pressure drifts) to overlay on any water chart.
+      # A single merged timeline where each row is a pump-state segment that also
+      # carries the prevailing (previous-day) leak-probability estimate.  Two
+      # visual overlays are derived from its columns by the client (chart.js):
+      #   * pump state (pumping vs recovery) -- categorical shading
+      #   * leak risk  -- red shading with opacity proportional to leak_score
+      # selectable independently via checkboxes on any water timeseries.
       #
-      #   start_time  - hour bucket start (TIMESTAMP)
-      #   end_time    - hour bucket end (TIMESTAMP)
-      #   label       - 'no-leak' when the in-hour pressure range is small,
-      #                 else 'leak'
-      #   range_psi   - max-min system pressure in the hour (for tuning)
+      # Columns:
+      #   timestamp       - copy of start_time (temporal-export/partition key)
+      #   start_time      - pump-state change (segment start, TIMESTAMP)
+      #   end_time        - next pump-state change (segment end, TIMESTAMP)
+      #   pump_state      - 'pumping' (well depth < threshold) | 'recovery'
+      #   leak_score      - previous-day P(leak) in [0,1] (NULL if no estimate)
+      #   leak_label      - 'leak' (score >= 0.5) | 'no-leak' | NULL
+      #   leak_confidence - cumulative-evidence weight in [0,1]
       #
-      # Window: UTC hours 09-11 fall in the overnight low-demand period in
-      # Caspar's local time (US Pacific) year-round, when steady demand should
-      # leave a leak-free system at a near-constant pressure.  The 2.0 flatness
-      # threshold and the window are heuristics -- tune against real data.
+      # Pump state: well_depth_value < 42 m => pumping (same threshold and
+      # signal as the duty-cycle / pump-cycle analysis).
       #
-      - name: "leak-periods"
+      # Leak score (v1 -- deliberately simple, expected to be refined): during
+      # overnight low-demand REST windows (UTC hours 09-11, i.e. local Pacific
+      # night, AND pump off) the system pressure should hold flat with no leak.
+      # Per rest hour we take the regression slope (drift, psi/h) and map it
+      # through a sigmoid around a tolerance; a cumulative-evidence weight
+      # (observed rest / stasis_window, capped at 1) down-weights short spells,
+      # so >= ~1 h of stasis is needed for a confident daily verdict.  The
+      # per-day score is the evidence-weighted mean; it is joined onto each
+      # pump-state segment from the PREVIOUS day.  Tunables inline: pump
+      # threshold 42.0, rest hours 9-11, drift tolerance 2.0 psi/h, sigmoid
+      # scale 1.0, stasis window 3600 s, min 10 samples/hour.
+      #
+      - name: "water-overlay"
         factory: "sql-derived-series"
         config:
           patterns:
             source: "oteljson:///ingest/casparwater*.json"
           query: >-
-            WITH src AS (
-              SELECT timestamp, system_pressure_value AS pressure
+            WITH samples AS (
+              SELECT timestamp, well_depth_value AS depth
+              FROM source
+              WHERE well_depth_value IS NOT NULL
+                AND well_depth_value BETWEEN 10 AND 60
+            ),
+            state AS (
+              SELECT timestamp,
+                CASE WHEN depth < 42.0 THEN 'pumping' ELSE 'recovery' END AS pump_state
+              FROM samples
+            ),
+            changes AS (
+              SELECT timestamp, pump_state,
+                LAG(pump_state) OVER (ORDER BY timestamp) AS prev_state
+              FROM state
+            ),
+            seg AS (
+              SELECT timestamp, pump_state,
+                SUM(CASE WHEN prev_state IS NULL OR prev_state <> pump_state
+                         THEN 1 ELSE 0 END)
+                  OVER (ORDER BY timestamp ROWS UNBOUNDED PRECEDING) AS seg_id
+              FROM changes
+            ),
+            segments AS (
+              SELECT seg_id, ANY_VALUE(pump_state) AS pump_state,
+                MIN(timestamp) AS start_time, MAX(timestamp) AS last_ts
+              FROM seg GROUP BY seg_id
+            ),
+            segments2 AS (
+              SELECT seg_id, pump_state, start_time,
+                COALESCE(LEAD(start_time) OVER (ORDER BY start_time), last_ts) AS end_time
+              FROM segments
+            ),
+            rest AS (
+              SELECT timestamp, system_pressure_value AS pressure,
+                CAST(timestamp AS DATE) AS rest_day
               FROM source
               WHERE system_pressure_value IS NOT NULL
-            ),
-            night AS (
-              SELECT timestamp, pressure,
-                date_trunc('hour', timestamp) AS hour_start
-              FROM src
-              WHERE EXTRACT(HOUR FROM timestamp) BETWEEN 9 AND 11
+                AND EXTRACT(HOUR FROM timestamp) BETWEEN 9 AND 11
+                AND well_depth_value IS NOT NULL AND well_depth_value >= 42.0
             ),
             per_hour AS (
-              SELECT
-                hour_start AS start_time,
-                hour_start + INTERVAL 1 HOUR AS end_time,
+              SELECT rest_day, date_trunc('hour', timestamp) AS hour_start,
                 COUNT(*) AS n,
-                MAX(pressure) - MIN(pressure) AS range_psi
-              FROM night
-              GROUP BY hour_start
+                regr_slope(pressure, EXTRACT(EPOCH FROM timestamp)/3600.0) AS slope
+              FROM rest GROUP BY rest_day, date_trunc('hour', timestamp)
               HAVING COUNT(*) >= 10
+            ),
+            per_hour_score AS (
+              SELECT rest_day, (n*30.0) AS rest_s,
+                1.0/(1.0+exp(-((abs(slope)-2.0)/1.0))) AS p_window
+              FROM per_hour
+            ),
+            per_day AS (
+              SELECT rest_day,
+                SUM(LEAST(rest_s/3600.0,1.0)*p_window)
+                  / NULLIF(SUM(LEAST(rest_s/3600.0,1.0)),0) AS leak_score,
+                LEAST(SUM(rest_s)/3600.0,1.0) AS leak_confidence
+              FROM per_hour_score GROUP BY rest_day
+            ),
+            merged AS (
+              SELECT s.start_time, s.end_time, s.pump_state,
+                d.leak_score,
+                CASE WHEN d.leak_score IS NULL THEN NULL
+                     WHEN d.leak_score >= 0.5 THEN 'leak' ELSE 'no-leak' END AS leak_label,
+                d.leak_confidence
+              FROM segments2 s
+              LEFT JOIN per_day d ON d.rest_day = CAST(s.start_time AS DATE) - 1
             )
-            SELECT
-              start_time,
-              end_time,
-              CASE WHEN range_psi <= 2.0 THEN 'no-leak' ELSE 'leak' END AS label,
-              range_psi
-            FROM per_hour
+            SELECT start_time AS timestamp, start_time, end_time, pump_state,
+              leak_score, leak_label, leak_confidence
+            FROM merged
             ORDER BY start_time
