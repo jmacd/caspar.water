@@ -181,6 +181,11 @@ spec:
       # Capped at 2 hours (7200s) per event to exclude long static periods.
       # Minimum event duration filtering happens at the chart/consumer level.
       #
+      # To keep the exported parquet (and the analysis page load) small, the
+      # raw 30s samples are decimated to one representative sample per time
+      # bucket: 60s buckets for the first 15 minutes (where the drawdown curve
+      # is steep and detail matters), then 300s buckets for the long tail.
+      #
       - name: "pump-cycles"
         factory: "sql-derived-series"
         config:
@@ -267,23 +272,43 @@ spec:
                        THEN depth END)
                    - MIN(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start))
                        BETWEEN 270 AND 330 THEN depth END) >= 0.3
+            ),
+            selected AS (
+              SELECT
+                timestamp,
+                CAST(m.pump_event_id AS INT) as pump_event_id,
+                CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
+                EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
+                depth,
+                static_depth,
+                CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
+              FROM with_meta m
+              INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
+              INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
+              INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
+              INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
+              WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
+                AND static_depth BETWEEN 40.0 AND 50.0
+                AND (start_gap_s IS NULL OR start_gap_s < 300)
+            ),
+            resampled AS (
+              SELECT *,
+                CASE WHEN elapsed_s < 900
+                     THEN CAST(FLOOR(elapsed_s / 60) AS INT)
+                     ELSE 15 + CAST(FLOOR((elapsed_s - 900) / 300) AS INT)
+                END as time_bucket
+              FROM selected
+            ),
+            decimated AS (
+              SELECT *,
+                ROW_NUMBER() OVER (
+                  PARTITION BY pump_event_id, time_bucket ORDER BY timestamp
+                ) as bucket_rn
+              FROM resampled
             )
-            SELECT
-              timestamp,
-              CAST(m.pump_event_id AS INT) as pump_event_id,
-              CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
-              EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
-              depth,
-              static_depth,
-              CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
-            FROM with_meta m
-            INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
-            INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
-            INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
-            INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
-            WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
-              AND static_depth BETWEEN 40.0 AND 50.0
-              AND (start_gap_s IS NULL OR start_gap_s < 300)
+            SELECT timestamp, pump_event_id, month, elapsed_s, depth, static_depth, phase
+            FROM decimated
+            WHERE bucket_rn = 1
             ORDER BY timestamp
     
       # -- Cycle Summary -------------------------------------------------------------

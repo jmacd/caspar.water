@@ -7,4 +7,4 @@ layout: data
 
 {{ breadcrumb /}}
 
-{{ overlay_chart /}}
+{{ viz renderer="overlay" /}}
