@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Water-system overlay preview (real staging data)</title>
+<style>
+  :root { --fg: #333; }
+  body { font-family: system-ui, sans-serif; margin: 2rem; color: var(--fg); }
+  #chart { width: 100%; max-width: 1100px; height: 340px; }
+  .controls { margin: 1rem 0; }
+  .controls label { margin-right: 1.2rem; font-size: 0.95rem; }
+  .legend span { display:inline-block; width:12px; height:12px; margin-right:4px; vertical-align:middle; border-radius:2px; }
+  .note { color:#666; font-size:0.85rem; max-width:1100px; }
+  code { background:#f2f2f2; padding:0 3px; }
+</style>
+</head>
+<body>
+<h2>Water-system overlay — real staging data (system pressure, Feb 1 – Jul 17 2026)</h2>
+<div class="controls">
+  <label><input type="checkbox" id="cb-pump" checked> Pump state
+    <span class="legend"><span style="background:#4a72b0"></span>pumping
+    <span style="background:#b8912f"></span>recovery</span></label>
+  <label><input type="checkbox" id="cb-leak" checked> Leak risk
+    <span class="legend"><span style="background:#d64545"></span>leak
+    <span style="background:#3f9e5a"></span>no-leak</span></label>
+</div>
+<div id="chart"></div>
+<p class="note">
+  Ground truth: a ~500 gal/day main leak ran from ~May until the
+  <b>July 10 repair</b>; June 24 was especially noticeable. The v3 leak model
+  (signed pressure fall within the longest overnight pump-off segment) should
+  read mostly <b>red (leak)</b> before Jul 10 and flip to <b>green (no-leak)</b>
+  after. Bands use the exact chart.js logic; chart rendered by the real
+  <code>vega-shared.js#buildMetricChartSpec</code>. Toggle the checkboxes to
+  isolate each track.
+</p>
+
+<script type="module">
+import { buildMetricChartSpec } from
+  "../../watertown/crates/sitegen/assets/vega-shared.js";
+import { vegaEmbed } from
+  "../../watertown/crates/sitegen/vendor/dist/vega-bundle.mjs";
+
+const ANNOTATION_COLORS = { leak:"#d64545","no-leak":"#3f9e5a",pumping:"#4a72b0",recovery:"#b8912f" };
+const annotationColor = l => ANNOTATION_COLORS[l] || "#888888";
+const PUMP_OPACITY = 0.12, LEAK_OPACITY_FLOOR = 0.05, LEAK_OPACITY_SPAN = 0.4;
+
+const [series, rows] = await Promise.all([
+  fetch("sp_series.json").then(r=>r.json()),
+  fetch("bands_v2.json").then(r=>r.json()),
+]);
+
+function buildAnnotationBands(en) {
+  const bands = [];
+  if (en.pump) for (const r of rows) {
+    if (!r.pump_state) continue;
+    bands.push({ start:r.start, end:r.end, color:annotationColor(r.pump_state),
+      opacity:PUMP_OPACITY, label:r.pump_state });
+  }
+  if (en.leak) for (const r of rows) {
+    if (r.leak_score == null && !r.leak_label) continue;
+    const score = r.leak_score == null ? (r.leak_label==="leak"?1:0)
+      : Math.max(0, Math.min(1, r.leak_score));
+    const label = r.leak_label || (score>=0.5?"leak":"no-leak");
+    const conf = r.leak_confidence == null ? 1 : Math.max(0, Math.min(1, r.leak_confidence));
+    bands.push({ start:r.start, end:r.end, color:annotationColor(label),
+      opacity:LEAK_OPACITY_FLOOR + LEAK_OPACITY_SPAN*score*conf,
+      label:`${label} (${Math.round(score*100)}%)` });
+  }
+  return bands;
+}
+
+const xDomain = [series[0].timestamp, series[series.length-1].timestamp];
+
+async function render() {
+  const en = { pump: document.getElementById("cb-pump").checked,
+               leak: document.getElementById("cb-leak").checked };
+  const spec = buildMetricChartSpec({
+    series: [{ avg:"system_pressure_value.avg", min:"system_pressure_value.min",
+               max:"system_pressure_value.max", color:"#2b6cb0" }],
+    xField: "timestamp", xDomain, yLabel: "system pressure (psi)",
+    height: 320, theme: { fg:"#333", grid:"#ddd" },
+    annotations: buildAnnotationBands(en),
+  });
+  spec.data = { values: series };
+  await vegaEmbed("#chart", spec, { actions:false });
+}
+document.getElementById("cb-pump").addEventListener("change", render);
+document.getElementById("cb-leak").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>
