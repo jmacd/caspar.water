@@ -68,6 +68,8 @@ spec:
         pattern: "/sources/water/analysis/*"
       - name: "water-overlay"
         pattern: "/sources/water/annotations/water-overlay*"
+      - name: "leak-analysis"
+        pattern: "/sources/water/leak/*"
       - name: "septic-metrics"
         pattern: "/sources/septic/reduced/*/*/*.series"
     
@@ -114,6 +116,11 @@ spec:
                 slug: "$0"
                 page: "/templates/analysis.md"
                 export: "analysis"
+              - name: "leak-detail"
+                type: template
+                slug: "$0"
+                page: "/templates/leak-analysis.md"
+                export: "leak-analysis"
           - name: "septic"
             type: static
             slug: "septic"
@@ -141,6 +148,9 @@ spec:
         - export: "analysis"
           table: "analysis"
           label: "Analysis"
+        - export: "leak-analysis"
+          table: "leak"
+          label: "Leak analysis (daily)"
     
     partials:
       sidebar: "/templates/sidebar.md"
@@ -191,6 +201,8 @@ spec:
         children:
           - label: "Pump Cycles"
             href: "${env:SITE_BASE_URL:-/}analysis/pump-cycles.html"
+          - label: "Leak Analysis"
+            href: "${env:SITE_BASE_URL:-/}analysis/leak-analysis.html"
           - label: "Noyo Harbor"
             href: "${env:SITE_BASE_URL:-/}noyo-harbor/"
           - label: "Septic"

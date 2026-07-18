@@ -604,3 +604,103 @@ spec:
               leak_score, leak_label, leak_confidence
             FROM merged
             ORDER BY start_time
+---
+version: v1
+kind: mknod
+metadata:
+  path: /leak
+spec:
+  factory: dynamic-dir
+  config:
+    # Leak-analysis timeseries for Caspar Water.
+    #
+    # Unlike the /annotations water-overlay (which emits interval bands merged
+    # onto pump-state segments), this dynamic-dir emits a plain per-DAY
+    # timeseries: one row per night with the fitted overnight drawdown rate and
+    # the derived leak probability.  It is rendered as a normal time-series
+    # chart (viz renderer="chart") on the Leak Analysis page and is selectable
+    # in the data explorer, so the leak signal can be zoomed out over the full
+    # history the same way any instrument metric is.
+    #
+    # The model is identical to the water-overlay leak score (v3, ground-truth
+    # validated -- see the /annotations comment): within each night (UTC 05-14),
+    # split into pump on/off segments by well depth, take the LONGEST pump-off
+    # segment, drop its first 15 min (post-refill settle), and fit one signed
+    # slope (regr_slope of pressure vs hours).  drawdown_rate is the fall rate
+    # (= -slope, psi/h; higher = faster fall = leak); leak_score maps it through
+    # a sigmoid (0.009 psi/h => 0.5); leak_confidence scales with the fitted
+    # stretch length (target ~4 h).  See the /annotations block for calibration.
+    #
+    # NOTE: this daily series is derived and cannot be temporally reduced, but
+    # it is already one point per day (~365/yr), so it needs no reduction to
+    # display a multi-year zoom-out.  When the sensor's configuration changes
+    # (system-pressure sensor live ~2024-04-07; constant-draw pH circulation
+    # pump live ~2024-06-06; any elevation move), the calibration differs and
+    # such epochs should be computed separately and stitched with a
+    # timeseries-join.  This entry covers the current (post-circ-pump) epoch.
+    entries:
+      - name: "leak-analysis"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            source: "oteljson:///ingest/casparwater*.json"
+          query: >-
+            WITH night AS (
+              SELECT timestamp,
+                system_pressure_value AS pressure,
+                CAST(timestamp AS DATE) AS rest_day,
+                CASE WHEN well_depth_value < 42.0 THEN 1 ELSE 0 END AS pumping
+              FROM source
+              WHERE system_pressure_value IS NOT NULL
+                AND well_depth_value IS NOT NULL
+                AND EXTRACT(HOUR FROM timestamp) BETWEEN 5 AND 14
+            ),
+            night_lag AS (
+              SELECT timestamp, pressure, rest_day, pumping,
+                LAG(pumping) OVER (PARTITION BY rest_day ORDER BY timestamp)
+                  AS prev_pumping
+              FROM night
+            ),
+            night_seg AS (
+              SELECT timestamp, pressure, rest_day, pumping,
+                SUM(CASE WHEN prev_pumping IS NULL OR prev_pumping <> pumping
+                         THEN 1 ELSE 0 END)
+                  OVER (PARTITION BY rest_day ORDER BY timestamp
+                        ROWS UNBOUNDED PRECEDING) AS seg_id
+              FROM night_lag
+            ),
+            off_seg AS (
+              SELECT rest_day, seg_id, timestamp, pressure,
+                MIN(timestamp) OVER (PARTITION BY rest_day, seg_id) AS seg_start
+              FROM night_seg
+              WHERE pumping = 0
+            ),
+            settled AS (
+              SELECT rest_day, seg_id, timestamp, pressure,
+                EXTRACT(EPOCH FROM timestamp)/3600.0 AS h
+              FROM off_seg
+              WHERE timestamp >= seg_start + INTERVAL '15 minutes'
+            ),
+            seg_slope AS (
+              SELECT rest_day, seg_id,
+                regr_slope(pressure, h) AS slope,
+                EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp)))/60.0 AS span_min
+              FROM settled
+              GROUP BY rest_day, seg_id
+              HAVING EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp)))/60.0 >= 60.0
+                AND COUNT(*) >= 20
+            ),
+            longest AS (
+              SELECT rest_day, slope, span_min,
+                ROW_NUMBER() OVER (PARTITION BY rest_day ORDER BY span_min DESC) AS rk
+              FROM seg_slope
+            )
+            SELECT
+              CAST(rest_day AS TIMESTAMP) AS timestamp,
+              -slope AS drawdown_rate,
+              1.0/(1.0+exp(-(((-slope)-0.009)/0.003))) AS leak_score,
+              CASE WHEN span_min/240.0 < 1.0 THEN span_min/240.0 ELSE 1.0 END
+                AS leak_confidence
+            FROM longest
+            WHERE rk = 1
+            ORDER BY timestamp
