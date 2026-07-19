@@ -462,39 +462,50 @@ spec:
       # Pump state: well_depth_value < 42 m => pumping (same threshold and
       # signal as the duty-cycle / pump-cycle analysis).
       #
-      # Leak score (v4 -- ground-truth validated against a real leak): the
-      # system pressure is measured near the main service meter and is NOISY
-      # (tank level, a constant pH circulation pump, user faucets, and nightly
+      # Leak score (v5 -- pressure-only, ground-truth validated): the system
+      # pressure is measured near the main service meter and is NOISY (tank
+      # level, a constant pH circulation pump, user faucets, and nightly
       # self-flushing town filters all move it).  A LEAK shows up as a slow,
-      # steady DOWNWARD pressure slope while nobody is drawing water; a
-      # non-leak holds ~flat.  The tank-level sensor lacks the resolution to
-      # see this small (~500 gal/day) drain, but the noisy pressure sensor does.
+      # steady DOWNWARD pressure drift while nobody is drawing water; a non-leak
+      # holds ~flat.  The tank-level sensor lacks the resolution to see this
+      # small (~500 gal/day) drain, but the noisy pressure sensor does.
       #
-      # Key detail (v4): the reliable moment is the nightly STATIC period -- when
-      # no faucet/hose is running, the pressure trace becomes noticeably smoother
-      # (its variance collapses).  When users are active, variance is high and
-      # the trace is worthless for leak inference.  So instead of trusting the
-      # whole overnight window (whose single slope fit is corrupted by the tank
-      # refill jump AND by user draws), we isolate the quietest stretch.  Using
-      # the reduced 1-minute series -- whose per-minute .max-.min range is a
-      # built-in within-minute roughness measure -- we restrict to UTC 05-14
-      # (~22:00-07:00 Pacific) while the pump is OFF (well depth >= 42 ft),
-      # smooth the range over +/-5 min, keep only quiet minutes (< 0.03 psi),
-      # take the LONGEST contiguous quiet run of the night (>= 60 min) and fit
-      # one signed slope over it.  Falling pressure during that static period,
-      # with no demand, is the leak signature.  leak_score maps the fall rate
-      # through a sigmoid (0.005 psi/h fall = 0.5, scale 0.0025); leak_confidence
-      # scales with the quiet-run length (target ~4 h) and quietness.  Removing
-      # the constant circulation-pump bias means a sound main reads ~0 psi/h.
+      # Pump exclusion (v5 -- three well states).  The well has three states:
+      # static, pumping (depth falling steeply) and recovery (depth rising back).
+      # An absolute depth<42 ft gate is WRONG because the static level itself
+      # drifts below 42 ft at times of year.  Instead we detect the pumping
+      # interval from the well-depth derivative: a disturbance is when depth
+      # falls > 0.3 ft below its own trailing-60-min ceiling; we split each
+      # disturbance at its trough and mark only the FALLING half (static ->
+      # trough) as pumping.  Only that pumping half contaminates system
+      # pressure, so we exclude it and keep recovery + static.
+      #
+      # Statistic (v5 -- min-drawdown over an oscillation-scale window).  With
+      # pumping excluded there is physically no way for tank storage to rise, so
+      # any apparent pressure RISE is a long-period pipeline oscillation (a
+      # resonant standing wave, period ~1-4 h, ~0.02-0.07 psi) aliased by the
+      # 1-min sampling.  Its local slope (~0.08-0.11 psi/h) dwarfs the leak
+      # signal (~0.006 psi/h), so a short window just measures where you sit on
+      # the wave.  We therefore take, within each between-pumps segment, the
+      # difference of a ~2-h leading average and a ~2-h average 3 h later
+      # ((avg[t,t+120m] - avg[t+180m,t+300m]) / 3 h) and keep the MINIMUM
+      # (least-falling) window of the night -- averaging over ~one period cancels
+      # the oscillation, and the minimum rejects real user draws (which only add
+      # fall).  drawdown_rate is that nightly minimum (psi/h; higher = leak).
+      #
+      # Smoothing + score.  A single night is noisy, so leak_score is the 7-day
+      # trailing MEDIAN of the nightly drawdown_rate mapped through a sigmoid
+      # (0.004 psi/h => 0.5, scale 0.0015); the median (not mean) rejects a lone
+      # bad night.  leak_confidence is the count of contributing nights / 7.
       # The per-day score is joined onto each pump-state segment from the
       # PREVIOUS day.
       #
       # Calibration (real leak, ~May 2026 -> repaired 2026-07-10; the June 24
       # "host left running" event made it especially noticeable): validated on
-      # the reduced staging series May 15 - Jul 17 2026.  With the static-period
-      # model ~46% of true-leak nights score >=0.5 while ZERO of the seven
-      # post-repair nights do -- and the score drops sharply the night after the
-      # repair (0.72-1.00 on Jul 4-10, then <=0.27 on Jul 11-17).  This
+      # the reduced staging series over the full post-sensor history (719 nights,
+      # Apr 2024 - Jul 2026).  36 of 58 true-leak nights score >=0.5 with ZERO
+      # false positives anywhere in two years; June 2026 scores ~1.0 and the
+      # score decays over the week after the Jul-10 repair (0.30 -> 0.07).  This
       # asymmetry matches how the signal reads: a single high night is weak
       # (need several consecutive leak nights to be confident), but a single
       # clean no-leak night is strong evidence the main is not leaking.
@@ -542,7 +553,6 @@ spec:
             night AS (
               SELECT p.timestamp,
                 "system_pressure_value.avg" AS pressure,
-                "system_pressure_value.max" - "system_pressure_value.min" AS rng,
                 d."well_depth_value.avg" AS depth,
                 CAST(p.timestamp AS DATE) AS rest_day,
                 CAST(EXTRACT(EPOCH FROM p.timestamp)/60 AS BIGINT) AS min_idx
@@ -550,56 +560,70 @@ spec:
               WHERE "system_pressure_value.avg" IS NOT NULL
                 AND d."well_depth_value.avg" IS NOT NULL
                 AND EXTRACT(HOUR FROM p.timestamp) BETWEEN 5 AND 14
+                AND CAST(p.timestamp AS DATE) >= DATE '2024-04-08'
             ),
-            off AS (
-              SELECT *, AVG(rng) OVER (
-                  PARTITION BY rest_day ORDER BY min_idx
-                  RANGE BETWEEN 5 PRECEDING AND 5 FOLLOWING) AS act
-              FROM night WHERE depth >= 42.0
+            base AS (
+              SELECT *, MAX(depth) OVER (PARTITION BY rest_day ORDER BY min_idx
+                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
+              FROM night
             ),
-            quiet AS (
-              SELECT *,
-                min_idx - ROW_NUMBER() OVER (PARTITION BY rest_day ORDER BY min_idx)
-                  AS island
-              FROM off WHERE act < 0.03
+            dist AS (
+              SELECT *, CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
+              FROM base
             ),
-            night_seg AS (
-              SELECT rest_day, island, COUNT(*) AS n,
-                (MAX(min_idx) - MIN(min_idx)) AS span_min,
-                regr_slope(pressure, EXTRACT(EPOCH FROM timestamp)/3600.0) AS slope,
-                AVG(act) AS mean_act
-              FROM quiet
-              GROUP BY rest_day, island
-              HAVING COUNT(*) >= 30 AND (MAX(min_idx) - MIN(min_idx)) >= 60
+            isl AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day, disturbed ORDER BY min_idx) AS grp
+              FROM dist
             ),
-            longest AS (
-              SELECT rest_day, slope, span_min, mean_act,
-                ROW_NUMBER() OVER (PARTITION BY rest_day
-                  ORDER BY span_min DESC, n DESC) AS rk
-              FROM night_seg
+            troughed AS (
+              SELECT rest_day, min_idx,
+                first_value(min_idx) OVER (PARTITION BY rest_day, grp
+                  ORDER BY depth ASC, min_idx ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS trough_idx
+              FROM isl WHERE disturbed = 1
+            ),
+            marked AS (
+              SELECT b.pressure, b.rest_day, b.min_idx,
+                CASE WHEN t.trough_idx IS NOT NULL AND b.min_idx <= t.trough_idx
+                     THEN 1 ELSE 0 END AS is_pump
+              FROM dist b LEFT JOIN troughed t USING (rest_day, min_idx)
+            ),
+            segd AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day ORDER BY min_idx) AS seg
+              FROM marked WHERE is_pump = 0
+            ),
+            slid AS (
+              SELECT rest_day,
+                (AVG(pressure) OVER w_s - AVG(pressure) OVER w_e) / 3.0 AS draw,
+                COUNT(*) OVER w_s AS ns, COUNT(*) OVER w_e AS ne
+              FROM segd
+              WINDOW
+                w_s AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN CURRENT ROW AND 120 FOLLOWING),
+                w_e AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN 180 FOLLOWING AND 300 FOLLOWING)
+            ),
+            per_night AS (
+              SELECT rest_day, MIN(draw) AS min_draw
+              FROM slid WHERE ns >= 90 AND ne >= 90
+              GROUP BY rest_day
+            ),
+            smoothed AS (
+              SELECT a.rest_day, median(b.min_draw) AS sm7, COUNT(b.min_draw) AS ndays
+              FROM per_night a JOIN per_night b
+                ON b.rest_day BETWEEN CAST(a.rest_day - INTERVAL '6 days' AS DATE)
+                   AND a.rest_day
+              GROUP BY a.rest_day
             ),
             per_day AS (
-              SELECT rest_day,
-                1.0/(1.0+exp(-(((-slope)-0.005)/0.0025))) AS leak_score,
-                LEAST(span_min/240.0, 1.0) * (0.012/(0.012 + mean_act))
-                  AS leak_confidence
-              FROM longest
-              WHERE rk = 1
+              SELECT s.rest_day,
+                1.0/(1.0+exp(-((s.sm7 - 0.004)/0.0015))) AS leak_score,
+                LEAST(s.ndays/7.0, 1.0) AS leak_confidence
+              FROM smoothed s
+              WHERE s.ndays >= 4
             ),
-            merged AS (
-              SELECT s.start_time, s.end_time, s.pump_state,
-                d.leak_score,
-                CASE WHEN d.leak_score IS NULL THEN NULL
-                     WHEN d.leak_score >= 0.5 THEN 'leak' ELSE 'no-leak' END AS leak_label,
-                d.leak_confidence
-              FROM segments2 s
-              LEFT JOIN per_day d
-                ON d.rest_day = CAST(CAST(s.start_time AS DATE) - INTERVAL '1 day' AS DATE)
-            )
-            SELECT start_time AS timestamp, start_time, end_time, pump_state,
-              leak_score, leak_label, leak_confidence
-            FROM merged
-            ORDER BY start_time
             merged AS (
               SELECT s.start_time, s.end_time, s.pump_state,
                 d.leak_score,
@@ -632,29 +656,30 @@ spec:
     # in the data explorer, so the leak signal can be zoomed out over the full
     # history the same way any instrument metric is.
     #
-    # The model is identical to the water-overlay leak score (v4, ground-truth
-    # validated -- see the /annotations comment).  The key idea (v4): the water
-    # system has a distinctive STATIC period each night when nobody is drawing
-    # water -- the pressure signal becomes noticeably smoother (its variance
-    # collapses).  When users are active (faucets opening/closing, hoses left
-    # running), variance is high and the pressure trace is unreliable for
-    # leak inference.  So we isolate the quietest stretch and fit the slope
-    # only there:
-    #   1. read the reduced 1-minute system-pressure and well-depth series
-    #      (each minute carries .avg plus .min/.max, so max-min is a built-in
-    #      within-minute activity/roughness measure -- no raw scan needed);
-    #   2. restrict to the overnight window (UTC 05-14) while the well pump is
-    #      OFF (well depth >= 42 ft);
-    #   3. smooth the per-minute pressure range over +/-5 min and keep only
-    #      "quiet" minutes (rolling range < 0.03 psi);
-    #   4. take the LONGEST contiguous quiet run of the night (>= 60 min) and
-    #      fit one signed slope (regr_slope of pressure vs hours) over it.
-    # drawdown_rate is the fall rate (= -slope, psi/h; higher = faster fall =
-    # leak); leak_score maps it through a sigmoid (0.005 psi/h => 0.5, scale
-    # 0.0025); leak_confidence scales with the quiet-run length (target ~4 h)
-    # and quietness.  Because the static-period selection removes the constant
-    # circulation-pump bias, a sound main reads ~0 psi/h (flat) and a leak
-    # reads clearly positive.  See the /annotations block for calibration.
+    # The model is identical to the water-overlay leak score (v5, ground-truth
+    # validated -- see the /annotations comment).  The key idea (v5): with the
+    # well pump excluded, tank storage can only fall or hold, so a slow steady
+    # DOWNWARD pressure drift during the between-pumps overnight window is the
+    # leak signature.  Steps:
+    #   1. read the reduced 1-minute system-pressure and well-depth series and
+    #      restrict to the overnight window (UTC 05-14, ~22:00-07:00 Pacific);
+    #   2. exclude the PUMPING interval only (three well states: static /
+    #      pumping / recovery).  A disturbance is depth falling > 0.3 ft below
+    #      its trailing-60-min ceiling; split it at its trough and drop only the
+    #      falling half.  Recovery + static stay in (an absolute depth>=42 gate
+    #      is wrong -- the static level itself drifts below 42 ft);
+    #   3. within each between-pumps segment take the MINIMUM two-average
+    #      difference ((avg[t,t+120m] - avg[t+180m,t+300m]) / 3 h).  Averaging
+    #      over ~one period cancels the ~1-4 h resonant pipeline oscillation
+    #      (apparent rises are aliased wave, not real storage gain); the minimum
+    #      rejects genuine user draws (which only add fall);
+    #   4. leak_score is the 7-day trailing MEDIAN of that nightly drawdown_rate
+    #      through a sigmoid (0.004 psi/h => 0.5, scale 0.0015); the median
+    #      rejects a lone bad night.
+    # drawdown_rate is the raw nightly minimum (psi/h; higher = faster fall =
+    # leak); leak_confidence is the count of contributing nights / 7.  A sound
+    # main reads ~0 psi/h and a sustained leak reads clearly positive.  See the
+    # /annotations block for calibration.
     #
     # NOTE: this daily series is derived and cannot be temporally reduced, but
     # it is already one point per day (~365/yr), so it needs no reduction to
@@ -674,7 +699,6 @@ spec:
             WITH night AS (
               SELECT p.timestamp,
                 "system_pressure_value.avg" AS pressure,
-                "system_pressure_value.max" - "system_pressure_value.min" AS rng,
                 d."well_depth_value.avg" AS depth,
                 CAST(p.timestamp AS DATE) AS rest_day,
                 CAST(EXTRACT(EPOCH FROM p.timestamp)/60 AS BIGINT) AS min_idx
@@ -682,40 +706,68 @@ spec:
               WHERE "system_pressure_value.avg" IS NOT NULL
                 AND d."well_depth_value.avg" IS NOT NULL
                 AND EXTRACT(HOUR FROM p.timestamp) BETWEEN 5 AND 14
+                AND CAST(p.timestamp AS DATE) >= DATE '2024-04-08'
             ),
-            off AS (
-              SELECT *, AVG(rng) OVER (
-                  PARTITION BY rest_day ORDER BY min_idx
-                  RANGE BETWEEN 5 PRECEDING AND 5 FOLLOWING) AS act
-              FROM night WHERE depth >= 42.0
+            base AS (
+              SELECT *, MAX(depth) OVER (PARTITION BY rest_day ORDER BY min_idx
+                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
+              FROM night
             ),
-            quiet AS (
-              SELECT *,
-                min_idx - ROW_NUMBER() OVER (PARTITION BY rest_day ORDER BY min_idx)
-                  AS island
-              FROM off WHERE act < 0.03
+            dist AS (
+              SELECT *, CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
+              FROM base
             ),
-            seg AS (
-              SELECT rest_day, island, COUNT(*) AS n,
-                (MAX(min_idx) - MIN(min_idx)) AS span_min,
-                regr_slope(pressure, EXTRACT(EPOCH FROM timestamp)/3600.0) AS slope,
-                AVG(act) AS mean_act
-              FROM quiet
-              GROUP BY rest_day, island
-              HAVING COUNT(*) >= 30 AND (MAX(min_idx) - MIN(min_idx)) >= 60
+            isl AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day, disturbed ORDER BY min_idx) AS grp
+              FROM dist
             ),
-            longest AS (
-              SELECT rest_day, slope, span_min, mean_act,
-                ROW_NUMBER() OVER (PARTITION BY rest_day
-                  ORDER BY span_min DESC, n DESC) AS rk
-              FROM seg
+            troughed AS (
+              SELECT rest_day, min_idx,
+                first_value(min_idx) OVER (PARTITION BY rest_day, grp
+                  ORDER BY depth ASC, min_idx ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS trough_idx
+              FROM isl WHERE disturbed = 1
+            ),
+            marked AS (
+              SELECT b.pressure, b.rest_day, b.min_idx,
+                CASE WHEN t.trough_idx IS NOT NULL AND b.min_idx <= t.trough_idx
+                     THEN 1 ELSE 0 END AS is_pump
+              FROM dist b LEFT JOIN troughed t USING (rest_day, min_idx)
+            ),
+            segd AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day ORDER BY min_idx) AS seg
+              FROM marked WHERE is_pump = 0
+            ),
+            slid AS (
+              SELECT rest_day,
+                (AVG(pressure) OVER w_s - AVG(pressure) OVER w_e) / 3.0 AS draw,
+                COUNT(*) OVER w_s AS ns, COUNT(*) OVER w_e AS ne
+              FROM segd
+              WINDOW
+                w_s AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN CURRENT ROW AND 120 FOLLOWING),
+                w_e AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN 180 FOLLOWING AND 300 FOLLOWING)
+            ),
+            per_night AS (
+              SELECT rest_day, MIN(draw) AS min_draw
+              FROM slid WHERE ns >= 90 AND ne >= 90
+              GROUP BY rest_day
+            ),
+            smoothed AS (
+              SELECT a.rest_day, median(b.min_draw) AS sm7, COUNT(b.min_draw) AS ndays
+              FROM per_night a JOIN per_night b
+                ON b.rest_day BETWEEN CAST(a.rest_day - INTERVAL '6 days' AS DATE)
+                   AND a.rest_day
+              GROUP BY a.rest_day
             )
             SELECT
-              CAST(rest_day AS TIMESTAMP) AS timestamp,
-              -slope AS drawdown_rate,
-              1.0/(1.0+exp(-(((-slope)-0.005)/0.0025))) AS leak_score,
-              LEAST(span_min/240.0, 1.0) * (0.012/(0.012 + mean_act))
-                AS leak_confidence
-            FROM longest
-            WHERE rk = 1
+              CAST(a.rest_day AS TIMESTAMP) AS timestamp,
+              a.min_draw AS drawdown_rate,
+              1.0/(1.0+exp(-((s.sm7 - 0.004)/0.0015))) AS leak_score,
+              LEAST(s.ndays/7.0, 1.0) AS leak_confidence
+            FROM per_night a JOIN smoothed s USING (rest_day)
+            WHERE s.ndays >= 4
             ORDER BY timestamp
