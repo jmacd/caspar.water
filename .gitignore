@@ -4,3 +4,6 @@ dead.code
 statements/*-Sep
 statements/*-Mar
 statements/invoices
+
+# local preview / iteration scratch (regenerable)
+local/

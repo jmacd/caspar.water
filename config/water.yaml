@@ -181,6 +181,11 @@ spec:
       # Capped at 2 hours (7200s) per event to exclude long static periods.
       # Minimum event duration filtering happens at the chart/consumer level.
       #
+      # To keep the exported parquet (and the analysis page load) small, the
+      # raw 30s samples are decimated to one representative sample per time
+      # bucket: 60s buckets for the first 15 minutes (where the drawdown curve
+      # is steep and detail matters), then 300s buckets for the long tail.
+      #
       - name: "pump-cycles"
         factory: "sql-derived-series"
         config:
@@ -267,23 +272,43 @@ spec:
                        THEN depth END)
                    - MIN(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start))
                        BETWEEN 270 AND 330 THEN depth END) >= 0.3
+            ),
+            selected AS (
+              SELECT
+                timestamp,
+                CAST(m.pump_event_id AS INT) as pump_event_id,
+                CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
+                EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
+                depth,
+                static_depth,
+                CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
+              FROM with_meta m
+              INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
+              INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
+              INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
+              INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
+              WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
+                AND static_depth BETWEEN 40.0 AND 50.0
+                AND (start_gap_s IS NULL OR start_gap_s < 300)
+            ),
+            resampled AS (
+              SELECT *,
+                CASE WHEN elapsed_s < 900
+                     THEN CAST(FLOOR(elapsed_s / 60) AS INT)
+                     ELSE 15 + CAST(FLOOR((elapsed_s - 900) / 300) AS INT)
+                END as time_bucket
+              FROM selected
+            ),
+            decimated AS (
+              SELECT *,
+                ROW_NUMBER() OVER (
+                  PARTITION BY pump_event_id, time_bucket ORDER BY timestamp
+                ) as bucket_rn
+              FROM resampled
             )
-            SELECT
-              timestamp,
-              CAST(m.pump_event_id AS INT) as pump_event_id,
-              CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
-              EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
-              depth,
-              static_depth,
-              CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
-            FROM with_meta m
-            INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
-            INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
-            INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
-            INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
-            WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
-              AND static_depth BETWEEN 40.0 AND 50.0
-              AND (start_gap_s IS NULL OR start_gap_s < 300)
+            SELECT timestamp, pump_event_id, month, elapsed_s, depth, static_depth, phase
+            FROM decimated
+            WHERE bucket_rn = 1
             ORDER BY timestamp
     
       # -- Cycle Summary -------------------------------------------------------------
@@ -396,4 +421,353 @@ spec:
                 ELSE NULL
               END as duty_cycle
             FROM with_interval wi
+            ORDER BY timestamp
+---
+version: v1
+kind: mknod
+metadata:
+  path: /annotations
+spec:
+  factory: dynamic-dir
+  config:
+    # Overlay interval series for Caspar Water.
+    #
+    # These sql-derived-series produce *interval* datasets (one row per period)
+    # rather than per-sample timeseries.  The sitegen "annotation layer" reads
+    # them as shaded background bands drawn behind any timeseries chart on the
+    # same pond (see site.yaml: the `water-overlay` export bound via
+    # `annotations:` on the water data route).
+    #
+    # Kept in a dedicated dynamic-dir (not /analysis) so the analysis overlay
+    # route does not generate a page for them.
+    entries:
+      # -- Water system overlay (merged system-status timeline) ----------------------
+      #
+      # A single merged timeline where each row is a pump-state segment that also
+      # carries the prevailing (previous-day) leak-probability estimate.  Two
+      # visual overlays are derived from its columns by the client (chart.js):
+      #   * pump state (pumping vs recovery) -- categorical shading
+      #   * leak risk  -- red shading with opacity proportional to leak_score
+      # selectable independently via checkboxes on any water timeseries.
+      #
+      # Columns:
+      #   timestamp       - copy of start_time (temporal-export/partition key)
+      #   start_time      - pump-state change (segment start, TIMESTAMP)
+      #   end_time        - next pump-state change (segment end, TIMESTAMP)
+      #   pump_state      - 'pumping' (well depth < threshold) | 'recovery'
+      #   leak_score      - previous-day P(leak) in [0,1] (NULL if no estimate)
+      #   leak_label      - 'leak' (score >= 0.5) | 'no-leak' | NULL
+      #   leak_confidence - cumulative-evidence weight in [0,1]
+      #
+      # Pump state: well_depth_value < 42 m => pumping (same threshold and
+      # signal as the duty-cycle / pump-cycle analysis).
+      #
+      # Leak score (v5 -- pressure-only, ground-truth validated): the system
+      # pressure is measured near the main service meter and is NOISY (tank
+      # level, a constant pH circulation pump, user faucets, and nightly
+      # self-flushing town filters all move it).  A LEAK shows up as a slow,
+      # steady DOWNWARD pressure drift while nobody is drawing water; a non-leak
+      # holds ~flat.  The tank-level sensor lacks the resolution to see this
+      # small (~500 gal/day) drain, but the noisy pressure sensor does.
+      #
+      # Pump exclusion (v5 -- three well states).  The well has three states:
+      # static, pumping (depth falling steeply) and recovery (depth rising back).
+      # An absolute depth<42 ft gate is WRONG because the static level itself
+      # drifts below 42 ft at times of year.  Instead we detect the pumping
+      # interval from the well-depth derivative: a disturbance is when depth
+      # falls > 0.3 ft below its own trailing-60-min ceiling; we split each
+      # disturbance at its trough and mark only the FALLING half (static ->
+      # trough) as pumping.  Only that pumping half contaminates system
+      # pressure, so we exclude it and keep recovery + static.
+      #
+      # Statistic (v5 -- min-drawdown over an oscillation-scale window).  With
+      # pumping excluded there is physically no way for tank storage to rise, so
+      # any apparent pressure RISE is a long-period pipeline oscillation (a
+      # resonant standing wave, period ~1-4 h, ~0.02-0.07 psi) aliased by the
+      # 1-min sampling.  Its local slope (~0.08-0.11 psi/h) dwarfs the leak
+      # signal (~0.006 psi/h), so a short window just measures where you sit on
+      # the wave.  We therefore take, within each between-pumps segment, the
+      # difference of a ~2-h leading average and a ~2-h average 3 h later
+      # ((avg[t,t+120m] - avg[t+180m,t+300m]) / 3 h) and keep the MINIMUM
+      # (least-falling) window of the night -- averaging over ~one period cancels
+      # the oscillation, and the minimum rejects real user draws (which only add
+      # fall).  drawdown_rate is that nightly minimum (psi/h; higher = leak).
+      #
+      # Smoothing + score.  A single night is noisy, so leak_score is the 7-day
+      # trailing MEDIAN of the nightly drawdown_rate mapped through a sigmoid
+      # (0.004 psi/h => 0.5, scale 0.0015); the median (not mean) rejects a lone
+      # bad night.  leak_confidence is the count of contributing nights / 7.
+      # The per-day score is joined onto each pump-state segment from the
+      # PREVIOUS day.
+      #
+      # Calibration (real leak, ~May 2026 -> repaired 2026-07-10; the June 24
+      # "host left running" event made it especially noticeable): validated on
+      # the reduced staging series over the full post-sensor history (719 nights,
+      # Apr 2024 - Jul 2026).  36 of 58 true-leak nights score >=0.5 with ZERO
+      # false positives anywhere in two years; June 2026 scores ~1.0 and the
+      # score decays over the week after the Jul-10 repair (0.30 -> 0.07).  This
+      # asymmetry matches how the signal reads: a single high night is weak
+      # (need several consecutive leak nights to be confident), but a single
+      # clean no-leak night is strong evidence the main is not leaking.
+      #
+      - name: "water-overlay"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            pressure: "series:///reduced/system-pressure/data/res=1m.series"
+            depth: "series:///reduced/well-depth/data/res=1m.series"
+          query: >-
+            WITH samples AS (
+              SELECT timestamp, "well_depth_value.avg" AS depth
+              FROM depth
+              WHERE "well_depth_value.avg" IS NOT NULL
+                AND "well_depth_value.avg" BETWEEN 10 AND 60
+            ),
+            state AS (
+              SELECT timestamp,
+                CASE WHEN depth < 42.0 THEN 'pumping' ELSE 'recovery' END AS pump_state
+              FROM samples
+            ),
+            changes AS (
+              SELECT timestamp, pump_state,
+                LAG(pump_state) OVER (ORDER BY timestamp) AS prev_state
+              FROM state
+            ),
+            seg AS (
+              SELECT timestamp, pump_state,
+                SUM(CASE WHEN prev_state IS NULL OR prev_state <> pump_state
+                         THEN 1 ELSE 0 END)
+                  OVER (ORDER BY timestamp ROWS UNBOUNDED PRECEDING) AS seg_id
+              FROM changes
+            ),
+            segments AS (
+              SELECT seg_id, MIN(pump_state) AS pump_state,
+                MIN(timestamp) AS start_time, MAX(timestamp) AS last_ts
+              FROM seg GROUP BY seg_id
+            ),
+            segments2 AS (
+              SELECT seg_id, pump_state, start_time,
+                COALESCE(LEAD(start_time) OVER (ORDER BY start_time), last_ts) AS end_time
+              FROM segments
+            ),
+            night AS (
+              SELECT p.timestamp,
+                "system_pressure_value.avg" AS pressure,
+                d."well_depth_value.avg" AS depth,
+                CAST(p.timestamp AS DATE) AS rest_day,
+                CAST(EXTRACT(EPOCH FROM p.timestamp)/60 AS BIGINT) AS min_idx
+              FROM pressure p JOIN depth d USING (timestamp)
+              WHERE "system_pressure_value.avg" IS NOT NULL
+                AND d."well_depth_value.avg" IS NOT NULL
+                AND EXTRACT(HOUR FROM p.timestamp) BETWEEN 5 AND 14
+                AND CAST(p.timestamp AS DATE) >= DATE '2024-04-08'
+            ),
+            base AS (
+              SELECT *, MAX(depth) OVER (PARTITION BY rest_day ORDER BY min_idx
+                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
+              FROM night
+            ),
+            dist AS (
+              SELECT *, CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
+              FROM base
+            ),
+            isl AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day, disturbed ORDER BY min_idx) AS grp
+              FROM dist
+            ),
+            troughed AS (
+              SELECT rest_day, min_idx,
+                first_value(min_idx) OVER (PARTITION BY rest_day, grp
+                  ORDER BY depth ASC, min_idx ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS trough_idx
+              FROM isl WHERE disturbed = 1
+            ),
+            marked AS (
+              SELECT b.pressure, b.rest_day, b.min_idx,
+                CASE WHEN t.trough_idx IS NOT NULL AND b.min_idx <= t.trough_idx
+                     THEN 1 ELSE 0 END AS is_pump
+              FROM dist b LEFT JOIN troughed t USING (rest_day, min_idx)
+            ),
+            segd AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day ORDER BY min_idx) AS seg
+              FROM marked WHERE is_pump = 0
+            ),
+            slid AS (
+              SELECT rest_day,
+                (AVG(pressure) OVER w_s - AVG(pressure) OVER w_e) / 3.0 AS draw,
+                COUNT(*) OVER w_s AS ns, COUNT(*) OVER w_e AS ne
+              FROM segd
+              WINDOW
+                w_s AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN CURRENT ROW AND 120 FOLLOWING),
+                w_e AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN 180 FOLLOWING AND 300 FOLLOWING)
+            ),
+            per_night AS (
+              SELECT rest_day, MIN(draw) AS min_draw
+              FROM slid WHERE ns >= 90 AND ne >= 90
+              GROUP BY rest_day
+            ),
+            smoothed AS (
+              SELECT a.rest_day, median(b.min_draw) AS sm7, COUNT(b.min_draw) AS ndays
+              FROM per_night a JOIN per_night b
+                ON b.rest_day BETWEEN CAST(a.rest_day - INTERVAL '6 days' AS DATE)
+                   AND a.rest_day
+              GROUP BY a.rest_day
+            ),
+            per_day AS (
+              SELECT s.rest_day,
+                1.0/(1.0+exp(-((s.sm7 - 0.004)/0.0015))) AS leak_score,
+                LEAST(s.ndays/7.0, 1.0) AS leak_confidence
+              FROM smoothed s
+              WHERE s.ndays >= 4
+            ),
+            merged AS (
+              SELECT s.start_time, s.end_time, s.pump_state,
+                d.leak_score,
+                CASE WHEN d.leak_score IS NULL THEN NULL
+                     WHEN d.leak_score >= 0.5 THEN 'leak' ELSE 'no-leak' END AS leak_label,
+                d.leak_confidence
+              FROM segments2 s
+              LEFT JOIN per_day d
+                ON d.rest_day = CAST(CAST(s.start_time AS DATE) - INTERVAL '1 day' AS DATE)
+            )
+            SELECT start_time AS timestamp, start_time, end_time, pump_state,
+              leak_score, leak_label, leak_confidence
+            FROM merged
+            ORDER BY start_time
+---
+version: v1
+kind: mknod
+metadata:
+  path: /leak
+spec:
+  factory: dynamic-dir
+  config:
+    # Leak-analysis timeseries for Caspar Water.
+    #
+    # Unlike the /annotations water-overlay (which emits interval bands merged
+    # onto pump-state segments), this dynamic-dir emits a plain per-DAY
+    # timeseries: one row per night with the fitted overnight drawdown rate and
+    # the derived leak probability.  It is rendered as a normal time-series
+    # chart (viz renderer="chart") on the Leak Analysis page and is selectable
+    # in the data explorer, so the leak signal can be zoomed out over the full
+    # history the same way any instrument metric is.
+    #
+    # The model is identical to the water-overlay leak score (v5, ground-truth
+    # validated -- see the /annotations comment).  The key idea (v5): with the
+    # well pump excluded, tank storage can only fall or hold, so a slow steady
+    # DOWNWARD pressure drift during the between-pumps overnight window is the
+    # leak signature.  Steps:
+    #   1. read the reduced 1-minute system-pressure and well-depth series and
+    #      restrict to the overnight window (UTC 05-14, ~22:00-07:00 Pacific);
+    #   2. exclude the PUMPING interval only (three well states: static /
+    #      pumping / recovery).  A disturbance is depth falling > 0.3 ft below
+    #      its trailing-60-min ceiling; split it at its trough and drop only the
+    #      falling half.  Recovery + static stay in (an absolute depth>=42 gate
+    #      is wrong -- the static level itself drifts below 42 ft);
+    #   3. within each between-pumps segment take the MINIMUM two-average
+    #      difference ((avg[t,t+120m] - avg[t+180m,t+300m]) / 3 h).  Averaging
+    #      over ~one period cancels the ~1-4 h resonant pipeline oscillation
+    #      (apparent rises are aliased wave, not real storage gain); the minimum
+    #      rejects genuine user draws (which only add fall);
+    #   4. leak_score is the 7-day trailing MEDIAN of that nightly drawdown_rate
+    #      through a sigmoid (0.004 psi/h => 0.5, scale 0.0015); the median
+    #      rejects a lone bad night.
+    # drawdown_rate is the raw nightly minimum (psi/h; higher = faster fall =
+    # leak); leak_confidence is the count of contributing nights / 7.  A sound
+    # main reads ~0 psi/h and a sustained leak reads clearly positive.  See the
+    # /annotations block for calibration.
+    #
+    # NOTE: this daily series is derived and cannot be temporally reduced, but
+    # it is already one point per day (~365/yr), so it needs no reduction to
+    # display a multi-year zoom-out.  When the sensor's configuration changes
+    # (system-pressure sensor live ~2024-04-07; constant-draw pH circulation
+    # pump live ~2024-06-06; any elevation move), the calibration differs and
+    # such epochs should be computed separately and stitched with a
+    # timeseries-join.  This entry covers the current (post-circ-pump) epoch.
+    entries:
+      - name: "leak-analysis"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            pressure: "series:///reduced/system-pressure/data/res=1m.series"
+            depth: "series:///reduced/well-depth/data/res=1m.series"
+          query: >-
+            WITH night AS (
+              SELECT p.timestamp,
+                "system_pressure_value.avg" AS pressure,
+                d."well_depth_value.avg" AS depth,
+                CAST(p.timestamp AS DATE) AS rest_day,
+                CAST(EXTRACT(EPOCH FROM p.timestamp)/60 AS BIGINT) AS min_idx
+              FROM pressure p JOIN depth d USING (timestamp)
+              WHERE "system_pressure_value.avg" IS NOT NULL
+                AND d."well_depth_value.avg" IS NOT NULL
+                AND EXTRACT(HOUR FROM p.timestamp) BETWEEN 5 AND 14
+                AND CAST(p.timestamp AS DATE) >= DATE '2024-04-08'
+            ),
+            base AS (
+              SELECT *, MAX(depth) OVER (PARTITION BY rest_day ORDER BY min_idx
+                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
+              FROM night
+            ),
+            dist AS (
+              SELECT *, CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
+              FROM base
+            ),
+            isl AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day, disturbed ORDER BY min_idx) AS grp
+              FROM dist
+            ),
+            troughed AS (
+              SELECT rest_day, min_idx,
+                first_value(min_idx) OVER (PARTITION BY rest_day, grp
+                  ORDER BY depth ASC, min_idx ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS trough_idx
+              FROM isl WHERE disturbed = 1
+            ),
+            marked AS (
+              SELECT b.pressure, b.rest_day, b.min_idx,
+                CASE WHEN t.trough_idx IS NOT NULL AND b.min_idx <= t.trough_idx
+                     THEN 1 ELSE 0 END AS is_pump
+              FROM dist b LEFT JOIN troughed t USING (rest_day, min_idx)
+            ),
+            segd AS (
+              SELECT *, min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY rest_day ORDER BY min_idx) AS seg
+              FROM marked WHERE is_pump = 0
+            ),
+            slid AS (
+              SELECT rest_day,
+                (AVG(pressure) OVER w_s - AVG(pressure) OVER w_e) / 3.0 AS draw,
+                COUNT(*) OVER w_s AS ns, COUNT(*) OVER w_e AS ne
+              FROM segd
+              WINDOW
+                w_s AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN CURRENT ROW AND 120 FOLLOWING),
+                w_e AS (PARTITION BY rest_day, seg ORDER BY min_idx
+                        RANGE BETWEEN 180 FOLLOWING AND 300 FOLLOWING)
+            ),
+            per_night AS (
+              SELECT rest_day, MIN(draw) AS min_draw
+              FROM slid WHERE ns >= 90 AND ne >= 90
+              GROUP BY rest_day
+            ),
+            smoothed AS (
+              SELECT a.rest_day, median(b.min_draw) AS sm7, COUNT(b.min_draw) AS ndays
+              FROM per_night a JOIN per_night b
+                ON b.rest_day BETWEEN CAST(a.rest_day - INTERVAL '6 days' AS DATE)
+                   AND a.rest_day
+              GROUP BY a.rest_day
+            )
+            SELECT
+              CAST(a.rest_day AS TIMESTAMP) AS timestamp,
+              a.min_draw AS drawdown_rate,
+              1.0/(1.0+exp(-((s.sm7 - 0.004)/0.0015))) AS leak_score,
+              LEAST(s.ndays/7.0, 1.0) AS leak_confidence
+            FROM per_night a JOIN smoothed s USING (rest_day)
+            WHERE s.ndays >= 4
             ORDER BY timestamp
