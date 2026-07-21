@@ -115,6 +115,36 @@ def null_non_monotonic(values: list[int | None]) -> list[int | None]:
     return result
 
 
+def null_stale_boundaries(values: list[int | None]) -> list[int | None]:
+    """Null duplicated readings that sit on the edge of a gap.
+
+    After null_non_monotonic, a corrupted block (like the 2025 community-center
+    paste) can leave its boundary months alive because they merely *equal* the
+    running max instead of dropping below it. Such a flat value next to a gap is
+    an unreliable baseline: a delta computed across it would attribute many
+    months of usage to a single month. If a non-null reading is identical to the
+    previous non-null reading (no real increase) and is adjacent to a gap, drop
+    it too so the whole uncertain region becomes one clean gap.
+    """
+    n = len(values)
+    result = list(values)
+    for i in range(n):
+        if values[i] is None:
+            continue
+        adjacent_gap = (i > 0 and values[i - 1] is None) or (
+            i < n - 1 and values[i + 1] is None
+        )
+        if not adjacent_gap:
+            continue
+        j = i - 1
+        while j >= 0 and values[j] is None:
+            j -= 1
+        prev = values[j] if j >= 0 else None
+        if prev is not None and values[i] == prev:
+            result[i] = None
+    return result
+
+
 def main(argv: list[str]) -> int:
     src = argv[1] if len(argv) > 1 else "history/monthly.csv"
     dst = argv[2] if len(argv) > 2 else "history/monthly_usage.csv"
@@ -125,8 +155,8 @@ def main(argv: list[str]) -> int:
     records = flatten(rows)
 
     timestamps = [r[0] for r in records]
-    main = null_non_monotonic([r[1] for r in records])
-    community = null_non_monotonic([r[2] for r in records])
+    main = null_stale_boundaries(null_non_monotonic([r[1] for r in records]))
+    community = null_stale_boundaries(null_non_monotonic([r[2] for r in records]))
 
     with open(dst, "w", newline="") as f:
         w = csv.writer(f)

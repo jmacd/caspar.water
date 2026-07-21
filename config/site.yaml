@@ -54,9 +54,13 @@ spec:
     ref: "${env:GIT_REF:-main}"
     prefix: "history"
 ---
-# Two monthly cumulative meter time series derived from the committed CSV via
-# the generic csv:// format provider. Each entry is a single sql-derived-series
-# node (like /analysis) that sitegen reads lazily at build time and exports.
+# Two monthly water-usage rate series derived from the committed cumulative CSV
+# via the generic csv:// format provider. Each entry is a single
+# sql-derived-series node (like /analysis) that sitegen reads lazily at build
+# time and exports. The CSV holds cumulative meter totals (the faithful record,
+# already gap-cleaned by the script); the LAG() delta here turns them into
+# monthly usage. Null cumulative months yield null deltas, so data-quality gaps
+# pass straight through to the chart instead of becoming spurious spikes.
 version: v1
 kind: mknod
 metadata:
@@ -71,9 +75,10 @@ spec:
           patterns:
             source: "csv:///history-src/monthly_usage.csv"
           query: >-
-            SELECT timestamp, main_meter
+            SELECT timestamp,
+              main_meter - LAG(main_meter) OVER (ORDER BY timestamp)
+                AS monthly_usage
             FROM source
-            WHERE main_meter IS NOT NULL
             ORDER BY timestamp
       - name: "community-center"
         factory: "sql-derived-series"
@@ -81,9 +86,10 @@ spec:
           patterns:
             source: "csv:///history-src/monthly_usage.csv"
           query: >-
-            SELECT timestamp, community_center
+            SELECT timestamp,
+              community_center - LAG(community_center) OVER (ORDER BY timestamp)
+                AS monthly_usage
             FROM source
-            WHERE community_center IS NOT NULL
             ORDER BY timestamp
 ---
 version: v1
@@ -191,8 +197,8 @@ spec:
     labels:
       drawdown-by-month: "Well Recovery"
       horner-by-month: "Horner Plot"
-      main-meter: "Main Service Meter"
-      community-center: "Community Center Meter"
+      main-meter: "Main Service Meter (monthly usage)"
+      community-center: "Community Center (monthly usage)"
     
     explore:
       url: "explore/"
@@ -292,8 +298,6 @@ spec:
             href: "${env:SITE_BASE_URL:-/}data/main-meter.html"
           - label: "Community Center Meter"
             href: "${env:SITE_BASE_URL:-/}data/community-center.html"
-          - label: "Data Explorer"
-            href: "${env:SITE_BASE_URL:-/}explore/"
       - "Software"
       - "Operator"
       - "Thanks"
