@@ -149,17 +149,22 @@ spec:
     # Pump cycle analysis configuration for Caspar Water well depth data.
     #
     # Dynamic-dir containing sql-derived-series factories that detect pump
-    # on/off cycles from well_depth_value and produce aligned datasets for
-    # Horner plot analysis, drawdown/recovery overlay charts, and duty cycle
-    # monitoring.
+    # on/off cycles from well_depth_value and produce two SERVER-SIDE
+    # aggregated datasets, each already reduced to per-calendar-month
+    # P10/P50/P90 bands so the browser only draws ~28 curves:
+    #   * drawdown-by-month -- drawdown vs elapsed-since-pump-on
+    #   * horner-by-month   -- residual drawdown vs log Horner ratio (recovery)
+    # Drawdown and recovery are intentionally SEPARATE datasets so neither
+    # starves the other of time resolution (recovery is clocked from pump-off,
+    # not from event start).
     #
-    # The pump cycle detection uses a simple depth threshold (42m):
-    #   - Below 42m = pump is on (drawdown phase)
-    #   - Above 42m = pump is off (recovery phase)
-    #   - Each crossing below 42m starts a new "pump event"
+    # The pump cycle detection uses a simple depth threshold (42 ft):
+    #   - Below 42 ft = pump is on (drawdown phase)
+    #   - Above 42 ft = pump is off (recovery phase)
+    #   - Each crossing below 42 ft starts a new "pump event"
     #
-    # Static water level is ~44m; pumping quickly drops below 40m.
-    # The 42m threshold cleanly separates pump-on from pump-off with no
+    # Static water level is ~44 ft; pumping quickly drops below 40 ft.
+    # The 42 ft threshold cleanly separates pump-on from pump-off with no
     # debounce issues.
     #
     # For LOCAL/REMOTE POND with full OtelJSON data in /ingest/:
@@ -168,25 +173,37 @@ spec:
     # For HOSTMOUNT with sample data, see analysis.yaml instead.
     
     entries:
-      # -- Pump Cycles ---------------------------------------------------------------
+      # -- Drawdown by calendar month -----------------------------------------------
       #
-      # Produces one row per 30-second sample with pump event context:
-      #   pump_event_id  - integer identifying each pump cycle (draw + recovery)
-      #   month          - month of year (1-12) for seasonal coloring
-      #   elapsed_s      - seconds since the start of this pump event
-      #   drawdown       - meters of drawdown from starting depth (positive = dropping)
-      #   depth          - raw well depth in meters
-      #   phase          - 'draw' or 'recovery'
+      # Server-side aggregated DRAWDOWN curves, one band per calendar month.
       #
-      # Capped at 2 hours (7200s) per event to exclude long static periods.
-      # Minimum event duration filtering happens at the chart/consumer level.
+      # The well has three states: static (at rest), drawdown (pump running,
+      # water column being pulled down) and recovery (pump off, column rising
+      # back).  A simple depth<42 ft gate cannot separate drawdown from recovery
+      # because the climb from the trough back up to 42 ft is still below the
+      # gate -- so we split each pump event at its DEPTH TROUGH (the minimum, the
+      # moment the pump stops).  Everything from pump-on to the trough is
+      # drawdown; everything after is recovery (see horner-by-month).
       #
-      # To keep the exported parquet (and the analysis page load) small, the
-      # raw 30s samples are decimated to one representative sample per time
-      # bucket: 60s buckets for the first 15 minutes (where the drawdown curve
-      # is steep and detail matters), then 300s buckets for the long tail.
+      # For the drawdown phase we measure, at each elapsed second since pump-on,
+      # the drawdown s = static_depth - depth (ft; 0 at rest, growing as the
+      # pump pulls the column down).  Samples are 30 s apart and share a common
+      # elapsed-since-pump-on clock across all events, so we group every event's
+      # drawdown samples by (calendar month, elapsed_s) and emit the P10 / P50 /
+      # P90 of s.  The client draws one median line + P10-P90 band per month to
+      # show how the drawdown shape evolves over the years.
       #
-      - name: "pump-cycles"
+      # Aggregation is done here (not in the browser) so the exported parquet is
+      # tiny (~months x elapsed buckets) and the page loads instantly.
+      #
+      # Columns:
+      #   timestamp  - synthetic (month_start + elapsed_s); series/partition key
+      #   month      - calendar month label 'YYYY-MM' (color / grouping key)
+      #   elapsed_s  - seconds since pump-on
+      #   s_p10/50/90- drawdown percentiles across that month's events (ft)
+      #   n          - number of contributing samples (confidence)
+      #
+      - name: "drawdown-by-month"
         factory: "sql-derived-series"
         config:
           patterns:
@@ -245,28 +262,22 @@ spec:
               FROM filtered
             ),
             long_enough AS (
-              SELECT pump_event_id
-              FROM with_meta
+              SELECT pump_event_id FROM with_meta
               WHERE is_draw = true
-              GROUP BY pump_event_id
-              HAVING COUNT(*) >= 40
+              GROUP BY pump_event_id HAVING COUNT(*) >= 40
             ),
             clean_start AS (
-              SELECT pump_event_id
-              FROM with_meta
+              SELECT pump_event_id FROM with_meta
               WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) < 60
-              GROUP BY pump_event_id
-              HAVING MIN(depth) >= 40.0
+              GROUP BY pump_event_id HAVING MIN(depth) >= 40.0
             ),
             real_drawdown AS (
-              SELECT pump_event_id
-              FROM with_meta
+              SELECT pump_event_id FROM with_meta
               GROUP BY pump_event_id
               HAVING MAX(static_depth) - MIN(depth) >= 1.5
             ),
             not_stale AS (
-              SELECT pump_event_id
-              FROM with_meta
+              SELECT pump_event_id FROM with_meta
               GROUP BY pump_event_id
               HAVING MAX(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start)) < 30
                        THEN depth END)
@@ -275,13 +286,10 @@ spec:
             ),
             selected AS (
               SELECT
-                timestamp,
-                CAST(m.pump_event_id AS INT) as pump_event_id,
-                CAST(EXTRACT(MONTH FROM event_start) AS INT) as month,
+                m.pump_event_id,
+                event_start,
                 EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
-                depth,
-                static_depth,
-                CASE WHEN is_draw THEN 'draw' ELSE 'recovery' END as phase
+                depth, static_depth
               FROM with_meta m
               INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
               INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
@@ -291,41 +299,73 @@ spec:
                 AND static_depth BETWEEN 40.0 AND 50.0
                 AND (start_gap_s IS NULL OR start_gap_s < 300)
             ),
-            resampled AS (
-              SELECT *,
-                CASE WHEN elapsed_s < 900
-                     THEN CAST(FLOOR(elapsed_s / 60) AS INT)
-                     ELSE 15 + CAST(FLOOR((elapsed_s - 900) / 300) AS INT)
-                END as time_bucket
+            with_trough AS (
+              SELECT selected.*,
+                FIRST_VALUE(elapsed_s) OVER (
+                  PARTITION BY pump_event_id ORDER BY depth ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as trough_elapsed
               FROM selected
             ),
-            decimated AS (
-              SELECT *,
-                ROW_NUMBER() OVER (
-                  PARTITION BY pump_event_id, time_bucket ORDER BY timestamp
-                ) as bucket_rn
-              FROM resampled
+            draw AS (
+              SELECT
+                date_trunc('month', event_start) as month_start,
+                CAST(elapsed_s AS BIGINT) as elapsed_s,
+                static_depth - depth as s
+              FROM with_trough
+              WHERE elapsed_s <= trough_elapsed
+            ),
+            agg AS (
+              SELECT month_start, elapsed_s,
+                approx_percentile_cont(s, 0.1) as s_p10,
+                approx_percentile_cont(s, 0.5) as s_p50,
+                approx_percentile_cont(s, 0.9) as s_p90,
+                COUNT(*) as n
+              FROM draw
+              GROUP BY month_start, elapsed_s
+              HAVING COUNT(*) >= 3
             )
-            SELECT timestamp, pump_event_id, month, elapsed_s, depth, static_depth, phase
-            FROM decimated
-            WHERE bucket_rn = 1
-            ORDER BY timestamp
-    
-      # -- Cycle Summary -------------------------------------------------------------
+            SELECT
+              to_timestamp(EXTRACT(EPOCH FROM month_start) + elapsed_s) as timestamp,
+              CAST(EXTRACT(YEAR FROM month_start) AS VARCHAR) || '-' ||
+                LPAD(CAST(EXTRACT(MONTH FROM month_start) AS VARCHAR), 2, '0') as month,
+              elapsed_s,
+              s_p10, s_p50, s_p90,
+              CAST(n AS BIGINT) as n
+            FROM agg
+            ORDER BY month_start, elapsed_s
+
+      # -- Horner recovery by calendar month -----------------------------------------
       #
-      # One row per pump event with aggregate stats for filtering and analysis:
-      #   pump_event_id  - matches pump-cycles table
-      #   event_start    - timestamp of cycle start
-      #   month          - month of year for seasonal grouping
-      #   draw_duration_s     - seconds spent in drawdown phase
-      #   recovery_duration_s - seconds until depth returns above threshold
-      #   total_duration_s    - total event duration (capped at 7200s)
-      #   max_drawdown        - peak drawdown in meters
-      #   depth_at_start      - well depth at cycle start
-      #   min_depth           - minimum depth reached during pumping
-      #   num_points          - number of data points in this cycle
+      # Server-side aggregated HORNER recovery plot, one band per calendar month.
       #
-      - name: "cycle-summary"
+      # After the pump stops (the depth TROUGH -- see drawdown-by-month for the
+      # three-state model and why we split at the trough rather than the 42 ft
+      # gate) the water column recovers back toward the static level.  The Horner
+      # plot is the reservoir-engineering standard for a buildup/recovery: plot
+      # residual drawdown s = static_depth - depth against the log Horner ratio
+      # (t_p + dt) / dt, where t_p is how long the pump ran (pump-on to trough)
+      # and dt is the time since the trough.  Extrapolating the straight portion
+      # to ratio = 1 (log = 0) recovers the static level; the slope reflects
+      # aquifer transmissivity.  Because dt is measured from the trough, the fast
+      # early recovery gets full 30 s resolution here -- the old single-clock
+      # chart starved it.  Note t_p + dt = elapsed-since-pump-on, so the ratio is
+      # simply elapsed_s / dt.
+      #
+      # We bin log10(ratio) into 0.05-wide buckets and, per (calendar month,
+      # bucket), emit P10 / P50 / P90 of residual drawdown so the client can draw
+      # a median line + band per month.  Residual drawdown runs from the full
+      # drawdown (~several ft, high ratio / early recovery) down toward 0 (ratio
+      # -> 1, fully recovered).
+      #
+      # Columns:
+      #   timestamp  - synthetic (month_start + bucket); series/partition key
+      #   month      - calendar month label 'YYYY-MM' (color / grouping key)
+      #   log_ratio  - log10((t_p + dt) / dt), the Horner-plot x axis
+      #   s_p10/50/90- residual drawdown percentiles (ft); -> 0 as recovery ends
+      #   n          - number of contributing samples (confidence)
+      #
+      - name: "horner-by-month"
         factory: "sql-derived-series"
         config:
           patterns:
@@ -334,6 +374,8 @@ spec:
             WITH raw AS (
               SELECT timestamp, well_depth_value as depth
               FROM source WHERE well_depth_value IS NOT NULL
+                AND well_depth_value > 10
+                AND well_depth_value < 60
             ),
             classified AS (
               SELECT timestamp, depth,
@@ -373,9 +415,6 @@ spec:
                 FIRST_VALUE(timestamp) OVER (
                   PARTITION BY pump_event_id ORDER BY timestamp
                 ) as event_start,
-                FIRST_VALUE(depth) OVER (
-                  PARTITION BY pump_event_id ORDER BY timestamp
-                ) as depth_at_start,
                 MAX(static_at_start) OVER (
                   PARTITION BY pump_event_id
                 ) as static_depth,
@@ -384,44 +423,86 @@ spec:
                 ) as start_gap_s
               FROM filtered
             ),
-            capped AS (
-              SELECT * FROM with_meta
+            long_enough AS (
+              SELECT pump_event_id FROM with_meta
+              WHERE is_draw = true
+              GROUP BY pump_event_id HAVING COUNT(*) >= 40
+            ),
+            clean_start AS (
+              SELECT pump_event_id FROM with_meta
+              WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) < 60
+              GROUP BY pump_event_id HAVING MIN(depth) >= 40.0
+            ),
+            real_drawdown AS (
+              SELECT pump_event_id FROM with_meta
+              GROUP BY pump_event_id
+              HAVING MAX(static_depth) - MIN(depth) >= 1.5
+            ),
+            not_stale AS (
+              SELECT pump_event_id FROM with_meta
+              GROUP BY pump_event_id
+              HAVING MAX(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start)) < 30
+                       THEN depth END)
+                   - MIN(CASE WHEN EXTRACT(EPOCH FROM (timestamp - event_start))
+                       BETWEEN 270 AND 330 THEN depth END) >= 0.3
+            ),
+            selected AS (
+              SELECT
+                m.pump_event_id,
+                event_start,
+                EXTRACT(EPOCH FROM (timestamp - event_start)) as elapsed_s,
+                depth, static_depth
+              FROM with_meta m
+              INNER JOIN long_enough le ON m.pump_event_id = le.pump_event_id
+              INNER JOIN clean_start cs ON m.pump_event_id = cs.pump_event_id
+              INNER JOIN real_drawdown rd ON m.pump_event_id = rd.pump_event_id
+              INNER JOIN not_stale ns ON m.pump_event_id = ns.pump_event_id
               WHERE EXTRACT(EPOCH FROM (timestamp - event_start)) <= 7200
                 AND static_depth BETWEEN 40.0 AND 50.0
                 AND (start_gap_s IS NULL OR start_gap_s < 300)
             ),
-            per_event AS (
-              SELECT
-                CAST(pump_event_id AS INT) as pump_event_id,
-                MIN(timestamp) as timestamp,
-                CAST(EXTRACT(MONTH FROM MIN(event_start)) AS INT) as month,
-                CAST(EXTRACT(DOY FROM MIN(event_start)) AS INT) as day_of_year,
-                SUM(CASE WHEN is_draw THEN 1 ELSE 0 END) * 30.0 as draw_duration_s,
-                SUM(CASE WHEN NOT is_draw THEN 1 ELSE 0 END) * 30.0 as recovery_duration_s,
-                COUNT(*) * 30.0 as total_duration_s,
-                MAX(depth_at_start - depth) as max_drawdown,
-                MIN(depth_at_start) as depth_at_start,
-                MIN(static_depth) as static_depth,
-                MIN(depth) as min_depth,
-                CAST(COUNT(*) AS INT) as num_points
-              FROM capped
-              GROUP BY pump_event_id
-              HAVING SUM(CASE WHEN is_draw THEN 1 ELSE 0 END) >= 40
+            with_trough AS (
+              SELECT selected.*,
+                FIRST_VALUE(elapsed_s) OVER (
+                  PARTITION BY pump_event_id ORDER BY depth ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as trough_elapsed
+              FROM selected
             ),
-            with_interval AS (
-              SELECT pe.*,
-                EXTRACT(EPOCH FROM (
-                  LEAD(pe.timestamp) OVER (ORDER BY pe.timestamp) - pe.timestamp
-                )) as inter_pump_s
-              FROM per_event pe
+            rec AS (
+              SELECT
+                date_trunc('month', event_start) as month_start,
+                (elapsed_s - trough_elapsed) as dt,
+                elapsed_s,
+                static_depth - depth as s
+              FROM with_trough
+              WHERE elapsed_s > trough_elapsed AND trough_elapsed > 0
+            ),
+            bucketed AS (
+              SELECT month_start, s,
+                CAST(ROUND(log10(elapsed_s / dt) / 0.05) AS BIGINT) as bucket
+              FROM rec
+              WHERE dt > 0 AND elapsed_s / dt > 1.0
+            ),
+            agg AS (
+              SELECT month_start, bucket,
+                approx_percentile_cont(s, 0.1) as s_p10,
+                approx_percentile_cont(s, 0.5) as s_p50,
+                approx_percentile_cont(s, 0.9) as s_p90,
+                COUNT(*) as n
+              FROM bucketed
+              GROUP BY month_start, bucket
+              HAVING COUNT(*) >= 5
             )
-            SELECT wi.*,
-              CASE WHEN inter_pump_s > 0
-                THEN draw_duration_s / inter_pump_s
-                ELSE NULL
-              END as duty_cycle
-            FROM with_interval wi
-            ORDER BY timestamp
+            SELECT
+              to_timestamp(EXTRACT(EPOCH FROM month_start) + bucket) as timestamp,
+              CAST(EXTRACT(YEAR FROM month_start) AS VARCHAR) || '-' ||
+                LPAD(CAST(EXTRACT(MONTH FROM month_start) AS VARCHAR), 2, '0') as month,
+              bucket * 0.05 as log_ratio,
+              s_p10, s_p50, s_p90,
+              CAST(n AS BIGINT) as n
+            FROM agg
+            ORDER BY month_start, bucket
 ---
 version: v1
 kind: mknod

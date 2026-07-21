@@ -51,6 +51,7 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /content pull
         ${EXE} "${INSTANCE}" run /templates pull
         ${EXE} "${INSTANCE}" run /img pull
+        ${EXE} "${INSTANCE}" run /history-src pull
         ${EXE} "${INSTANCE}" pull water
         ${EXE} "${INSTANCE}" pull noyo
         ${EXE} "${INSTANCE}" pull septic
