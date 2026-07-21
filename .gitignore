@@ -5,5 +5,10 @@ statements/*-Sep
 statements/*-Mar
 statements/invoices
 
+# Historical monthly meters: committed despite the global *.csv ignore so the
+# site's git-ingest can read them (raw source + tidy, script-generated output).
+!history/monthly.csv
+!history/monthly_usage.csv
+
 # local preview / iteration scratch (regenerable)
 local/
