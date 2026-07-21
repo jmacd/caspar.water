@@ -136,6 +136,10 @@ spec:
             page: "/templates/explore.md"
             export: "metrics"
     
+    labels:
+      drawdown-by-month: "Well Recovery"
+      horner-by-month: "Horner Plot"
+    
     explore:
       url: "explore/"
       datasets:
@@ -199,8 +203,10 @@ spec:
       - "Water"
       - label: "System"
         children:
-          - label: "Pump Cycles"
-            href: "${env:SITE_BASE_URL:-/}analysis/pump-cycles.html"
+          - label: "Drawdown"
+            href: "${env:SITE_BASE_URL:-/}analysis/drawdown-by-month.html"
+          - label: "Horner Recovery"
+            href: "${env:SITE_BASE_URL:-/}analysis/horner-by-month.html"
           - label: "Leak Analysis"
             href: "${env:SITE_BASE_URL:-/}analysis/leak-analysis.html"
           - label: "Noyo Harbor"
