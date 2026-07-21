@@ -75,7 +75,7 @@ spec:
           patterns:
             source: "csv:///history-src/monthly_usage.csv"
           query: >-
-            SELECT timestamp,
+            SELECT CAST(timestamp AS TIMESTAMP) AS timestamp,
               main_meter - LAG(main_meter) OVER (ORDER BY timestamp)
                 AS monthly_usage
             FROM source
@@ -86,7 +86,7 @@ spec:
           patterns:
             source: "csv:///history-src/monthly_usage.csv"
           query: >-
-            SELECT timestamp,
+            SELECT CAST(timestamp AS TIMESTAMP) AS timestamp,
               community_center - LAG(community_center) OVER (ORDER BY timestamp)
                 AS monthly_usage
             FROM source
@@ -163,7 +163,7 @@ spec:
               - name: "history-detail"
                 type: template
                 slug: "$0"
-                page: "/templates/data.md"
+                page: "/templates/history.md"
                 export: "history"
           - name: "analysis"
             type: static
@@ -197,8 +197,8 @@ spec:
     labels:
       drawdown-by-month: "Well Recovery"
       horner-by-month: "Horner Plot"
-      main-meter: "Main Service Meter (monthly usage)"
-      community-center: "Community Center (monthly usage)"
+      main-meter: "Main Service Meter"
+      community-center: "Community Center"
     
     explore:
       url: "explore/"
