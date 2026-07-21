@@ -94,6 +94,27 @@ def flatten(rows: list[list[str]]) -> list[tuple[str, int | None, int | None]]:
     return out
 
 
+def null_non_monotonic(values: list[int | None]) -> list[int | None]:
+    """Null out readings that decrease below the running maximum.
+
+    These are cumulative meter totals, so a value below one already seen is a
+    data-entry error (e.g. the 2025 community-center block was pasted from
+    2024). Replacing them with None leaves a visible gap in the chart rather
+    than a spurious downward step.
+    """
+    result: list[int | None] = []
+    running_max: int | None = None
+    for v in values:
+        if v is None:
+            result.append(None)
+        elif running_max is None or v >= running_max:
+            running_max = v
+            result.append(v)
+        else:
+            result.append(None)
+    return result
+
+
 def main(argv: list[str]) -> int:
     src = argv[1] if len(argv) > 1 else "history/monthly.csv"
     dst = argv[2] if len(argv) > 2 else "history/monthly_usage.csv"
@@ -103,15 +124,19 @@ def main(argv: list[str]) -> int:
 
     records = flatten(rows)
 
+    timestamps = [r[0] for r in records]
+    main = null_non_monotonic([r[1] for r in records])
+    community = null_non_monotonic([r[2] for r in records])
+
     with open(dst, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["timestamp", "main_meter", "community_center"])
-        for ts, main, community in records:
+        for ts, m, c in zip(timestamps, main, community):
             w.writerow(
                 [
                     ts,
-                    "" if main is None else main,
-                    "" if community is None else community,
+                    "" if m is None else m,
+                    "" if c is None else c,
                 ]
             )
 
