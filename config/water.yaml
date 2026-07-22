@@ -42,6 +42,15 @@ spec:
     #   <name>/data/res=1d.series
     #
     # The sitegen export pattern "/reduced/*/*/*.series" matches this structure.
+    #
+    # allowed_lateness (14d): the hourly `maintain --compact --collapse-versions
+    # 100` step rewrites roughly the last ~100 hours (~4 days) of each reduced
+    # series' version tail. Downstream consumers (the site pond's rollup export)
+    # see that rewritten tail as data landing behind the rollup's sealed
+    # watermark. The default 1-day lateness seals buckets the collapse still
+    # rewrites, so re-import hard-fails ("backfills an already-sealed bucket").
+    # 14d keeps the collapse window comfortably inside the unsealed hot window;
+    # the res=1m recompute cost over 14 days is negligible.
     
     entries:
       # -- Well Depth ---------------------------------------------------------------
@@ -52,6 +61,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -71,6 +81,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -90,6 +101,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -109,6 +121,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -128,6 +141,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
