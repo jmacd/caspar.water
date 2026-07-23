@@ -69,17 +69,45 @@ spec:
   factory: dynamic-dir
   config:
     entries:
+      # Main service meter: the full metered monthly-usage history (the source
+      # of truth, back to 2017) with the depth-derived (modeled) usage overlaid
+      # as a second line on the same chart. The metered column is the meter
+      # delta; the modeled column sums the depth-derived daily usage from the
+      # water pond (series:///.../usage/well-usage-daily, Q=K/H while pumping)
+      # per month, and is populated only from the post-config-change span (well
+      # configuration fixed since 2024-02-15), NULL before that. Meter reads are
+      # labeled at month-start but taken ~last Tuesday, so a meter delta at
+      # month M reflects usage during month M-1; the modeled monthly total is
+      # aligned to that same period. Overlaying both lines makes the close
+      # agreement -- and where the hand-transcribed meter is noisy (2025 summer
+      # under-reads + late catch-ups) the steadier modeled read -- visible in
+      # one place spanning historical and current projected usage.
       - name: "main-meter"
         factory: "sql-derived-series"
         config:
           patterns:
-            source: "csv:///history-src/monthly_usage.csv"
+            meter: "csv:///history-src/monthly_usage.csv"
+            daily: "series:///sources/water/usage/well-usage-daily"
           query: >-
-            SELECT CAST(timestamp AS TIMESTAMP) AS timestamp,
-              main_meter - LAG(main_meter) OVER (ORDER BY timestamp)
-                AS monthly_usage
-            FROM source
-            ORDER BY timestamp
+            WITH metered AS (
+              SELECT CAST(timestamp AS TIMESTAMP) AS ts,
+                main_meter - LAG(main_meter) OVER (ORDER BY timestamp)
+                  AS metered_gal
+              FROM meter
+            ),
+            modeled AS (
+              SELECT date_trunc('month', timestamp) AS mth,
+                SUM(gallons) AS modeled_gal
+              FROM daily
+              GROUP BY 1
+            )
+            SELECT m.ts AS timestamp,
+              m.metered_gal AS "metered.usage.gallons",
+              md.modeled_gal AS "modeled.usage.gallons"
+            FROM metered m
+            LEFT JOIN modeled md
+              ON md.mth = date_trunc('month', m.ts) - INTERVAL '1 month'
+            ORDER BY m.ts
       - name: "community-center"
         factory: "sql-derived-series"
         config:
@@ -121,6 +149,10 @@ spec:
         pattern: "/sources/water/annotations/water-overlay*"
       - name: "leak-analysis"
         pattern: "/sources/water/leak/*"
+      - name: "usage"
+        pattern: "/sources/water/usage/*"
+      - name: "usage-calibration"
+        pattern: "/sources/water/calibration/*"
       - name: "septic-metrics"
         pattern: "/sources/septic/reduced/*/*/*.series"
       - name: "history"
@@ -215,6 +247,12 @@ spec:
         - export: "leak-analysis"
           table: "leak"
           label: "Leak analysis (daily)"
+        - export: "usage"
+          table: "usage"
+          label: "Well usage (derived)"
+        - export: "usage-calibration"
+          table: "calibration"
+          label: "Usage calibration"
         - export: "history"
           table: "history"
           label: "Historical monthly meters"

@@ -866,3 +866,241 @@ spec:
             FROM per_night a JOIN smoothed s USING (rest_day)
             WHERE s.ndays >= 4
             ORDER BY timestamp
+---
+version: v1
+kind: mknod
+metadata:
+  path: /pump-state
+spec:
+  factory: dynamic-dir
+  config:
+    # Canonical well pump-state timeseries for Caspar Water.
+    #
+    # A single authoritative per-sample classification of the well's three
+    # physical states -- static, pumping and recovering -- derived from the
+    # reduced 1-minute well-depth series.  Downstream consumers (the usage
+    # estimator in /usage, the calibration in /calibration, and -- in a later
+    # pass -- the /annotations overlay and /leak analysis) all read THIS series
+    # instead of re-deriving pump state, so there is one definition and no
+    # divergent thresholds.
+    #
+    # Detection (adaptive, no absolute depth gate).  The well has three states:
+    #   * static     -- at rest near the seasonal static level;
+    #   * pumping     -- pump running, water column being pulled DOWN;
+    #   * recovering -- pump off, column rising back toward static.
+    # An absolute "depth < 42" gate is wrong because the static level itself
+    # drifts seasonally and because it labels the whole recovery climb (still
+    # below 42) as "pumping" -- it hangs on long after the pump stops.  Instead
+    # we detect a DISTURBANCE as depth falling more than 0.3 below its own
+    # trailing-60-minute ceiling, group each disturbance into one excursion, and
+    # split it at its depth TROUGH (the minimum -- the moment the pump stops):
+    #   * disturbed & at/ before the trough -> 'pumping'  (falling half)
+    #   * disturbed & after the trough       -> 'recovering'
+    #   * not disturbed                      -> 'static'
+    # The trough split is the same technique the /analysis drawdown/horner
+    # entries use; here it is materialized once for everyone.
+    #
+    # Columns:
+    #   timestamp - 1-minute sample time (series/partition key)
+    #   depth     - well_depth_value average at that minute (m above the probe)
+    #   phase     - 'pumping' | 'recovering' | 'static'
+    #
+    entries:
+      - name: "well-pump-state"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            depth: "series:///reduced/well-depth/data/res=1m.series"
+          query: >-
+            WITH r AS (
+              SELECT timestamp AS ts,
+                CAST(EXTRACT(EPOCH FROM timestamp)/60 AS BIGINT) AS min_idx,
+                "well_depth_value.avg" AS depth
+              FROM depth
+              WHERE "well_depth_value.avg" IS NOT NULL
+                AND "well_depth_value.avg" BETWEEN 10 AND 60
+            ),
+            base AS (
+              SELECT ts, min_idx, depth,
+                MAX(depth) OVER (ORDER BY min_idx
+                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
+              FROM r
+            ),
+            dist AS (
+              SELECT ts, min_idx, depth,
+                CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
+              FROM base
+            ),
+            isl AS (
+              SELECT ts, min_idx, depth, disturbed,
+                min_idx - ROW_NUMBER() OVER (
+                  PARTITION BY disturbed ORDER BY min_idx) AS grp
+              FROM dist
+            ),
+            troughed AS (
+              SELECT min_idx,
+                first_value(min_idx) OVER (PARTITION BY grp
+                  ORDER BY depth ASC, min_idx ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+                  AS trough_idx
+              FROM isl WHERE disturbed = 1
+            )
+            SELECT d.ts AS timestamp, d.depth,
+              CASE
+                WHEN d.disturbed = 1 AND d.min_idx <= t.trough_idx THEN 'pumping'
+                WHEN d.disturbed = 1 THEN 'recovering'
+                ELSE 'static'
+              END AS phase
+            FROM dist d
+            LEFT JOIN troughed t USING (min_idx)
+            ORDER BY d.ts
+---
+version: v1
+kind: mknod
+metadata:
+  path: /calibration
+spec:
+  factory: dynamic-dir
+  config:
+    # Well-usage calibration for Caspar Water (single scalar K).
+    #
+    # Physics (basic water-distribution operator relation).  The well pump runs
+    # at fixed power, so its flow Q is inversely proportional to the lift H it
+    # works against: Q = K / H.  Lift is a pure function of the well-depth
+    # reading and fixed geometry -- the pressure probe sits 150 ft below ground
+    # and the discharge pipe is 10 ft above ground, so the water surface is
+    # 3.28084 * well_depth_value feet above the probe and
+    #     H(wd) = (150 + 10) - 3.28084 * wd   [ft]   = 160 - 3.28084 * wd.
+    # When the water table is high (large wd) the lift is small and the pump
+    # moves more water; drawn down (small wd) the lift is large and it moves
+    # less.
+    #
+    # Calibration.  K is the one unknown, fixed from the main service meter --
+    # an accurate cumulative encoded meter, our source of truth.  Over a single
+    # gap-free window between two trusted meter reads, the metered volume equals
+    # the modeled pumped volume:
+    #     V_meter = K * SUM_over_pumping[ dt / H(wd) ]
+    #  => K = V_meter / SUM_over_pumping[ dt / H(wd) ].
+    # We use ONE long gap-free window (not per-month least squares): the hand-
+    # transcribed monthly log is noisy (some 2025 summer reads are under-
+    # recorded and reappear in later months), but only the two window ENDPOINTS
+    # matter, so intermediate transcription error cancels exactly.  Well-depth
+    # pumping time supplies the within-window shape.
+    #
+    # Recalibration is a deliberate act: when a new trusted meter read extends
+    # the record, update WINDOW_START / WINDOW_END / METER_GALLONS below (the
+    # three literals in the query) and the usage series' K literal.  Validated
+    # on staging: K = 429.5, pump_minutes = 69,888, mean 13.73 gpm; modeled vs
+    # metered volume 0.96 (2024), 0.97 (2025), 1.000 full span.
+    #
+    # Columns (single row):
+    #   timestamp      - window_end (series key)
+    #   k              - calibrated K = V_meter / SUM(dt / H)   [gal*ft/min]
+    #   head_offset_ft - the 160 ft constant in H(wd)
+    #   m_to_ft        - the 3.28084 m->ft constant in H(wd)
+    #   meter_gallons  - metered volume over the window (source of truth)
+    #   pump_minutes   - pumping minutes in the window
+    #   mean_gpm       - meter_gallons / pump_minutes (effective average rate)
+    #   window_start / window_end - the calibration window bounds
+    #
+    entries:
+      - name: "well-usage"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            state: "series:///pump-state/well-pump-state"
+          query: >-
+            WITH cal AS (
+              SELECT
+                SUM(CASE WHEN phase = 'pumping'
+                    THEN 1.0/(160.0 - 3.28084*depth) ELSE 0 END) AS sum_invh,
+                SUM(CASE WHEN phase = 'pumping' THEN 1 ELSE 0 END) AS pump_minutes
+              FROM state
+              WHERE timestamp >= TIMESTAMP '2024-02-01'
+                AND timestamp < TIMESTAMP '2026-07-01'
+            )
+            SELECT
+              TIMESTAMP '2026-07-01' AS timestamp,
+              959603.0 / sum_invh AS k,
+              160.0 AS head_offset_ft,
+              3.28084 AS m_to_ft,
+              CAST(959603 AS BIGINT) AS meter_gallons,
+              CAST(pump_minutes AS BIGINT) AS pump_minutes,
+              959603.0 / pump_minutes AS mean_gpm,
+              TIMESTAMP '2024-02-01' AS window_start,
+              TIMESTAMP '2026-07-01' AS window_end
+            FROM cal
+---
+version: v1
+kind: mknod
+metadata:
+  path: /usage
+spec:
+  factory: dynamic-dir
+  config:
+    # Derived well-usage (pumped volume) series for Caspar Water.
+    #
+    # Applies the calibrated head-flow model Q = K / H(wd) to the canonical
+    # pump-state series so live well-depth + pump state yields an estimate of
+    # water pumped (the town's usage), without waiting for a meter read.  While
+    # the well is pumping the instantaneous rate is K / (160 - 3.28084*depth)
+    # gal/min; otherwise it is zero.
+    #
+    # K comes from /calibration/well-usage (K = 429.5 for the current
+    # 2024-02..2026-07 calibration window).  It is inlined here as a literal so
+    # this series has no cross-node dependency on the calibration output; when
+    # you recalibrate (see /calibration), update the 429.5 literal in both
+    # entries below to the new k.  The geometry constants (160, 3.28084) match
+    # /calibration exactly.
+    #
+    # Both entries start at 2024-02-15, when the well entered its current
+    # configuration -- the calibrated geometry only applies to that epoch, so
+    # earlier depth is deliberately excluded.
+    #
+    # Two entries:
+    #   well-usage-rate  -- instantaneous gal/min per 1-minute sample (0 when
+    #                       not pumping); the live signal.
+    #   well-usage-daily -- gallons pumped per day (the reportable total,
+    #                       directly comparable to the monthly service meter).
+    #
+    entries:
+      # -- Instantaneous pumped rate ------------------------------------------------
+      #   timestamp  - 1-minute sample time
+      #   depth      - well_depth_value average (m above the probe)
+      #   usage_gpm  - modeled pumped rate K/H while pumping, else 0 (gal/min)
+      - name: "well-usage-rate"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            state: "series:///pump-state/well-pump-state"
+          query: >-
+            SELECT
+              timestamp,
+              depth,
+              CASE WHEN phase = 'pumping'
+                   THEN 429.5 / (160.0 - 3.28084*depth)
+                   ELSE 0.0 END AS usage_gpm
+            FROM state
+            WHERE timestamp >= TIMESTAMP '2024-02-15'
+            ORDER BY timestamp
+
+      # -- Daily pumped volume ------------------------------------------------------
+      #   timestamp    - day (00:00)
+      #   gallons      - modeled gallons pumped that day (SUM of the per-minute rate)
+      #   pump_minutes - pumping minutes that day
+      - name: "well-usage-daily"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            state: "series:///pump-state/well-pump-state"
+          query: >-
+            SELECT
+              date_trunc('day', timestamp) AS timestamp,
+              SUM(CASE WHEN phase = 'pumping'
+                  THEN 429.5 / (160.0 - 3.28084*depth) ELSE 0 END) AS gallons,
+              CAST(SUM(CASE WHEN phase = 'pumping' THEN 1 ELSE 0 END)
+                  AS BIGINT) AS pump_minutes
+            FROM state
+            WHERE timestamp >= TIMESTAMP '2024-02-15'
+            GROUP BY 1
+            ORDER BY 1
