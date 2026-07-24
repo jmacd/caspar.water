@@ -69,16 +69,78 @@ spec:
   factory: dynamic-dir
   config:
     entries:
+      # Main service: delivered/pumped RATE in gallons per minute, two lines on
+      # one chart.  Both are plain gpm gauges (no counter transform), each an
+      # average rate over its aligned interval = gallons in that interval
+      # divided by the interval's minutes.  Storing usage as a summable count of
+      # gallons per aligned interval (not a rate) is what makes this work: a
+      # coarser interval simply holds more gallons, and dividing by its (longer)
+      # minute-span renders the same gpm at any smoothing level -- the aggregate
+      # rate the whole interval averages to (pumping bursts spread over the idle
+      # time in between).
+      #
+      #   metered.usage.gpm -- the source of truth: consecutive cumulative
+      #     main-service encoder reads differenced into gallons used that month,
+      #     divided by the minutes between reads.  Reads are ~last Tuesday and
+      #     encode the prior month, so the delta ending at a month-start reading
+      #     is the preceding month's usage.  Rendered as a piecewise-constant
+      #     STAIRCASE: the month's average gpm is densified onto a daily spine
+      #     (one flat point per day across the month, stepping at each reading)
+      #     so the flat average-rate segment stays visible at any zoom -- a bare
+      #     monthly point would vanish when zoomed inside a month because the
+      #     chart drops points outside the visible window.  Full history to 2017
+      #     (a gallon count needs no pump-state).
+      #   modeled.usage.gpm -- the live estimate: modeled gallons pumped per DAY
+      #     (well-usage-daily, SUM of K/H(depth) per minute while pumping, since
+      #     the 2024-02-15 configuration) divided by 1440 minutes/day.  A daily
+      #     interval smooths the ~0<->13 gpm pumping duty into a clean per-day
+      #     average that tracks the monthly meter (~0.6-1.4 gpm), while still
+      #     updating every day right up to the present.
+      #
+      # The daily metered staircase runs through the finer daily modeled
+      # texture; aggregating either coarser converges them.  y-axis is gpm.
       - name: "main-meter"
         factory: "sql-derived-series"
         config:
           patterns:
-            source: "csv:///history-src/monthly_usage.csv"
+            meter: "csv:///history-src/monthly_usage.csv"
+            daily: "series:///sources/water/usage/well-usage-daily"
           query: >-
-            SELECT CAST(timestamp AS TIMESTAMP) AS timestamp,
-              main_meter - LAG(main_meter) OVER (ORDER BY timestamp)
-                AS monthly_usage
-            FROM source
+            WITH reads AS (
+              SELECT CAST(timestamp AS TIMESTAMP) AS ts, main_meter,
+                LAG(CAST(timestamp AS TIMESTAMP)) OVER (ORDER BY timestamp)
+                  AS pts,
+                LAG(main_meter) OVER (ORDER BY timestamp) AS pmm
+              FROM meter
+            ),
+            intervals AS (
+              SELECT pts, ts,
+                CAST(main_meter - pmm AS DOUBLE)
+                  / NULLIF(EXTRACT(EPOCH FROM (ts - pts)) / 60.0, 0) AS gpm
+              FROM reads
+              WHERE pmm IS NOT NULL AND main_meter IS NOT NULL
+            ),
+            spine AS (
+              SELECT unnest(generate_series(
+                (SELECT date_trunc('day', MIN(pts)) FROM intervals),
+                (SELECT date_trunc('day', MAX(ts)) FROM intervals),
+                INTERVAL '1 day')) AS day
+            ),
+            metered_daily AS (
+              SELECT s.day AS timestamp, i.gpm
+              FROM spine s
+              JOIN intervals i ON s.day >= i.pts AND s.day < i.ts
+            ),
+            modeled_daily AS (
+              SELECT date_trunc('day', timestamp) AS timestamp,
+                gallons / 1440.0 AS gpm
+              FROM daily
+            )
+            SELECT COALESCE(md.timestamp, xd.timestamp) AS timestamp,
+              md.gpm AS "metered.usage.gpm",
+              xd.gpm AS "modeled.usage.gpm"
+            FROM metered_daily md
+            FULL OUTER JOIN modeled_daily xd ON md.timestamp = xd.timestamp
             ORDER BY timestamp
       - name: "community-center"
         factory: "sql-derived-series"
@@ -121,6 +183,10 @@ spec:
         pattern: "/sources/water/annotations/water-overlay*"
       - name: "leak-analysis"
         pattern: "/sources/water/leak/*"
+      - name: "usage"
+        pattern: "/sources/water/usage/*"
+      - name: "usage-calibration"
+        pattern: "/sources/water/calibration/*"
       - name: "septic-metrics"
         pattern: "/sources/septic/reduced/*/*/*.series"
       - name: "history"
@@ -200,6 +266,21 @@ spec:
       main-meter: "Main Service"
       community-center: "Community Center"
 
+    metric_registry:
+      # Flow rate where 0 is a meaningful baseline: zero-anchor the y-axis and
+      # keep it rendered even when only one of the two lines has data in the
+      # visible window (e.g. a short recent window where the monthly metered
+      # read hasn't landed yet but the daily modeled estimate has).
+      usage.gpm: "rate"
+
+    metric_captions:
+      usage.gpm: >-
+        Delivered/pumped rate in gallons per minute: the main-service encoder
+        (metered, monthly, full history) and the depth-derived live estimate
+        (modeled, daily average since the 2024-02-15 well configuration). Each
+        is gallons used in an aligned interval divided by that interval's
+        minutes, so the daily modeled average tracks the monthly meter.
+
     explore:
       url: "explore/"
       datasets:
@@ -215,6 +296,12 @@ spec:
         - export: "leak-analysis"
           table: "leak"
           label: "Leak analysis (daily)"
+        - export: "usage"
+          table: "usage"
+          label: "Well usage (derived)"
+        - export: "usage-calibration"
+          table: "calibration"
+          label: "Usage calibration"
         - export: "history"
           table: "history"
           label: "Historical monthly meters"
