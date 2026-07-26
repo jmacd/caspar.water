@@ -105,7 +105,9 @@ fi
 #   2. ingest   -- journal, caddy access, per-pond perf jsonl.
 #   3. sync     -- copy site templates from host into pond.
 #   4. maintain -- delta-log checkpoint / cleanup.
-#   5. sitegen  -- render dashboard from /derived/perf into /var/www.
+#   5. materialize -- append this tick's new /derived/perf rows into the
+#                  physical /metrics/perf.series that /reduced reads.
+#   6. sitegen  -- render dashboard from /reduced into /var/www.
 
 export MEASURE_OUT_DIR="${SELFMON_METRICS_DIR}"
 mkdir -p "${MEASURE_OUT_DIR}"
@@ -190,6 +192,18 @@ if [ -d "${TEMPLATE_SRC}" ]; then
         "${PONDBIN}" copy "host://${f}" "/system/site/$(basename "$f")"
     done
 fi
+
+# Materialize the perf join into /metrics/perf.series before sitegen, so
+# the /reduced rollup sitegen exports includes this tick's samples.  Must
+# come AFTER the per-pond ingest above (it reads /derived/perf, which reads
+# the ingested jsonl) and BEFORE sitegen.
+#
+# Non-fatal for the same reason as ingest: a failure here should leave the
+# dashboard one tick stale, not abort the tick.  The watermark is recomputed
+# from the target on every run, so a skipped tick self-heals -- the next run
+# picks up everything past the last stored row.
+"${PONDBIN}" run /system/etc/materialize-perf \
+    || echo "WARNING: perf materialize failed" >&2
 
 # Maintenance already ran at the top of this tick; sitegen reads the pond
 # as-is.  The few versions appended since that pass are collapsed by the
