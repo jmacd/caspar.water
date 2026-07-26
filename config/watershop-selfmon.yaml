@@ -254,6 +254,8 @@ spec:
             SELECT
               CAST(ts AS TIMESTAMP)                        as timestamp,
               CAST("read.seconds" AS DOUBLE)               as "read.seconds",
+              CAST("read.ok" AS DOUBLE)                    as "read.ok",
+              CAST("tick.failures" AS DOUBLE)              as "tick.failures",
               CAST("sitegen.seconds" AS DOUBLE)            as "sitegen.seconds",
               CAST("sitegen_peak_rss.bytes" AS BIGINT)     as "sitegen_peak_rss.bytes"
             FROM m
