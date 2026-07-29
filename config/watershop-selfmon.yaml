@@ -33,6 +33,13 @@ kind: mkdir
 metadata:
   path: /system/site
 ---
+# Holds the materialized copy of the `perf` join.  See the
+# materialize-perf mknod below for why it exists.
+version: v1
+kind: mkdir
+metadata:
+  path: /metrics
+---
 # Systemd journal collection (incremental, cursor-tracked).  Captures
 # every systemd unit, the kernel ring buffer (dmesg), and the
 # pond-selfmon@*.service runs themselves -- self-referential, which
@@ -247,6 +254,8 @@ spec:
             SELECT
               CAST(ts AS TIMESTAMP)                        as timestamp,
               CAST("read.seconds" AS DOUBLE)               as "read.seconds",
+              CAST("read.ok" AS DOUBLE)                    as "read.ok",
+              CAST("tick.failures" AS DOUBLE)              as "tick.failures",
               CAST("sitegen.seconds" AS DOUBLE)            as "sitegen.seconds",
               CAST("sitegen_peak_rss.bytes" AS BIGINT)     as "sitegen_peak_rss.bytes"
             FROM m
@@ -358,6 +367,86 @@ spec:
             - pattern: "series:///derived/p-watershop-selfmon"
               scope: "watershop-selfmon"
 ---
+# Materialize the `perf` join into a physical table:series.
+#
+# `/derived/perf` is DYNAMIC: every read re-runs ten sql-derived-series
+# queries over jsonlogs and FULL OUTER JOINs them.  That is fine for a
+# one-shot read but it is a terrible thing to put underneath a
+# temporal-reduce, which is exactly the bottleneck that made the noyo
+# subsite export ~90% of a site publish.
+#
+# This node stores the join instead.  Each run it asks the target how far
+# it has been materialized, takes only the rows past that watermark, and
+# appends them as ONE new version -- so the cost is proportional to new
+# data, not to history.  It also gives selfmon a TablePhysicalSeries,
+# which a pond built purely from log ingest otherwise never has, leaving
+# half the storage engine unexercised by the instance whose job is to
+# exercise it.
+#
+# Runs once per tick from run-selfmon.sh, after ingest, before sitegen.
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/materialize-perf
+spec:
+  factory: materialize-series
+  config:
+    source: "series:///derived/perf"
+    target: /metrics/perf.series
+    time_column: timestamp
+---
+# Multi-resolution rollup of the materialized perf series.
+#
+# Without this, metrics.html exported `perf` at raw 1-minute resolution:
+# ~526k rows x 94 columns in a single parquet row group, which the browser
+# had to decode in full before drawing anything.  chart.js chooses a
+# resolution from the manifest, so publishing the tree lets the default
+# view load a coarse level and refine only on zoom.
+#
+# Reducing the MATERIALIZED series rather than the raw jsonlogs is
+# deliberate: jsonlogs returns all-Utf8 and the CASTs live in the
+# sql-derived-series layer, so the materialized series is the first typed
+# input available.
+#
+# Note this never engages temporal-reduce's rollup cache --
+# try_rollup_table_provider bails unless the input scheme has a
+# FormatProvider, and `series` is a builtin scheme.  The win here is that
+# the source scan reads bytes off a parquet series instead of recomputing
+# a ten-way join.  It also means the sealed-runs bookkeeping never runs,
+# so unlike water.yaml/septic.yaml this needs no allowed_lateness tuning:
+# the "backfills an already-sealed bucket" hard error lives in the same
+# function that bails.
+#
+# Aggregations omit `columns`, which applies them to every numeric column
+# -- the join is ~94 columns and grows whenever a pond is added.
+# chart.js already understands the `.avg`/`.min`/`.max` suffixes that
+# temporal-reduce appends.
+#
+# `avg` alone, unlike water.yaml/septic.yaml which also emit min/max.
+# Each extra aggregation multiplies the column count, which works against
+# the load time this rollup exists to fix: at 1h, avg-only is ~60x fewer
+# cells than today's raw export, avg+min+max only ~20x.  Min/max bands
+# earn their weight on noisy instrument data like well depth; selfmon's
+# metrics are monotonic counters and slow-moving gauges, where the mean
+# is the whole story.  Adding them back is a one-line change.
+version: v1
+kind: mknod
+metadata:
+  path: /reduced
+spec:
+  factory: dynamic-dir
+  config:
+    entries:
+      - name: "perf"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "series:///metrics/perf.series"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1m, 10m, 1h, 6h, 1d]
+          aggregations:
+            - type: "avg"
+---
 # Sitegen factory: renders a tiny dashboard from the perf series
 # above into /var/www/selfmon/<instance>/ (served by Caddy at
 # /selfmon/).  Sitegen runs once per tick from run-selfmon.sh and is
@@ -443,8 +532,10 @@ spec:
         Wall-clock cost of the read-side warm-up performed by the
         selfmon pond itself (sitegen-internal).
     exports:
+      # The reduced tree, not `/derived/perf`: chart.js picks a resolution
+      # from the manifest instead of decoding ~526k raw rows up front.
       - name: "perf"
-        pattern: "/derived/perf"
+        pattern: "/reduced/*/*/*.series"
     # Per-pond systemd-style status cards rendered server-side from
     # ingested journal data.  Sitegen lists journal `.jsonl` files
     # matching `journal_pattern`, filters basenames against

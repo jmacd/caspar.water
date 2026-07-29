@@ -29,6 +29,12 @@ spec:
     #
     # Early log entries had mangled column names (double-underscore prefix) from a
     # misconfigured otelcol; those are inactive and excluded here.
+    #
+    # allowed_lateness (14d): the hourly `maintain --compact --collapse-versions
+    # 100` step rewrites roughly the last ~4 days of each reduced series; the
+    # default 1d lateness treats that rewrite as a late backfill into an
+    # already-sealed bucket and aborts the sitegen export. 14d comfortably
+    # exceeds the rewrite span. Mirrors the water.yaml fix.
     
     entries:
       # ── Pump Amps ────────────────────────────────────────────────────────────
@@ -39,6 +45,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -67,6 +74,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -95,6 +103,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -117,6 +126,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -151,6 +161,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:
@@ -185,6 +196,7 @@ spec:
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1h, 6h, 1d, 1w]
+          allowed_lateness: 14d
           aggregations:
             - type: "avg"
               columns:

@@ -1,0 +1,174 @@
+<svg viewBox="0 0 1060 690" xmlns="http://www.w3.org/2000/svg"
+     role="img" aria-labelledby="t d"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <title id="t">How Watertown is built</title>
+  <desc id="d">A layered build stack. At the bottom, external Rust libraries — Apache Arrow, Apache DataFusion, Delta Lake, Tokio, object_store, and Parquet — form the foundation. On top of them Watertown's own crates stack up: utilities (base helpers), then tinyfs (a pluggable, SQL-queryable filesystem API), then the storage and access layer of tlogfs, provider, and sync-store, then steward for transactions and replication, then the domain applications sitegen, hydrovu, billing, and gitpond, and finally the cmd crate, which links every crate into the single pond command-line binary. Each layer builds on the layers below it.</desc>
+
+  <rect x="0" y="0" width="1060" height="690" fill="#ffffff"/>
+
+  <defs>
+    <style>
+      .h1        { font-size: 22px; font-weight: 700; fill: #0c4a6e; letter-spacing: 0.02em; }
+      .h2        { font-size: 12px; fill: #64748b; }
+      .layer     { fill: #f8fafc; stroke: #e6ebf1; stroke-width: 1; }
+      .lnum      { font-size: 11px; font-weight: 700; fill: #94a3b8; letter-spacing: 0.16em; }
+      .lname     { font-size: 12.5px; font-weight: 600; fill: #475569; }
+      .lsub      { font-size: 10px; fill: #94a3b8; }
+
+      .c-bin     { fill: #0c4a6e; stroke: #0c4a6e; stroke-width: 1.2; }
+      .c-app     { fill: #f0f7ff; stroke: #6aa8d1; stroke-width: 1.1; }
+      .c-coord   { fill: #fef9e6; stroke: #b8884d; stroke-width: 1.1; }
+      .c-store   { fill: #ecfdf5; stroke: #34a17a; stroke-width: 1.1; }
+      .c-fs      { fill: #eef2ff; stroke: #6366f1; stroke-width: 1.1; }
+      .c-base    { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.1; }
+      .c-ext     { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.1; }
+
+      .name      { font-size: 15px; font-weight: 700; fill: #14202b;
+                   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .name-w    { font-size: 15px; font-weight: 700; fill: #ffffff;
+                   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .role      { font-size: 10.5px; fill: #566372; }
+      .role-w    { font-size: 10.5px; fill: #cfe0ee; }
+
+      .ext-name  { font-size: 12px; font-weight: 600; fill: #334155; }
+      .ext-sub   { font-size: 9.5px; fill: #7c8a99; }
+      .ext-hdr   { font-size: 10px; font-weight: 600; fill: #94a3b8; letter-spacing: 0.14em; }
+
+      .rail      { fill: none; stroke: #0c4a6e; stroke-width: 2; }
+      .rail-txt  { font-size: 11px; font-weight: 600; fill: #0c4a6e; letter-spacing: 0.02em; }
+    </style>
+
+    <marker id="down" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0c4a6e"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text class="h1" x="150" y="40">How Watertown is built</text>
+  <text class="h2" x="150" y="60">A layered stack of Rust crates over Apache Arrow, DataFusion, and Delta Lake — assembled into the <tspan font-family="'JetBrains Mono', ui-monospace, monospace" font-weight="600" fill="#0c4a6e">pond</tspan> binary.</text>
+
+  <!-- ============================================================
+       Layer 6 — Binary
+       ============================================================ -->
+  <rect class="layer" x="150" y="86" width="840" height="58" rx="9"/>
+  <text class="lnum" x="24"  y="110">6</text>
+  <text class="lname" x="24" y="126">Binary</text>
+  <rect class="c-bin" x="310" y="94" width="520" height="42" rx="8"/>
+  <text class="name-w" x="570" y="112" text-anchor="middle">cmd</text>
+  <text class="role-w" x="570" y="128" text-anchor="middle">the <tspan font-weight="700" fill="#ffffff">pond</tspan> CLI — links every crate into one binary</text>
+
+  <!-- ============================================================
+       Layer 5 — Domain applications
+       ============================================================ -->
+  <rect class="layer" x="150" y="158" width="840" height="74" rx="9"/>
+  <text class="lnum" x="24"  y="188">5</text>
+  <text class="lname" x="24" y="204">Domain</text>
+  <text class="lsub"  x="24" y="219">apps</text>
+
+  <rect class="c-app" x="166" y="166" width="188" height="58" rx="8"/>
+  <text class="name" x="260" y="192" text-anchor="middle">sitegen</text>
+  <text class="role" x="260" y="209" text-anchor="middle">static site generator</text>
+
+  <rect class="c-app" x="372" y="166" width="188" height="58" rx="8"/>
+  <text class="name" x="466" y="192" text-anchor="middle">hydrovu</text>
+  <text class="role" x="466" y="209" text-anchor="middle">sensor collection (HydroVu API)</text>
+
+  <rect class="c-app" x="578" y="166" width="188" height="58" rx="8"/>
+  <text class="name" x="672" y="192" text-anchor="middle">billing</text>
+  <text class="role" x="672" y="209" text-anchor="middle">usage &amp; billing</text>
+
+  <rect class="c-app" x="784" y="166" width="188" height="58" rx="8"/>
+  <text class="name" x="878" y="192" text-anchor="middle">gitpond</text>
+  <text class="role" x="878" y="209" text-anchor="middle">git-backed files</text>
+
+  <!-- ============================================================
+       Layer 4 — Coordination
+       ============================================================ -->
+  <rect class="layer" x="150" y="246" width="840" height="58" rx="9"/>
+  <text class="lnum" x="24"  y="270">4</text>
+  <text class="lname" x="24" y="286">Coordination</text>
+  <rect class="c-coord" x="340" y="254" width="460" height="42" rx="8"/>
+  <text class="name" x="570" y="272" text-anchor="middle">steward</text>
+  <text class="role" x="570" y="288" text-anchor="middle">transactions · control table · audit · replication</text>
+
+  <!-- ============================================================
+       Layer 3 — Storage &amp; access
+       ============================================================ -->
+  <rect class="layer" x="150" y="318" width="840" height="74" rx="9"/>
+  <text class="lnum" x="24"  y="348">3</text>
+  <text class="lname" x="24" y="364">Storage</text>
+  <text class="lsub"  x="24" y="379">&amp; access</text>
+
+  <rect class="c-store" x="166" y="326" width="256" height="58" rx="8"/>
+  <text class="name" x="294" y="352" text-anchor="middle">tlogfs</text>
+  <text class="role" x="294" y="369" text-anchor="middle">Delta-backed transactional FS</text>
+
+  <rect class="c-store" x="442" y="326" width="256" height="58" rx="8"/>
+  <text class="name" x="570" y="352" text-anchor="middle">provider</text>
+  <text class="role" x="570" y="369" text-anchor="middle">URL access · formats · factories</text>
+
+  <rect class="c-store" x="718" y="326" width="256" height="58" rx="8"/>
+  <text class="name" x="846" y="352" text-anchor="middle">sync-store</text>
+  <text class="role" x="846" y="369" text-anchor="middle">content-addressed S3 backup</text>
+
+  <!-- ============================================================
+       Layer 2 — Filesystem abstraction
+       ============================================================ -->
+  <rect class="layer" x="150" y="406" width="840" height="58" rx="9"/>
+  <text class="lnum" x="24"  y="430">2</text>
+  <text class="lname" x="24" y="446">Filesystem</text>
+  <rect class="c-fs" x="340" y="414" width="460" height="42" rx="8"/>
+  <text class="name" x="570" y="432" text-anchor="middle">tinyfs</text>
+  <text class="role" x="570" y="448" text-anchor="middle">pluggable, SQL-queryable filesystem API</text>
+
+  <!-- ============================================================
+       Layer 1 — Base
+       ============================================================ -->
+  <rect class="layer" x="150" y="478" width="840" height="50" rx="9"/>
+  <text class="lnum" x="24"  y="500">1</text>
+  <text class="lname" x="24" y="516">Base</text>
+  <rect class="c-base" x="340" y="484" width="460" height="38" rx="8"/>
+  <text class="name" x="570" y="500" text-anchor="middle">utilities</text>
+  <text class="role" x="570" y="515" text-anchor="middle">shared helpers — hashing, Arrow, banners</text>
+
+  <!-- ============================================================
+       Layer 0 — Foundation (external)
+       ============================================================ -->
+  <rect class="layer" x="150" y="542" width="840" height="104" rx="9"/>
+  <text class="lnum" x="24"  y="586">0</text>
+  <text class="lname" x="24" y="602">Foundation</text>
+  <text class="lsub"  x="24" y="617">external</text>
+  <text class="ext-hdr" x="166" y="562">RUST ECOSYSTEM · THIRD-PARTY LIBRARIES</text>
+
+  <rect class="c-ext" x="166" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="227" y="600" text-anchor="middle">Apache Arrow</text>
+  <text class="ext-sub"  x="227" y="616" text-anchor="middle">columnar memory</text>
+
+  <rect class="c-ext" x="303" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="364" y="596" text-anchor="middle">Apache</text>
+  <text class="ext-name" x="364" y="610" text-anchor="middle">DataFusion</text>
+  <text class="ext-sub"  x="364" y="625" text-anchor="middle">SQL query engine</text>
+
+  <rect class="c-ext" x="440" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="501" y="600" text-anchor="middle">Delta Lake</text>
+  <text class="ext-sub"  x="501" y="616" text-anchor="middle">ACID table log</text>
+
+  <rect class="c-ext" x="577" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="638" y="600" text-anchor="middle">Tokio</text>
+  <text class="ext-sub"  x="638" y="616" text-anchor="middle">async runtime</text>
+
+  <rect class="c-ext" x="714" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="775" y="600" text-anchor="middle">object_store</text>
+  <text class="ext-sub"  x="775" y="616" text-anchor="middle">S3 · cloud · local IO</text>
+
+  <rect class="c-ext" x="851" y="572" width="123" height="60" rx="8"/>
+  <text class="ext-name" x="912" y="600" text-anchor="middle">Parquet</text>
+  <text class="ext-sub"  x="912" y="616" text-anchor="middle">columnar files</text>
+
+  <!-- ============================================================
+       Key edge: each layer builds on the layers below
+       ============================================================ -->
+  <path class="rail" d="M 1020 100 V 632" marker-end="url(#down)"/>
+  <text class="rail-txt" transform="translate(1046 366) rotate(90)" text-anchor="middle">each layer builds on the layers below</text>
+</svg>
