@@ -184,8 +184,8 @@ mkdir -p "${MEASURE_OUT_DIR}"
 
 # ── Selfmon-process scope: write _self.jsonl ──────────────────────
 # Inlined (was measure-self.sh).  Two metrics:
-#   read.seconds        -- timed COUNT(*) over kernel.jsonl, a
-#                          jsonlogs scan that grows with retained
+#   read.seconds        -- timed COUNT(*) over every ingested journal
+#                          file, a jsonlogs scan that grows with retained
 #                          log volume.  Selfmon-only: other ponds
 #                          don't have a comparable canonical path.
 #   sitegen.seconds &   -- pulled from the *prior* tick's
@@ -194,7 +194,15 @@ mkdir -p "${MEASURE_OUT_DIR}"
 {
     READ_SECONDS=0
     READ_OK=0
-    if "${PONDBIN}" list /logs/journal/kernel.jsonl >/dev/null 2>&1; then
+    # Scan the whole directory rather than one file.  journal-ingest names
+    # each file after its systemd unit, so no single filename is guaranteed:
+    # this used to target a hardcoded kernel.jsonl, but kernel messages carry
+    # no unit and never produce one.  It survived only in ponds old enough to
+    # predate the current naming; after a reset it never reappeared and the
+    # benchmark failed on every tick.  The glob measures retained log volume
+    # directly -- which is what the metric is for -- and cannot be invalidated
+    # by which units happen to be logging.
+    if "${PONDBIN}" list /logs/journal/ 2>/dev/null | grep -q '\.jsonl'; then
         # A failed read must not be published as a FAST read.  This block
         # used to time the command under `|| true` and record the elapsed
         # time regardless, so a read that errored out in 5 ms landed on the
@@ -202,7 +210,7 @@ mkdir -p "${MEASURE_OUT_DIR}"
         # the best tick we ever had.  Now the duration is only published
         # when the read actually returned, and the failure is counted.
         READ_START=$(date +%s.%N)
-        if "${PONDBIN}" cat 'jsonlogs:///logs/journal/kernel.jsonl' \
+        if "${PONDBIN}" cat 'jsonlogs:///logs/journal/*.jsonl' \
             --sql 'SELECT COUNT(*) FROM source' --format=table >/dev/null; then
             READ_END=$(date +%s.%N)
             READ_SECONDS=$(awk -v a="${READ_END}" -v b="${READ_START}" \
@@ -213,7 +221,7 @@ mkdir -p "${MEASURE_OUT_DIR}"
         fi
     else
         echo "ERROR: selfmon step 'read-benchmark' failed:" \
-            "/logs/journal/kernel.jsonl not listable" >&2
+            "no /logs/journal/*.jsonl to scan" >&2
     fi
     if [ "${READ_OK}" -eq 0 ]; then
         FAILURE_COUNT=$((FAILURE_COUNT + 1))
