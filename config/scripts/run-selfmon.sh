@@ -262,9 +262,17 @@ mkdir -p "${MEASURE_OUT_DIR}"
 }
 
 # One probe per pond defined under ${BASE_DIR}/env/.
+#
+# Not every env file is a pond: terraform also writes credential env files
+# there (env/_minio-admin.env, used by the aws-cli container to create and
+# empty buckets).  A leading underscore marks "not a pond" -- _self is the
+# other one, and it is handled explicitly rather than by this loop.  Without
+# the skip, _minio-admin is enumerated as a pond name and its ingest below
+# runs against a mknod the yaml never declares, failing on every tick.
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
+    case "$pond_name" in _*) continue ;; esac
     step "measure:${pond_name}" "${SCRIPTS}/measure-pond.sh" "${pond_name}"
 done
 
@@ -275,8 +283,9 @@ step ingest:journal "${PONDBIN}" run /system/etc/journal push
 step ingest:caddy-access "${PONDBIN}" run /system/etc/caddy-access push
 
 # Ingest per-pond perf jsonl.  One mknod per pond + _self because
-# logfile-ingest selects exactly ONE active file per mknod.  Mknods
-# match the env file enumeration above one-for-one, plus _self.
+# logfile-ingest selects exactly ONE active file per mknod.  Mknods match
+# the pond env files one-for-one, plus _self; underscore-prefixed env files
+# are skipped here for the same reason as the measure loop above.
 # These were the worst offenders: `2>/dev/null || true` discarded the error
 # text as well as the status.  This is the ingest that feeds every chart, so
 # a silent failure here stalls the entire dataset while the page keeps
@@ -285,6 +294,7 @@ step ingest:measure:_self "${PONDBIN}" run /system/etc/measure/_self push
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
+    case "$pond_name" in _*) continue ;; esac
     step "ingest:measure:${pond_name}" \
         "${PONDBIN}" run "/system/etc/measure/${pond_name}" push
 done
