@@ -108,7 +108,7 @@ fi
 
     PONDBIN=/usr/bin/pond
     if [ ! -x "${PONDBIN}" ]; then
-        echo "ERROR: ${PONDBIN} not installed; run install-watertown.sh" >&2
+        echo "ERROR: ${PONDBIN} not installed; run update-selfmon.sh" >&2
         exit 1
     fi
     export POND   # pond CLI reads $POND

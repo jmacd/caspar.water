@@ -309,17 +309,23 @@ resource "null_resource" "watershop" {
       length(local.selfmon_instance_names) > 0
       ? ["${local.base_dir}/config/scripts/install-oras.sh"]
       : [],
-      # Install the watertown .deb (built natively on watershop by
-      # tools/build-on-watershop.sh).  Always installs the newest .deb
-      # in target/debian/; selfmon is local-experimental, no version
-      # pinning.  Skipped if there is no selfmon instance to run.
-      # `|| exit 1` because remote-exec runs the whole inline list as one
-      # shell WITHOUT `set -e`; without it a failed deb install (the
-      # script exits non-zero) is masked by later commands and the apply
-      # wrongly reports success.
-      length(local.selfmon_instance_names) > 0
-      ? ["${local.base_dir}/config/scripts/install-watertown.sh || exit 1"]
-      : [],
+      # Bring the selfmon binary up to the CI-published .deb.  This is the
+      # SAME script the hourly timer runs, so an apply and a timer tick
+      # converge on the same thing: pull the OCI artifact rust-ci.yml
+      # publishes and install it only when strictly newer.  On a fresh box
+      # nothing is installed yet, so the version comparison is skipped and
+      # this bootstraps the binary.
+      #
+      # This replaces install-watertown.sh, which `dpkg -i`'d whatever
+      # cargo-deb had last left in ~/src/watertown/target/debian ON THE BOX,
+      # unconditionally and without a version check.  Once CI took over
+      # building .debs nothing refreshed that directory, so every apply
+      # DOWNGRADED the pond to a months-old build and the next hourly tick
+      # silently put it back -- see the alternating pairs in dpkg.log.  The
+      # box must have exactly one source of binaries, and it is CI.
+      [for name in local.selfmon_instance_names :
+        "${local.base_dir}/config/scripts/update-selfmon.sh ${name}"
+      ],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).
       [for name in local.selfmon_instance_names :

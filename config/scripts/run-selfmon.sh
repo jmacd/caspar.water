@@ -24,7 +24,7 @@ set +a
 
 PONDBIN="/usr/bin/pond"
 if [ ! -x "${PONDBIN}" ]; then
-    echo "ERROR: ${PONDBIN} not installed; run tools/build-on-watershop.sh"
+    echo "ERROR: ${PONDBIN} not installed; run update-selfmon.sh ${INSTANCE}"
     exit 1
 fi
 
@@ -318,9 +318,8 @@ step materialize-perf "${PONDBIN}" run /system/etc/materialize-perf
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
 # Vendor assets (DuckDB-WASM, Plot, D3) are installed at
-# /usr/share/watertown/vendor by the watertown .deb (see
-# install-watertown.sh), which is where sitegen's find_vendor_dir()
-# searches for them.
+# /usr/share/watertown/vendor by the watertown .deb, which is where
+# sitegen's find_vendor_dir() searches for them.
 SITE_OUT="/var/www/selfmon/${INSTANCE}"
 SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"
 

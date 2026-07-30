@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # deploy-watershop.sh -- one-shot watershop selfmon deploy.
 #
-# Steps:
-#   1. tools/build-on-watershop.sh (push branch, remote cargo-deb on
-#      watershop, dpkg -i the freshly built /usr/bin/pond).
-#   2. terraform apply in terraform/station/watershop (re-pushes
-#      config + env, re-runs install-watertown.sh which always picks
-#      the newest .deb in target/debian/, re-applies the
-#      watershop-selfmon.yaml).
+# Runs terraform apply in terraform/station/watershop: re-pushes config +
+# env, re-applies watershop-selfmon.yaml, and brings /usr/bin/pond up to
+# the .deb CI published (via update-selfmon.sh, the same script the hourly
+# timer runs).
+#
+# Binaries come from CI.  This script used to build one natively first,
+# back when that was the only source; it no longer does, because the
+# apply itself now pulls the CI artifact.  To test UNMERGED code on the
+# box, run tools/build-on-watershop.sh explicitly -- but note the next
+# apply or hourly tick will replace it with the CI build, by design.
 #
 # This is the local-experimental selfmon deploy path.  Production
 # water/noyo/septic/site ponds are NOT touched -- they run from
@@ -15,8 +18,7 @@
 # promotion.
 #
 # Usage:
-#   tools/deploy-watershop.sh                          # build + tf apply
-#   tools/deploy-watershop.sh --no-terraform           # stop after the build
+#   tools/deploy-watershop.sh                          # terraform apply
 #   tools/deploy-watershop.sh --auto-approve           # pass -auto-approve
 #                                                      # through to terraform
 #   tools/deploy-watershop.sh --reset=NAME[,NAME...]   # one-shot wipe of
@@ -35,12 +37,10 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TF_DIR="${REPO_ROOT}/terraform/station/watershop"
 
-RUN_TF=1
 TF_AUTO_APPROVE=""
 RESET_LIST=""
 for arg in "$@"; do
     case "$arg" in
-        --no-terraform) RUN_TF=0 ;;
         --auto-approve) TF_AUTO_APPROVE="-auto-approve" ;;
         --reset=*)      RESET_LIST="${arg#--reset=}" ;;
         -h|--help)
@@ -50,14 +50,6 @@ for arg in "$@"; do
         *) echo "unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
-
-echo "==> building watertown on watershop"
-"${REPO_ROOT}/tools/build-on-watershop.sh"
-
-if [ "${RUN_TF}" = "0" ]; then
-    echo "==> --no-terraform: skipping terraform apply"
-    exit 0
-fi
 
 # Build the optional `-var='reset_instances=["a","b"]'` arg from the
 # comma-separated --reset= list.  Done as a bash array so the quotes
