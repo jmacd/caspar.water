@@ -194,14 +194,15 @@ mkdir -p "${MEASURE_OUT_DIR}"
 {
     READ_SECONDS=0
     READ_OK=0
-    # Scan the whole directory rather than one file.  journal-ingest names
-    # each file after its systemd unit, so no single filename is guaranteed:
-    # this used to target a hardcoded kernel.jsonl, but kernel messages carry
-    # no unit and never produce one.  It survived only in ponds old enough to
-    # predate the current naming; after a reset it never reappeared and the
-    # benchmark failed on every tick.  The glob measures retained log volume
-    # directly -- which is what the metric is for -- and cannot be invalidated
-    # by which units happen to be logging.
+    # Scan the whole directory rather than one file.  This used to target a
+    # hardcoded kernel.jsonl -- a real path: journal-ingest routes
+    # _TRANSPORT=kernel there (journal_ingest.rs:322) and collect_kernel is
+    # on.  But it is written only when the kernel actually logs, and that is
+    # sporadic: watershop's most recent kernel message predates the Jul 30
+    # pond reset, so the file simply has not been created yet and the
+    # benchmark failed on every tick.  The glob depends on no single file
+    # having appeared, and measures retained log volume directly -- which is
+    # what the metric was always described as measuring.
     if "${PONDBIN}" list /logs/journal/ 2>/dev/null | grep -q '\.jsonl'; then
         # A failed read must not be published as a FAST read.  This block
         # used to time the command under `|| true` and record the elapsed
