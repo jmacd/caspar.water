@@ -112,6 +112,52 @@ cd terraform/station/watershop
 terraform apply -var 'reset_instances=["water-staging"]'
 ```
 
+### When a reset is the only repair
+
+A pond has no `rm`: `pond` exposes no delete/truncate for a file it has already
+committed (`emergency` offers only `erase-bucket`). `logfile-ingest` likewise has
+no re-baseline subcommand — only `b3sum`, `push`, and `pull`. So for the failures
+below there is no in-place fix, and `reset_instances` above is the only lever.
+Reach for it directly instead of trying to repair pond state by hand.
+
+**`logfile-ingest` prefix verification failure.** The tick logs, per source file:
+
+```
+Active file <name>.jsonl grew from <N> to <M> bytes but prefix changed
+  (host root <hash>) - checking for rotation
+ERROR Factory 'logfile-ingest' execution error: ... Prefix verification failed
+  for <name>.jsonl: expected blake3=<a>, got blake3=<b>.
+  File may have been rotated during ingestion.
+Error: Transaction aborted: Execution failed for factory 'logfile-ingest'
+```
+
+This means the host file was rotated/replaced without matching the mknod's
+`archived_pattern`, so the pond holds a stale pre-rotation segment that is not a
+prefix of the current host file. The guard is correct — it refuses to splice
+unrelated data onto the old segment — but the abort is permanent until the state
+is reset. Confirm before resetting, by comparing the two directly:
+
+```bash
+pond cat /measure/<name>.jsonl > /tmp/pondcopy
+cmp /tmp/pondcopy /var/log/watertown-selfmon/<instance>/<name>.jsonl
+# diverging at byte ~1 (not at the recorded size) == disjoint, needs a reset
+```
+
+Note the selfmon reset also wipes `/var/log/watertown-selfmon/<instance>`, so the
+host-side JSONL history is discarded too and ingest genuinely restarts empty.
+That is deliberate: replaying old rows can reintroduce a stale schema.
+
+**A stalled ingest can hide for weeks.** This failure only surfaces once the
+relevant `pond run .../measure/<name> push` step actually runs. If a config change
+enables ingest steps that were previously dormant, the first tick can surface a
+divergence dating back months. Check the *first* occurrence before assuming a
+recent deploy caused it:
+
+```bash
+journalctl --user -u "pond-selfmon@<instance>.service" --no-pager \
+  | grep "Prefix verification failed" | head -2
+```
+
 ### Full clean reset (recover from stale data)
 
 Site-* instances aggregate from the producer ponds (water/noyo/septic) by
