@@ -73,4 +73,7 @@ fi
 
 echo "==> terraform apply"
 cd "${TF_DIR}"
-terraform apply ${TF_AUTO_APPROVE} "${TF_RESET_ARG[@]}"
+# `${A[@]+"${A[@]}"}` rather than plain `"${A[@]}"`: bash 3.2 (what macOS
+# ships) treats an empty array as unbound under `set -u`, so the no-reset
+# path -- the common one -- would abort before ever reaching terraform.
+terraform apply ${TF_AUTO_APPROVE} ${TF_RESET_ARG[@]+"${TF_RESET_ARG[@]}"}
