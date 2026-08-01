@@ -412,18 +412,28 @@ spec:
 # #124).  It did not until then: the precondition asked whether the input
 # scheme had a FormatProvider, and `series` is builtin, so a pond-native
 # source -- already columnar parquet, the ideal input -- was turned away.
-# Now only new buckets are aggregated per tick instead of all history.
 #
-# Consequence: the sealed-runs bookkeeping now runs here, so the
-# allowed_lateness reasoning in water.yaml/septic.yaml applies to this
-# node too, where it previously could not.  We still leave it unset (1d
-# default), because selfmon's collapse window is far smaller than theirs:
-# `maintain --collapse-versions 100` rewrites the tail once a series
-# passes 100 live versions, and at ~4 min/tick that is ~6.7h of data --
-# comfortably inside the 1d hot window, unlike water's ~4 days which is
-# why 14d is needed there.  The margin is ~3.5x, so a tick cadence slower
-# than ~14 min would push the collapse behind the sealed watermark and
-# start hard-failing with "backfills an already-sealed bucket".
+# Engaging the cache is necessary but not sufficient to stop rescanning
+# history.  Reads are bounded only once something SEALS: until the first
+# segment exists, sealed_hi is null, which is the "every bucket is hot"
+# case and reads all of it.  Sealing is gated on SEAL_TARGET_BYTES (1
+# MiB), so a young cache rescans until it has accumulated enough to be
+# worth freezing -- deliberate, so a pond rebuilt each minute does not
+# grow a file each minute.  Verify with sealed_hi_secs/segments in
+# {POND}/cache/merged_*/res60/*.json, not by the merged_* dir existing.
+#
+# Consequence: the sealed-runs bookkeeping now runs here, so
+# allowed_lateness becomes a live knob for this node.  Leave it unset.
+# The 1d default is not the binding constraint anyway -- the hot window
+# spans max(allowed_lateness, span-at-which-hot-reaches-1MiB), and at ~94
+# columns the size gate is ~4096 one-minute buckets (~2.8d), so it wins.
+# Expect the window to oscillate ~1d..~2.8d rather than sit at 1d.
+#
+# Note the water.yaml/septic.yaml allowed_lateness comments describe a
+# hard error ("backfills an already-sealed bucket") that watertown #123
+# removed by keying segments on bucket range: late data now unseals and
+# recomputes the covering segments.  Those comments, and the 14d values
+# resting on them, are stale.  Nothing here needs that tuning.
 #
 # Aggregations omit `columns`, which applies them to every numeric column
 # -- the join is ~94 columns and grows whenever a pond is added.
