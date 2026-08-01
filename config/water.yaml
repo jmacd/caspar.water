@@ -43,14 +43,38 @@ spec:
     #
     # The sitegen export pattern "/reduced/*/*/*.series" matches this structure.
     #
-    # allowed_lateness (14d): the hourly `maintain --compact --collapse-versions
-    # 100` step rewrites roughly the last ~100 hours (~4 days) of each reduced
-    # series' version tail. Downstream consumers (the site pond's rollup export)
-    # see that rewritten tail as data landing behind the rollup's sealed
-    # watermark. The default 1-day lateness seals buckets the collapse still
-    # rewrites, so re-import hard-fails ("backfills an already-sealed bucket").
-    # 14d keeps the collapse window comfortably inside the unsealed hot window;
-    # the res=1m recompute cost over 14 days is negligible.
+    # allowed_lateness (14d): STALE RATIONALE, VALUE NOT RE-DERIVED.
+    #
+    # This was set to avoid a hard error -- the hourly `maintain --compact
+    # --collapse-versions 100` step rewrites roughly the last ~100 hours (~4
+    # days) of each reduced series' version tail, and a downstream consumer
+    # saw that rewritten tail as data landing behind the rollup's sealed
+    # watermark, which used to abort with "backfills an already-sealed
+    # bucket". watertown #123 keyed segments on bucket range instead of on
+    # source version, so that is no longer an error: the segments covering
+    # the rewrite are simply unsealed and recomputed. The failure this value
+    # was bought to prevent cannot occur.
+    #
+    # What allowed_lateness does now is set a per-build COST. sealed_hi can
+    # never advance past data_hi - allowed_lateness, and the hot window
+    # [sealed_hi, inf) is recomputed from source on every build that sees a
+    # changed source version set -- whether or not anything was actually
+    # late. So the window is a reservation, not a reaction.
+    #
+    # It is NOT the only constraint: sealing is also gated on hot reaching
+    # SEAL_TARGET_BYTES (1 MiB), so the window really spans
+    # max(allowed_lateness, span-at-which-hot-reaches-1MiB) and oscillates
+    # between the two. These nodes are narrow (one metric, avg/min/max), so
+    # the size gate here covers far more than 14d of 1m buckets and is
+    # probably what binds -- in which case 14d is inert. That is an estimate:
+    # the water pond's cache is not reachable from the deploy host, so unlike
+    # watershop-selfmon its bytes-per-bucket has not been measured.
+    #
+    # Left at 14d deliberately. Changing allowed_lateness invalidates the
+    # merged segment cache (it is rebuilt from the cached source versions),
+    # so this should be re-derived from a measurement on the running pond,
+    # not adjusted on the above estimate. Check sealed_hi_secs and segments
+    # in {POND}/cache/merged_*/res=1m/*.json to see which constraint binds.
     
     entries:
       # -- Well Depth ---------------------------------------------------------------

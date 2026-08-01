@@ -432,8 +432,10 @@ spec:
 # Note the water.yaml/septic.yaml allowed_lateness comments describe a
 # hard error ("backfills an already-sealed bucket") that watertown #123
 # removed by keying segments on bucket range: late data now unseals and
-# recomputes the covering segments.  Those comments, and the 14d values
-# resting on them, are stale.  Nothing here needs that tuning.
+# recomputes the covering segments.  Those comments are corrected in
+# place; the 14d values that rested on them are left as-is pending a
+# measurement, since changing allowed_lateness invalidates the cache.
+# Nothing here needs that tuning.
 #
 # Aggregations omit `columns`, which applies them to every numeric column
 # -- the join is ~94 columns and grows whenever a pond is added.
