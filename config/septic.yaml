@@ -13,6 +13,28 @@ spec:
     archived_pattern: /data/septicstation-*.json
     active_pattern: /data/septicstation.json
     pond_path: /ingest
+    # Record each version's event-time range at ingest.
+    #
+    # temporal-reduce keys its partial-aggregate cache on the event-time range
+    # of each source version.  A version without one is taken to span ALL of
+    # time, so the dirty range reaches the beginning of time, every sealed
+    # segment is dropped, and the rollup recomputes its entire history on every
+    # build.  That is what pinned the site pond at ~2.05 GB: site imports this
+    # pond at /sources/<name> and re-executes the temporal-reduce recipe below
+    # over the REPLICATED ingest data, so unbounded versions here cost memory
+    # there too.
+    #
+    # The values match the OTLP JSON the stations emit, where each data point
+    # carries "timeUnixNano" in nanoseconds since the epoch.
+    #
+    # Requires an image with watertown#127; LogfileIngestConfig is
+    # deny_unknown_fields, so these keys fail to parse on an older pond.
+    # As of #127 naming a field also declares the node temporal, so a field
+    # that matches no record fails the run rather than silently storing an
+    # unbounded version.  Both values below were checked against the live
+    # archive on watershop before being set.
+    timestamp_field: timeUnixNano
+    timestamp_unit: nanoseconds
 ---
 version: v1
 kind: mknod
