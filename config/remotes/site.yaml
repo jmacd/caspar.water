@@ -8,6 +8,13 @@
 # attach-remotes.sh.  Must be applied only after every producer has attached
 # and pushed: a pull-mode remote refuses a bucket that is not yet an
 # initialized pond.  See watershop.tf.
+#
+# NO LIMITS HERE, deliberately.  Only pushes are governed; a pull-mode remote
+# carrying `limits` is refused at attach precisely so this file cannot claim a
+# protection that does not exist.  That leaves the site pond's imports
+# ungoverned, which is worth knowing: it reads all three producers
+# read-through, and on a metered provider egress is usually the expensive
+# direction.  See watertown docs/rate-limiter-design.md section 8b.2.
 
 version: v1
 kind: mknod

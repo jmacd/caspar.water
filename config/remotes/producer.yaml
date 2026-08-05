@@ -29,6 +29,50 @@ spec:
     # threaded through as a flag.  A deployment that must not speak plain HTTP
     # is a different kind of storage, not this one with a switch flipped.
 ---
+# Budgets governing the backup above.  Sized from measured traffic (2026-08-04,
+# watershop MinIO): steady state is ~12 MB/day and ~100 objects/day for water,
+# ~2-4 MB/day for septic, ~1 MB/day for noyo.  The defaults below leave water
+# roughly 85x headroom and the smaller ponds far more -- deliberately generous,
+# because the purpose here is first to observe usage against a ceiling, and only
+# then to tighten.
+#
+# The limit is an `${env:...}` reference with a default, so a single shared
+# document still permits per-instance tuning from env/<instance>.env.  Numeric
+# fields can be references on the mknod path because expansion happens on the
+# stored text before it is typed -- the same property `allow_http` lacked.
+#
+# INITIAL IMPORT: a first push is nothing like steady state.  water's backfill
+# was 11.4 GB in about two minutes (109 blobs of ~100 MiB, ~125 MB/s), roughly
+# 950x a normal day.  These budgets WILL refuse it, loudly -- `pond push` fails
+# with the limiter's reason rather than silently stalling.  Until a proper
+# one-shot override exists, seed a new or reset pond by raising
+# BACKUP_MIB_PER_DAY for that instance, pushing, then putting it back.  Deciding
+# to spend 11 GB should be an act someone performs on purpose.
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/backup-bytes
+spec:
+  factory: rate-limit
+  config:
+    unit: MiB/day
+    limit: "${env:BACKUP_MIB_PER_DAY:-1024}"
+    # A burst only ever makes a limit stricter: it caps how much of the daily
+    # budget can be spent at once, smoothing a runaway into something an
+    # operator can notice and stop.  64 MiB is ~5x a normal full day.
+    burst: 64
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/backup-ops
+spec:
+  factory: rate-limit
+  config:
+    unit: ops/day
+    limit: "${env:BACKUP_OPS_PER_DAY:-2000}"
+    burst: 200
+---
 version: v1
 kind: backup
 metadata:
@@ -36,5 +80,8 @@ metadata:
 spec:
   url: "${env:S3_URL}"
   storage: /sys/storage/minio
+  limits:
+    bytes: /sys/limits/backup-bytes
+    ops: /sys/limits/backup-ops
   # Idempotent: this runs on every deploy.
   overwrite: true
