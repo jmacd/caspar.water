@@ -1,0 +1,55 @@
+# Cross-pond imports for the site pond.
+#
+# The site pond is a consumer: it reads each producer's bucket read-through at
+# /sources/<name>, matching the sitegen export/subsite paths.  It has no bucket
+# and no backup of its own (S3_URL is empty for site-*).
+#
+# Replaces the three `pond remote add` invocations in the former
+# attach-remotes.sh.  Must be applied only after every producer has attached
+# and pushed: a pull-mode remote refuses a bucket that is not yet an
+# initialized pond.  See watershop.tf.
+
+version: v1
+kind: mknod
+metadata:
+  path: /sys/storage/minio
+spec:
+  factory: storage-minio
+  config:
+    # One profile serves all three imports -- they are the same MinIO.  That
+    # consolidation is the point: the endpoint and credentials appeared four
+    # times in the shell version, once per attach.
+    endpoint: "${env:S3_ENDPOINT}"
+    region: "${env:S3_REGION}"
+    access_key_id: "${env:S3_ACCESS_KEY}"
+    secret_access_key: "${env:S3_SECRET_KEY}"
+---
+version: v1
+kind: remote
+metadata:
+  path: /sys/remotes/water
+spec:
+  url: "${env:WATER_S3_URL}"
+  mount: /sources/water
+  storage: /sys/storage/minio
+  overwrite: true
+---
+version: v1
+kind: remote
+metadata:
+  path: /sys/remotes/noyo
+spec:
+  url: "${env:NOYO_S3_URL}"
+  mount: /sources/noyo
+  storage: /sys/storage/minio
+  overwrite: true
+---
+version: v1
+kind: remote
+metadata:
+  path: /sys/remotes/septic
+spec:
+  url: "${env:SEPTIC_S3_URL}"
+  mount: /sources/septic
+  storage: /sys/storage/minio
+  overwrite: true

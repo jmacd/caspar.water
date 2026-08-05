@@ -1,0 +1,40 @@
+# Backup attachment for a producer pond (water / septic / noyo).
+#
+# One document for all producers and both tiers: every per-instance value
+# arrives through `${env:...}` from env/<instance>.env, so this file says what
+# is true of "a producer pond" and nothing about which one.
+#
+# Replaces the `pond backup add` invocation in the former attach-remotes.sh.
+# Applied separately from the per-type config (config/<type>.yaml) because
+# ordering matters: every producer must attach and push before the site pond
+# imports it.  See watershop.tf.
+
+version: v1
+kind: mknod
+metadata:
+  path: /sys/storage/minio
+spec:
+  factory: storage-minio
+  config:
+    # Credentials MUST stay `${env:...}` references and are refused as
+    # literals: this node is replicated to the backup, so a literal would be
+    # exposed on every replica.  The reference resolves per-replica at use
+    # time, from that pond's own environment.
+    endpoint: "${env:S3_ENDPOINT}"
+    region: "${env:S3_REGION}"
+    access_key_id: "${env:S3_ACCESS_KEY}"
+    secret_access_key: "${env:S3_SECRET_KEY}"
+    # No allow_http field: permitting plain HTTP is a property of the
+    # storage-minio kind, which is why S3_ALLOW_HTTP no longer has to be
+    # threaded through as a flag.  A deployment that must not speak plain HTTP
+    # is a different kind of storage, not this one with a switch flipped.
+---
+version: v1
+kind: backup
+metadata:
+  path: /sys/remotes/origin
+spec:
+  url: "${env:S3_URL}"
+  storage: /sys/storage/minio
+  # Idempotent: this runs on every deploy.
+  overwrite: true
