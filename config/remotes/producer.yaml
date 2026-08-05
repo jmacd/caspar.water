@@ -44,10 +44,18 @@ spec:
 # INITIAL IMPORT: a first push is nothing like steady state.  water's backfill
 # was 11.4 GB in about two minutes (109 blobs of ~100 MiB, ~125 MB/s), roughly
 # 950x a normal day.  These budgets WILL refuse it, loudly -- `pond push` fails
-# with the limiter's reason rather than silently stalling.  Until a proper
-# one-shot override exists, seed a new or reset pond by raising
-# BACKUP_MIB_PER_DAY for that instance, pushing, then putting it back.  Deciding
-# to spend 11 GB should be an act someone performs on purpose.
+# with the limiter's reason rather than silently stalling.  To seed a new or
+# reset pond, run that one push with POND_IGNORE_LIMITS=1 in the environment:
+#
+#     POND_IGNORE_LIMITS=1 pond push origin
+#
+# That suspends enforcement for the process while still binding the limiters
+# (so a broken limiter config still fails), warns for every limiter it is
+# ignoring, and DISCARDS what it spent rather than charging it -- otherwise the
+# 11.4 GB would exhaust the daily window and refuse ordinary traffic for the
+# rest of the day.  Do not put it in env/<instance>.env: it belongs on the one
+# command being run, so that deciding to spend 11 GB is an act someone performs
+# on purpose.
 version: v1
 kind: mknod
 metadata:

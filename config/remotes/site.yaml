@@ -9,12 +9,10 @@
 # and pushed: a pull-mode remote refuses a bucket that is not yet an
 # initialized pond.  See watershop.tf.
 #
-# NO LIMITS HERE, deliberately.  Only pushes are governed; a pull-mode remote
-# carrying `limits` is refused at attach precisely so this file cannot claim a
-# protection that does not exist.  That leaves the site pond's imports
-# ungoverned, which is worth knowing: it reads all three producers
-# read-through, and on a metered provider egress is usually the expensive
-# direction.  See watertown docs/rate-limiter-design.md section 8b.2.
+# Ingress is governed (see the limiters below).  On a metered provider egress is
+# usually the expensive direction, and this pond is the one doing the reading --
+# all three producers, read-through -- so it is the side that generates that
+# bill.  See watertown docs/rate-limiter-design.md section 8b.2.
 
 version: v1
 kind: mknod
@@ -31,6 +29,48 @@ spec:
     access_key_id: "${env:S3_ACCESS_KEY}"
     secret_access_key: "${env:S3_SECRET_KEY}"
 ---
+# Budgets governing all three imports below.  All three name the SAME limiter
+# nodes, so they share one window: the budget is on this pond's total ingress,
+# not on each producer separately.  That is the number a bill is computed from,
+# and it means one runaway import cannot hide behind two quiet ones.
+#
+# Sized from measured traffic (2026-08-04, watershop MinIO): the producers
+# together write ~17 MB/day, and a pull transfers only what changed because the
+# tip check short-circuits an up-to-date mount.  1 GiB/day is far above that, on
+# purpose -- observe usage against a ceiling first, tighten second.
+#
+# Ops is generous for a different reason: an up-to-date pull still costs one
+# round-trip per remote to read the tip, so frequent polling across three
+# remotes spends ops steadily even when it transfers nothing.
+#
+# INITIAL IMPORT: the first import of water was 11.4 GB and will be refused by
+# these budgets.  Seed it with `POND_IGNORE_LIMITS=1 pond pull`, on that one
+# command only -- never in env/<instance>.env.
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/pull-bytes
+spec:
+  factory: rate-limit
+  config:
+    unit: MiB/day
+    limit: "${env:PULL_MIB_PER_DAY:-1024}"
+    # A burst only ever makes a limit stricter: it caps how much of the daily
+    # budget one stretch can spend, so a runaway is smoothed into something an
+    # operator can notice and stop rather than a single sharp bill.
+    burst: 64
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/pull-ops
+spec:
+  factory: rate-limit
+  config:
+    unit: ops/day
+    limit: "${env:PULL_OPS_PER_DAY:-50000}"
+    burst: 2000
+---
 version: v1
 kind: remote
 metadata:
@@ -40,6 +80,9 @@ spec:
   mount: /sources/water
   storage: /sys/storage/minio
   overwrite: true
+  limits:
+    bytes: /sys/limits/pull-bytes
+    ops: /sys/limits/pull-ops
 ---
 version: v1
 kind: remote
@@ -50,6 +93,9 @@ spec:
   mount: /sources/noyo
   storage: /sys/storage/minio
   overwrite: true
+  limits:
+    bytes: /sys/limits/pull-bytes
+    ops: /sys/limits/pull-ops
 ---
 version: v1
 kind: remote
@@ -60,3 +106,6 @@ spec:
   mount: /sources/septic
   storage: /sys/storage/minio
   overwrite: true
+  limits:
+    bytes: /sys/limits/pull-bytes
+    ops: /sys/limits/pull-ops
