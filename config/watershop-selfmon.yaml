@@ -408,14 +408,34 @@ spec:
 # sql-derived-series layer, so the materialized series is the first typed
 # input available.
 #
-# Note this never engages temporal-reduce's rollup cache --
-# try_rollup_table_provider bails unless the input scheme has a
-# FormatProvider, and `series` is a builtin scheme.  The win here is that
-# the source scan reads bytes off a parquet series instead of recomputing
-# a ten-way join.  It also means the sealed-runs bookkeeping never runs,
-# so unlike water.yaml/septic.yaml this needs no allowed_lateness tuning:
-# the "backfills an already-sealed bucket" hard error lives in the same
-# function that bails.
+# This DOES engage temporal-reduce's partial-aggregate cache (watertown
+# #124).  It did not until then: the precondition asked whether the input
+# scheme had a FormatProvider, and `series` is builtin, so a pond-native
+# source -- already columnar parquet, the ideal input -- was turned away.
+#
+# Engaging the cache is necessary but not sufficient to stop rescanning
+# history.  Reads are bounded only once something SEALS: until the first
+# segment exists, sealed_hi is null, which is the "every bucket is hot"
+# case and reads all of it.  Sealing is gated on SEAL_TARGET_BYTES (1
+# MiB), so a young cache rescans until it has accumulated enough to be
+# worth freezing -- deliberate, so a pond rebuilt each minute does not
+# grow a file each minute.  Verify with sealed_hi_secs/segments in
+# {POND}/cache/merged_*/res60/*.json, not by the merged_* dir existing.
+#
+# Consequence: the sealed-runs bookkeeping now runs here, so
+# allowed_lateness becomes a live knob for this node.  Leave it unset.
+# The 1d default is not the binding constraint anyway -- the hot window
+# spans max(allowed_lateness, span-at-which-hot-reaches-1MiB), and at ~94
+# columns the size gate is ~4096 one-minute buckets (~2.8d), so it wins.
+# Expect the window to oscillate ~1d..~2.8d rather than sit at 1d.
+#
+# Note the water.yaml/septic.yaml allowed_lateness comments describe a
+# hard error ("backfills an already-sealed bucket") that watertown #123
+# removed by keying segments on bucket range: late data now unseals and
+# recomputes the covering segments.  Those comments are corrected in
+# place; the 14d values that rested on them are left as-is pending a
+# measurement, since changing allowed_lateness invalidates the cache.
+# Nothing here needs that tuning.
 #
 # Aggregations omit `columns`, which applies them to every numeric column
 # -- the join is ~94 columns and grows whenever a pond is added.

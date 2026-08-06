@@ -83,8 +83,8 @@ locals {
     watershop-selfmon = {
       s3 = local.staging_s3
       # s3_url provisions a MinIO bucket and the S3_* env used to resolve
-      # credentials, but attach-remotes.sh intentionally does NOT attach a
-      # backup remote for selfmon: run-selfmon.sh prunes aggressively with
+      # credentials, but selfmon intentionally gets NO backup remote -- there
+      # is no config/remotes/*.yaml applied to it: run-selfmon.sh prunes with
       # --allow-no-remote, which is incompatible with a push backup because
       # the post-commit push reads already-vacuumed files and holds the
       # write.lock, blocking compaction.  The bucket therefore stays
@@ -309,17 +309,23 @@ resource "null_resource" "watershop" {
       length(local.selfmon_instance_names) > 0
       ? ["${local.base_dir}/config/scripts/install-oras.sh"]
       : [],
-      # Install the watertown .deb (built natively on watershop by
-      # tools/build-on-watershop.sh).  Always installs the newest .deb
-      # in target/debian/; selfmon is local-experimental, no version
-      # pinning.  Skipped if there is no selfmon instance to run.
-      # `|| exit 1` because remote-exec runs the whole inline list as one
-      # shell WITHOUT `set -e`; without it a failed deb install (the
-      # script exits non-zero) is masked by later commands and the apply
-      # wrongly reports success.
-      length(local.selfmon_instance_names) > 0
-      ? ["${local.base_dir}/config/scripts/install-watertown.sh || exit 1"]
-      : [],
+      # Bring the selfmon binary up to the CI-published .deb.  This is the
+      # SAME script the hourly timer runs, so an apply and a timer tick
+      # converge on the same thing: pull the OCI artifact rust-ci.yml
+      # publishes and install it only when strictly newer.  On a fresh box
+      # nothing is installed yet, so the version comparison is skipped and
+      # this bootstraps the binary.
+      #
+      # This replaces install-watertown.sh, which `dpkg -i`'d whatever
+      # cargo-deb had last left in ~/src/watertown/target/debian ON THE BOX,
+      # unconditionally and without a version check.  Once CI took over
+      # building .debs nothing refreshed that directory, so every apply
+      # DOWNGRADED the pond to a months-old build and the next hourly tick
+      # silently put it back -- see the alternating pairs in dpkg.log.  The
+      # box must have exactly one source of binaries, and it is CI.
+      [for name in local.selfmon_instance_names :
+        "${local.base_dir}/config/scripts/update-selfmon.sh ${name}"
+      ],
       # Provision per-instance metrics dir (writable by the user that
       # runs the selfmon timer).
       [for name in local.selfmon_instance_names :
@@ -427,23 +433,34 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "set -a; . ${local.base_dir}/env/${name}.env; set +a; /usr/bin/pond config set maintenance.data_log_retention_minutes 1440"
       ],
-      # (Re)attach S3 backup/import remotes.  Post-D6 watertown removed the
-      # `remote` factory; backups and cross-pond imports are now CLI
-      # attachments (`pond backup add` / `pond remote add`).  Idempotent
-      # via --overwrite, so this runs on every apply.  attach-remotes.sh
-      # branches on instance type (producer backup vs site import) and on
-      # container-vs-native (selfmon) internally.
+      # (Re)attach S3 backup/import remotes, declaratively.  These were shell
+      # invocations of `pond backup add` / `pond remote add` wrapped in
+      # attach-remotes.sh; they are now `pond apply` documents like every other
+      # piece of pond configuration, so the endpoint and credentials are
+      # written once as a storage profile instead of being rebuilt as CLI flags
+      # per attach.  Idempotent via `overwrite: true` in the documents.
       #
-      # ORDER MATTERS: a pull-mode `remote add` refuses a bucket that is
-      # not yet an initialized pond, so every producer (water/noyo/septic)
-      # must attach AND push its pond_init bundle before the site pond
-      # imports it.  Attach producers + selfmon first, the site last.
-      [for name in local.instance_names :
-        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+      # Applied here rather than folded into config/<type>.yaml because ORDER
+      # MATTERS: a pull-mode remote refuses a bucket that is not yet an
+      # initialized pond, so every producer (water/noyo/septic) must attach AND
+      # push its pond_init bundle before the site pond imports it.  The
+      # per-type configs are applied in one unordered pass above; these are
+      # deliberately two ordered passes.
+      #
+      # Producers only -- selfmon is native and deliberately has no remote at
+      # all (see watershop-selfmon above), so it appears in neither pass.
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer.yaml"
         if !startswith(name, "site-")
       ],
-      [for name in local.instance_names :
-        "${local.base_dir}/config/scripts/attach-remotes.sh ${name}"
+      # Seed each producer's bucket with the pond_init bundle so the site can
+      # pull immediately, rather than waiting for the first collection tick.
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} push origin"
+        if !startswith(name, "site-")
+      ],
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml"
         if startswith(name, "site-")
       ],
       # Enable + start producer and selfmon timers.  Each timer's OnBootSec

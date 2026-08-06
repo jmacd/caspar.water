@@ -13,6 +13,28 @@ spec:
     archived_pattern: /data/septicstation-*.json
     active_pattern: /data/septicstation.json
     pond_path: /ingest
+    # Record each version's event-time range at ingest.
+    #
+    # temporal-reduce keys its partial-aggregate cache on the event-time range
+    # of each source version.  A version without one is taken to span ALL of
+    # time, so the dirty range reaches the beginning of time, every sealed
+    # segment is dropped, and the rollup recomputes its entire history on every
+    # build.  That is what pinned the site pond at ~2.05 GB: site imports this
+    # pond at /sources/<name> and re-executes the temporal-reduce recipe below
+    # over the REPLICATED ingest data, so unbounded versions here cost memory
+    # there too.
+    #
+    # The values match the OTLP JSON the stations emit, where each data point
+    # carries "timeUnixNano" in nanoseconds since the epoch.
+    #
+    # Requires an image with watertown#127; LogfileIngestConfig is
+    # deny_unknown_fields, so these keys fail to parse on an older pond.
+    # As of #127 naming a field also declares the node temporal, so a field
+    # that matches no record fails the run rather than silently storing an
+    # unbounded version.  Both values below were checked against the live
+    # archive on watershop before being set.
+    timestamp_field: timeUnixNano
+    timestamp_unit: nanoseconds
 ---
 version: v1
 kind: mknod
@@ -30,11 +52,27 @@ spec:
     # Early log entries had mangled column names (double-underscore prefix) from a
     # misconfigured otelcol; those are inactive and excluded here.
     #
-    # allowed_lateness (14d): the hourly `maintain --compact --collapse-versions
-    # 100` step rewrites roughly the last ~4 days of each reduced series; the
-    # default 1d lateness treats that rewrite as a late backfill into an
-    # already-sealed bucket and aborts the sitegen export. 14d comfortably
-    # exceeds the rewrite span. Mirrors the water.yaml fix.
+    # allowed_lateness (14d): STALE RATIONALE, VALUE NOT RE-DERIVED.
+    #
+    # This mirrored the water.yaml setting, which existed to avoid a hard
+    # error when `maintain --collapse-versions 100` rewrote a reduced
+    # series' tail behind the sealed watermark. watertown #123 keyed
+    # segments on bucket range, so late data now unseals and recomputes the
+    # covering segments rather than aborting. The failure is gone; see the
+    # longer note in water.yaml for the mechanism.
+    #
+    # These nodes are even less likely than water's to be affected by the
+    # value at all. Sealing needs the hot window to reach SEAL_TARGET_BYTES
+    # (1 MiB) before anything freezes, and the finest resolution here is 1h
+    # -- 14d is only ~336 buckets of a handful of columns. Reaching 1 MiB
+    # takes far longer than the lateness window, so the size gate binds,
+    # nothing seals for a long time, and reads stay unbounded regardless of
+    # what this is set to. That is the intended behaviour, not a defect: the
+    # gate exists so a pond rebuilt hourly does not accumulate tiny segment
+    # files, and at this data volume a full rescan is cheap.
+    #
+    # Left at 14d deliberately -- changing it invalidates the merged segment
+    # cache, and on this node it should make no difference either way.
     
     entries:
       # ── Pump Amps ────────────────────────────────────────────────────────────

@@ -9,6 +9,13 @@
 # building there avoids cross-compile pain and the ~3-hour PR/CI/image
 # cycle.  No GH Actions, no podman, no self-hosted runner involved.
 #
+# This is an ESCAPE HATCH for testing unmerged code, not part of any
+# deploy.  It installs what it just built, but nothing else will: the
+# terraform apply and the hourly timer both install the CI-published
+# .deb, so whichever runs next replaces this binary.  `terraform apply`
+# used to install the newest file in target/debian/ instead, which meant
+# a stale build here silently downgraded the pond on every apply.
+#
 # This binary is for the local-experimental `watershop-selfmon` pond
 # only.  Production data ponds (water/noyo/septic/site) run from
 # GH-Actions-built podman images.

@@ -1,0 +1,95 @@
+# Backup attachment for a producer pond (water / septic / noyo).
+#
+# One document for all producers and both tiers: every per-instance value
+# arrives through `${env:...}` from env/<instance>.env, so this file says what
+# is true of "a producer pond" and nothing about which one.
+#
+# Replaces the `pond backup add` invocation in the former attach-remotes.sh.
+# Applied separately from the per-type config (config/<type>.yaml) because
+# ordering matters: every producer must attach and push before the site pond
+# imports it.  See watershop.tf.
+
+version: v1
+kind: mknod
+metadata:
+  path: /sys/storage/minio
+spec:
+  factory: storage-minio
+  config:
+    # Credentials MUST stay `${env:...}` references and are refused as
+    # literals: this node is replicated to the backup, so a literal would be
+    # exposed on every replica.  The reference resolves per-replica at use
+    # time, from that pond's own environment.
+    endpoint: "${env:S3_ENDPOINT}"
+    region: "${env:S3_REGION}"
+    access_key_id: "${env:S3_ACCESS_KEY}"
+    secret_access_key: "${env:S3_SECRET_KEY}"
+    # No allow_http field: permitting plain HTTP is a property of the
+    # storage-minio kind, which is why S3_ALLOW_HTTP no longer has to be
+    # threaded through as a flag.  A deployment that must not speak plain HTTP
+    # is a different kind of storage, not this one with a switch flipped.
+---
+# Budgets governing the backup above.  Sized from measured traffic (2026-08-04,
+# watershop MinIO): steady state is ~12 MB/day and ~100 objects/day for water,
+# ~2-4 MB/day for septic, ~1 MB/day for noyo.  The defaults below leave water
+# roughly 85x headroom and the smaller ponds far more -- deliberately generous,
+# because the purpose here is first to observe usage against a ceiling, and only
+# then to tighten.
+#
+# The limit is an `${env:...}` reference with a default, so a single shared
+# document still permits per-instance tuning from env/<instance>.env.  Numeric
+# fields can be references on the mknod path because expansion happens on the
+# stored text before it is typed -- the same property `allow_http` lacked.
+#
+# INITIAL IMPORT: a first push is nothing like steady state.  water's backfill
+# was 11.4 GB in about two minutes (109 blobs of ~100 MiB, ~125 MB/s), roughly
+# 950x a normal day.  These budgets WILL refuse it, loudly -- `pond push` fails
+# with the limiter's reason rather than silently stalling.  To seed a new or
+# reset pond, run that one push with POND_IGNORE_LIMITS=1 in the environment:
+#
+#     POND_IGNORE_LIMITS=1 pond push origin
+#
+# That suspends enforcement for the process while still binding the limiters
+# (so a broken limiter config still fails), warns for every limiter it is
+# ignoring, and DISCARDS what it spent rather than charging it -- otherwise the
+# 11.4 GB would exhaust the daily window and refuse ordinary traffic for the
+# rest of the day.  Do not put it in env/<instance>.env: it belongs on the one
+# command being run, so that deciding to spend 11 GB is an act someone performs
+# on purpose.
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/backup-bytes
+spec:
+  factory: rate-limit
+  config:
+    unit: MiB/day
+    limit: "${env:BACKUP_MIB_PER_DAY:-1024}"
+    # A burst only ever makes a limit stricter: it caps how much of the daily
+    # budget can be spent at once, smoothing a runaway into something an
+    # operator can notice and stop.  64 MiB is ~5x a normal full day.
+    burst: 64
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/backup-ops
+spec:
+  factory: rate-limit
+  config:
+    unit: ops/day
+    limit: "${env:BACKUP_OPS_PER_DAY:-2000}"
+    burst: 200
+---
+version: v1
+kind: backup
+metadata:
+  path: /sys/remotes/origin
+spec:
+  url: "${env:S3_URL}"
+  storage: /sys/storage/minio
+  limits:
+    bytes: /sys/limits/backup-bytes
+    ops: /sys/limits/backup-ops
+  # Idempotent: this runs on every deploy.
+  overwrite: true

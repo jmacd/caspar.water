@@ -24,7 +24,7 @@ set +a
 
 PONDBIN="/usr/bin/pond"
 if [ ! -x "${PONDBIN}" ]; then
-    echo "ERROR: ${PONDBIN} not installed; run tools/build-on-watershop.sh"
+    echo "ERROR: ${PONDBIN} not installed; run update-selfmon.sh ${INSTANCE}"
     exit 1
 fi
 
@@ -184,8 +184,8 @@ mkdir -p "${MEASURE_OUT_DIR}"
 
 # ── Selfmon-process scope: write _self.jsonl ──────────────────────
 # Inlined (was measure-self.sh).  Two metrics:
-#   read.seconds        -- timed COUNT(*) over kernel.jsonl, a
-#                          jsonlogs scan that grows with retained
+#   read.seconds        -- timed COUNT(*) over every ingested journal
+#                          file, a jsonlogs scan that grows with retained
 #                          log volume.  Selfmon-only: other ponds
 #                          don't have a comparable canonical path.
 #   sitegen.seconds &   -- pulled from the *prior* tick's
@@ -194,7 +194,16 @@ mkdir -p "${MEASURE_OUT_DIR}"
 {
     READ_SECONDS=0
     READ_OK=0
-    if "${PONDBIN}" list /logs/journal/kernel.jsonl >/dev/null 2>&1; then
+    # Scan the whole directory rather than one file.  This used to target a
+    # hardcoded kernel.jsonl -- a real path: journal-ingest routes
+    # _TRANSPORT=kernel there (journal_ingest.rs:322) and collect_kernel is
+    # on.  But it is written only when the kernel actually logs, and that is
+    # sporadic: watershop's most recent kernel message predates the Jul 30
+    # pond reset, so the file simply has not been created yet and the
+    # benchmark failed on every tick.  The glob depends on no single file
+    # having appeared, and measures retained log volume directly -- which is
+    # what the metric was always described as measuring.
+    if "${PONDBIN}" list /logs/journal/ 2>/dev/null | grep -q '\.jsonl'; then
         # A failed read must not be published as a FAST read.  This block
         # used to time the command under `|| true` and record the elapsed
         # time regardless, so a read that errored out in 5 ms landed on the
@@ -202,7 +211,7 @@ mkdir -p "${MEASURE_OUT_DIR}"
         # the best tick we ever had.  Now the duration is only published
         # when the read actually returned, and the failure is counted.
         READ_START=$(date +%s.%N)
-        if "${PONDBIN}" cat 'jsonlogs:///logs/journal/kernel.jsonl' \
+        if "${PONDBIN}" cat 'jsonlogs:///logs/journal/*.jsonl' \
             --sql 'SELECT COUNT(*) FROM source' --format=table >/dev/null; then
             READ_END=$(date +%s.%N)
             READ_SECONDS=$(awk -v a="${READ_END}" -v b="${READ_START}" \
@@ -213,7 +222,7 @@ mkdir -p "${MEASURE_OUT_DIR}"
         fi
     else
         echo "ERROR: selfmon step 'read-benchmark' failed:" \
-            "/logs/journal/kernel.jsonl not listable" >&2
+            "no /logs/journal/*.jsonl to scan" >&2
     fi
     if [ "${READ_OK}" -eq 0 ]; then
         FAILURE_COUNT=$((FAILURE_COUNT + 1))
@@ -262,9 +271,17 @@ mkdir -p "${MEASURE_OUT_DIR}"
 }
 
 # One probe per pond defined under ${BASE_DIR}/env/.
+#
+# Not every env file is a pond: terraform also writes credential env files
+# there (env/_minio-admin.env, used by the aws-cli container to create and
+# empty buckets).  A leading underscore marks "not a pond" -- _self is the
+# other one, and it is handled explicitly rather than by this loop.  Without
+# the skip, _minio-admin is enumerated as a pond name and its ingest below
+# runs against a mknod the yaml never declares, failing on every tick.
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
+    case "$pond_name" in _*) continue ;; esac
     step "measure:${pond_name}" "${SCRIPTS}/measure-pond.sh" "${pond_name}"
 done
 
@@ -275,8 +292,9 @@ step ingest:journal "${PONDBIN}" run /system/etc/journal push
 step ingest:caddy-access "${PONDBIN}" run /system/etc/caddy-access push
 
 # Ingest per-pond perf jsonl.  One mknod per pond + _self because
-# logfile-ingest selects exactly ONE active file per mknod.  Mknods
-# match the env file enumeration above one-for-one, plus _self.
+# logfile-ingest selects exactly ONE active file per mknod.  Mknods match
+# the pond env files one-for-one, plus _self; underscore-prefixed env files
+# are skipped here for the same reason as the measure loop above.
 # These were the worst offenders: `2>/dev/null || true` discarded the error
 # text as well as the status.  This is the ingest that feeds every chart, so
 # a silent failure here stalls the entire dataset while the page keeps
@@ -285,6 +303,7 @@ step ingest:measure:_self "${PONDBIN}" run /system/etc/measure/_self push
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
+    case "$pond_name" in _*) continue ;; esac
     step "ingest:measure:${pond_name}" \
         "${PONDBIN}" run "/system/etc/measure/${pond_name}" push
 done
@@ -318,9 +337,8 @@ step materialize-perf "${PONDBIN}" run /system/etc/materialize-perf
 # Sitegen render, with wall-clock timing.  Output dir is owned by
 # ${USER} (provisioned by terraform) and served by Caddy at /selfmon/.
 # Vendor assets (DuckDB-WASM, Plot, D3) are installed at
-# /usr/share/watertown/vendor by the watertown .deb (see
-# install-watertown.sh), which is where sitegen's find_vendor_dir()
-# searches for them.
+# /usr/share/watertown/vendor by the watertown .deb, which is where
+# sitegen's find_vendor_dir() searches for them.
 SITE_OUT="/var/www/selfmon/${INSTANCE}"
 SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"
 
