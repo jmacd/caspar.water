@@ -20,6 +20,11 @@
 #   list.seconds        gauge          time `pond list /`
 #   peak_rss.bytes      updowncounter  prior-tick max from journal
 #
+# Limiter state is deliberately NOT flattened into this per-pond row.  A pond
+# can have several limiters with the same dimension (backup ops, alert ops,
+# etc.), so path is part of the identity.  `pond limits --format jsonl`
+# appends long-form rows to the shared limits.jsonl feed instead.
+#
 # Default kind is `gauge`; only non-gauge entries appear in the
 # semconv registry, and chart.js applies a counter rate transform
 # only for keys explicitly listed there.
@@ -265,4 +270,16 @@ fi
         "${SIZE_BYTES}" "${LIST_SECONDS}" "${PEAK_RSS_BYTES}" "${RUN_SECONDS}" \
         "${RUN_WALL_S}" "${TIMER_ACTIVE}" "${LAST_RUN_AGO}" "${TIMER_INTERVAL_S}" \
         >> "${MEASURE_OUT_DIR}/${POND_NAME}.jsonl"
+
+    # ── bounded limiter state ─────────────────────────────────────
+    # Reads only constant-size control buckets; it does not scan
+    # /sys/limits/usage history.  Run after the ordinary perf row is durable:
+    # a broken limiter config must fail this probe visibly without also
+    # erasing unrelated performance telemetry for the tick.
+    #
+    # The command includes birthplace, limiter path, unit and sampling time in
+    # every row, so all ponds can append to one long-form feed without
+    # shell-side JSON rewriting.
+    "${PONDBIN}" limits --format jsonl \
+        >> "${MEASURE_OUT_DIR}/limits.jsonl"
 )

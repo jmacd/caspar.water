@@ -44,12 +44,16 @@ spec:
 # tick, ~100 when a checkpoint is written and ~231 for a compaction, against
 # the 2 ops/tick the old logical count reported.
 #
-# At an hourly timer that is ~900 requests/day, so the former 2000 ops/day left
-# barely 2x headroom and the former burst of 200 sat BELOW a single compaction
-# tick -- it would have refused ordinary maintenance.  The numbers below are
-# sized to catch a runaway, which is an order-of-magnitude event, rather than to
-# shave a factor of two off normal traffic: ~20x headroom on the day, and a
-# burst comfortably above the largest tick we have measured.
+# The synthetic pond materially understated mature staging traffic.  Once
+# URL-keyed physical metering reached watershop, ordinary hourly pushes cost
+# roughly 1100-1600 requests (water was the largest at ~1578).  The interim
+# 20000/day, burst 1000 policy therefore refused every producer's ordinary
+# backup: ingestion continued but the remote stopped advancing.
+#
+# At an hourly timer the measured worst case is ~38000 requests/day.  The
+# defaults below leave room to observe variation while still turning a
+# sustained multi-fold runaway into a refusal: 100000/day and a burst more
+# than 3x the largest tick seen so far.
 #
 # These come from a synthetic pond.  Treat them as a ceiling to observe against,
 # not as a description of prod, and tighten from the `observed` column of
@@ -97,10 +101,9 @@ spec:
   factory: rate-limit
   config:
     unit: ops/day
-    limit: "${env:BACKUP_OPS_PER_DAY:-20000}"
-    # ~20x a measured day, and well above the ~231 requests of the largest tick
-    # observed (a compaction), so routine maintenance is never refused.
-    burst: 1000
+    limit: "${env:BACKUP_OPS_PER_DAY:-100000}"
+    # Real mature staging pushes measured ~1100-1600 requests per tick.
+    burst: 5000
 ---
 version: v1
 kind: backup
