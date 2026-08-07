@@ -36,6 +36,25 @@ spec:
 # because the purpose here is first to observe usage against a ceiling, and only
 # then to tighten.
 #
+# OPS RE-DERIVED (physical metering).  The ops numbers above counted calls the
+# pond made; the limiter now charges requests that actually reach the provider,
+# which is what a bill is made of.  The two differ by more than an order of
+# magnitude: a local MinIO measurement of a whole tick (testsuite/measure-
+# remote-cost.sh, fresh process per tick) found ~38 requests for an ordinary
+# tick, ~100 when a checkpoint is written and ~231 for a compaction, against
+# the 2 ops/tick the old logical count reported.
+#
+# At an hourly timer that is ~900 requests/day, so the former 2000 ops/day left
+# barely 2x headroom and the former burst of 200 sat BELOW a single compaction
+# tick -- it would have refused ordinary maintenance.  The numbers below are
+# sized to catch a runaway, which is an order-of-magnitude event, rather than to
+# shave a factor of two off normal traffic: ~20x headroom on the day, and a
+# burst comfortably above the largest tick we have measured.
+#
+# These come from a synthetic pond.  Treat them as a ceiling to observe against,
+# not as a description of prod, and tighten from the `observed` column of
+# /sys/limits/usage once real traffic has run under them.
+#
 # The limit is an `${env:...}` reference with a default, so a single shared
 # document still permits per-instance tuning from env/<instance>.env.  Numeric
 # fields can be references on the mknod path because expansion happens on the
@@ -78,8 +97,10 @@ spec:
   factory: rate-limit
   config:
     unit: ops/day
-    limit: "${env:BACKUP_OPS_PER_DAY:-2000}"
-    burst: 200
+    limit: "${env:BACKUP_OPS_PER_DAY:-20000}"
+    # ~20x a measured day, and well above the ~231 requests of the largest tick
+    # observed (a compaction), so routine maintenance is never refused.
+    burst: 1000
 ---
 version: v1
 kind: backup

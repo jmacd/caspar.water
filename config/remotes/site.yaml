@@ -43,6 +43,13 @@ spec:
 # round-trip per remote to read the tip, so frequent polling across three
 # remotes spends ops steadily even when it transfers nothing.
 #
+# The ops figure survived the move to physical metering unchanged.  Charging
+# provider requests rather than logical calls raised the real cost of a pull by
+# more than an order of magnitude, but this pond ticks every three hours across
+# three remotes, so even at the measured per-tick rates it spends a few hundred
+# requests a day against 50000.  The producers' budget did have to be
+# re-derived; see config/remotes/producer.yaml.
+#
 # INITIAL IMPORT: the first import of water was 11.4 GB and will be refused by
 # these budgets.  Seed it with `POND_IGNORE_LIMITS=1 pond pull`, on that one
 # command only -- never in env/<instance>.env.
