@@ -104,6 +104,17 @@ spec:
 version: v1
 kind: mknod
 metadata:
+  path: /system/etc/measure/limits
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/limits.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/limits.jsonl"
+    pond_path:        /measure
+---
+version: v1
+kind: mknod
+metadata:
   path: /system/etc/measure/noyo-staging
 spec:
   factory: logfile-ingest
@@ -240,6 +251,66 @@ spec:
             FROM logs
             GROUP BY date_trunc('hour', CAST(ts AS TIMESTAMP)), status
             ORDER BY timestamp
+
+      # Latest bounded state for every limiter on every pond.  The source is
+      # long-form because limiter path is identity: two ops limiters (remote
+      # requests and alert messages) must remain distinct.  Selfmon samples
+      # constant-size control buckets; no /sys/limits/usage history scan is
+      # involved.
+      - name: "limiters-current"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            m: "jsonlogs:///measure/limits.jsonl"
+          query: >-
+            SELECT
+              timestamp,
+              pond,
+              remotes,
+              limiter,
+              unit,
+              charged,
+              observed,
+              observed_since_us,
+              observed_window_complete,
+              "limit",
+              burst_charged,
+              burst_observed,
+              burst,
+              window_secs,
+              burst_window_secs,
+              reset_secs,
+              burst_reset_secs,
+              error
+            FROM (
+              SELECT
+                CAST(timestamp AS TIMESTAMP) AS timestamp,
+                pond,
+                remotes,
+                limiter,
+                unit,
+                CAST(charged AS BIGINT) AS charged,
+                CAST(observed AS BIGINT) AS observed,
+                CAST(observed_since_us AS BIGINT) AS observed_since_us,
+                CAST(observed_window_complete AS BOOLEAN)
+                  AS observed_window_complete,
+                CAST("limit" AS BIGINT) AS "limit",
+                CAST(burst_charged AS BIGINT) AS burst_charged,
+                CAST(burst_observed AS BIGINT) AS burst_observed,
+                CAST(burst AS BIGINT) AS burst,
+                CAST(window_secs AS BIGINT) AS window_secs,
+                CAST(burst_window_secs AS BIGINT) AS burst_window_secs,
+                CAST(reset_secs AS BIGINT) AS reset_secs,
+                CAST(burst_reset_secs AS BIGINT) AS burst_reset_secs,
+                error,
+                ROW_NUMBER() OVER (
+                  PARTITION BY pond, limiter, unit
+                  ORDER BY CAST(timestamp AS TIMESTAMP) DESC
+                ) AS row_num
+              FROM m
+            )
+            WHERE row_num = 1
+            ORDER BY pond, limiter, unit
 
       # ── Per-pond typed series ────────────────────────────────────
       # All have the same SQL skeleton; only the source URL differs.
@@ -556,6 +627,8 @@ spec:
       # from the manifest instead of decoding ~526k raw rows up front.
       - name: "perf"
         pattern: "/reduced/*/*/*.series"
+      - name: "limiters"
+        pattern: "series:///derived/limiters-current"
     # Per-pond systemd-style status cards rendered server-side from
     # ingested journal data.  Sitegen lists journal `.jsonl` files
     # matching `journal_pattern`, filters basenames against
@@ -590,6 +663,8 @@ spec:
         href: "/selfmon/index.html"
       - label: "Metrics"
         href: "/selfmon/metrics.html"
+      - label: "Limiters"
+        href: "/selfmon/limiters.html"
     routes:
       - name: "status"
         type: template
@@ -601,3 +676,8 @@ spec:
         slug: "metrics"
         page: "/system/site/metrics.md"
         export: "perf"
+      - name: "limiters"
+        type: template
+        slug: "limiters"
+        page: "/system/site/limiters.md"
+        export: "limiters"

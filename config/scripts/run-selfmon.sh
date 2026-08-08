@@ -307,6 +307,10 @@ for envf in "${BASE_DIR}/env"/*.env; do
     step "ingest:measure:${pond_name}" \
         "${PONDBIN}" run "/system/etc/measure/${pond_name}" push
 done
+# Every pond appends long-form limiter rows to one shared file.  Unlike the
+# wide perf feed, limiter path is part of the row identity, so adding an alert
+# limiter does not require adding columns or another ingest node.
+step ingest:measure:limits "${PONDBIN}" run /system/etc/measure/limits push
 
 # Sync templates (host -> pond).  /system/site is created by the yaml
 # mkdir; we copy each template file individually because `pond copy`
