@@ -359,5 +359,9 @@ SG_PEAK_MB=$(grep -oE 'Peak memory usage: [0-9.]+ MB' "${SG_LOG}" \
     | awk '{if ($4+0 > max) max=$4+0} END{printf "%.2f", (max==""?0:max)}')
 printf '{"status":"%s","seconds":%s,"peak_rss_mb":%s}\n' \
     "${SG_STATUS}" "${SG_SECONDS}" "${SG_PEAK_MB}" > "${SITEGEN_TIMING}"
-[ "${SG_STATUS}" = fail ] && cat "${SG_LOG}" >&2
+if [ "${SG_STATUS}" = fail ]; then
+    cat "${SG_LOG}" >&2
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+    FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}sitegen"
+fi
 rm -f "${SG_LOG}"
