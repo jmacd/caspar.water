@@ -1,6 +1,6 @@
 ---
 title: "Limiters"
-layout: logs
+layout: limiters
 ---
 
 # Watershop Pond Limiters
@@ -16,4 +16,4 @@ traffic. They should agree during ordinary governed work; `observed` may exceed
 limiter window ago, so older charged buckets have no corresponding independent
 measurement yet and the totals are not comparable.
 
-{{ viz renderer="logs" /}}
+{{ viz renderer="limiters" /}}
