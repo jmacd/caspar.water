@@ -252,65 +252,216 @@ spec:
             GROUP BY date_trunc('hour', CAST(ts AS TIMESTAMP)), status
             ORDER BY timestamp
 
-      # Latest bounded state for every limiter on every pond.  The source is
-      # long-form because limiter path is identity: two ops limiters (remote
-      # requests and alert messages) must remain distinct.  Selfmon samples
-      # constant-size control buckets; no /sys/limits/usage history scan is
-      # involved.
-      - name: "limiters-current"
+      # Historical limiter utilization in the same wide-series shape chart.js
+      # consumes for ordinary selfmon metrics.  The collector source remains
+      # long-form so limiter path/unit are preserved at ingestion; this query
+      # projects the configured watershop remote budgets into stable columns
+      # named <pond>.<metric>.<unit>.  Adding a new pond or limiter requires a
+      # corresponding projection here, just as adding a pond to `perf` requires
+      # a timeseries-join input below.
+      #
+      # Attribution is emitted only after the independent observed window is
+      # complete.  Before then charged includes pre-upgrade buckets that have no
+      # observed counterpart, so a percentage would be misleading.
+      - name: "limiters"
         factory: "sql-derived-series"
         config:
           patterns:
             m: "jsonlogs:///measure/limits.jsonl"
           query: >-
-            SELECT
-              timestamp,
-              pond,
-              remotes,
-              limiter,
-              unit,
-              charged,
-              observed,
-              observed_since_us,
-              observed_window_complete,
-              "limit",
-              burst_charged,
-              burst_observed,
-              burst,
-              window_secs,
-              burst_window_secs,
-              reset_secs,
-              burst_reset_secs,
-              error
-            FROM (
+            WITH typed AS (
               SELECT
                 CAST(timestamp AS TIMESTAMP) AS timestamp,
                 pond,
-                remotes,
                 limiter,
                 unit,
-                CAST(charged AS BIGINT) AS charged,
-                CAST(observed AS BIGINT) AS observed,
-                CAST(observed_since_us AS BIGINT) AS observed_since_us,
-                CAST(observed_window_complete AS BOOLEAN)
-                  AS observed_window_complete,
-                CAST("limit" AS BIGINT) AS "limit",
-                CAST(burst_charged AS BIGINT) AS burst_charged,
-                CAST(burst_observed AS BIGINT) AS burst_observed,
-                CAST(burst AS BIGINT) AS burst,
-                CAST(window_secs AS BIGINT) AS window_secs,
-                CAST(burst_window_secs AS BIGINT) AS burst_window_secs,
-                CAST(reset_secs AS BIGINT) AS reset_secs,
-                CAST(burst_reset_secs AS BIGINT) AS burst_reset_secs,
-                error,
-                ROW_NUMBER() OVER (
-                  PARTITION BY pond, limiter, unit
-                  ORDER BY CAST(timestamp AS TIMESTAMP) DESC
-                ) AS row_num
+                CAST(charged AS DOUBLE) AS charged,
+                CAST(observed AS DOUBLE) AS observed,
+                CAST(observed_window_complete AS BOOLEAN) AS observed_complete,
+                CAST("limit" AS DOUBLE) AS window_limit,
+                CAST(burst_charged AS DOUBLE) AS burst_charged,
+                CAST(burst AS DOUBLE) AS burst_limit
               FROM m
+              WHERE error IS NULL OR error = ''
+            ),
+            configured AS (
+              SELECT *
+              FROM typed
+              WHERE (
+                pond IN (
+                  'noyo-prod',
+                  'noyo-staging',
+                  'septic-prod',
+                  'septic-staging',
+                  'water-prod',
+                  'water-staging'
+                )
+                AND (
+                  (unit = 'ops' AND limiter = '/sys/limits/backup-ops')
+                  OR
+                  (unit = 'bytes' AND limiter = '/sys/limits/backup-bytes')
+                )
+              )
+              OR (
+                pond = 'site-staging'
+                AND (
+                  (unit = 'ops' AND limiter = '/sys/limits/pull-ops')
+                  OR
+                  (unit = 'bytes' AND limiter = '/sys/limits/pull-bytes')
+                )
+              )
             )
-            WHERE row_num = 1
-            ORDER BY pond, limiter, unit
+            SELECT
+              timestamp,
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-prod.ops_window.percent",
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-prod.ops_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-prod.bytes_window.percent",
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-prod.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-prod.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'noyo-prod' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-prod.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-staging.ops_window.percent",
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-staging.ops_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-staging.bytes_window.percent",
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-staging.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-staging.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'noyo-staging' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-staging.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-prod.ops_window.percent",
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-prod.ops_burst.percent",
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-prod.bytes_window.percent",
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-prod.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-prod.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'septic-prod' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-prod.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-staging.ops_window.percent",
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-staging.ops_burst.percent",
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-staging.bytes_window.percent",
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-staging.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-staging.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'septic-staging' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-staging.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "site-staging.ops_window.percent",
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "site-staging.ops_burst.percent",
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "site-staging.bytes_window.percent",
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "site-staging.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "site-staging.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'site-staging' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "site-staging.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-prod.ops_window.percent",
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-prod.ops_burst.percent",
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-prod.bytes_window.percent",
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-prod.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-prod.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'water-prod' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-prod.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-staging.ops_window.percent",
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-staging.ops_burst.percent",
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-staging.bytes_window.percent",
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-staging.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-staging.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'water-staging' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-staging.bytes_attribution.percent"
+            FROM configured
+            GROUP BY timestamp
+            ORDER BY timestamp
 
       # ── Per-pond typed series ────────────────────────────────────
       # All have the same SQL skeleton; only the source URL differs.
@@ -466,6 +617,21 @@ spec:
     target: /metrics/perf.series
     time_column: timestamp
 ---
+# Materialize the historical wide limiter series independently from perf.
+# Keeping a separate target/export gives the dedicated page only the six
+# limiter charts it needs and lets the generic chart renderer retain all
+# history without re-reading the long-form JSONL on every site build.
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/materialize-limiters
+spec:
+  factory: materialize-series
+  config:
+    source: "series:///derived/limiters"
+    target: /metrics/limiters.series
+    time_column: timestamp
+---
 # Multi-resolution rollup of the materialized perf series.
 #
 # Without this, metrics.html exported `perf` at raw 1-minute resolution:
@@ -537,6 +703,15 @@ spec:
           resolutions: [1m, 10m, 1h, 6h, 1d]
           aggregations:
             - type: "avg"
+      - name: "limiters"
+        factory: "temporal-reduce"
+        config:
+          in_pattern: "series:///metrics/limiters.series"
+          out_pattern: "data"
+          time_column: "timestamp"
+          resolutions: [1m, 10m, 1h, 6h, 1d]
+          aggregations:
+            - type: "avg"
 ---
 # Sitegen factory: renders a tiny dashboard from the perf series
 # above into /var/www/selfmon/<instance>/ (served by Caddy at
@@ -571,6 +746,26 @@ spec:
     # chart.js renders these as a small grey paragraph beneath each
     # chart.  Plain text only (no HTML) -- the client uses textContent.
     metric_captions:
+      ops_window.percent: >-
+        Sliding-window operations charged as a percentage of each pond's
+        configured remote-operations budget.
+      bytes_window.percent: >-
+        Sliding-window physical bytes charged as a percentage of each pond's
+        configured remote-byte budget.
+      ops_burst.percent: >-
+        Remote operations charged in the short burst window as a percentage
+        of its configured burst allowance.
+      bytes_burst.percent: >-
+        Physical remote bytes charged in the short burst window as a
+        percentage of its configured burst allowance.
+      ops_attribution.percent: >-
+        Independently observed physical operations divided by charged
+        operations. This appears only after a full observation window; 100%
+        means physical traffic and budget accounting agree.
+      bytes_attribution.percent: >-
+        Independently observed physical bytes divided by charged bytes. This
+        appears only after a full observation window; 100% means physical
+        traffic and budget accounting agree.
       committed.txn_ids: >-
         Commit rate per pond (transactions/second), derived from the
         running transaction-id counter.  Steady ingestion shows up as
@@ -626,9 +821,9 @@ spec:
       # The reduced tree, not `/derived/perf`: chart.js picks a resolution
       # from the manifest instead of decoding ~526k raw rows up front.
       - name: "perf"
-        pattern: "/reduced/*/*/*.series"
+        pattern: "/reduced/perf/*/*.series"
       - name: "limiters"
-        pattern: "series:///derived/limiters-current"
+        pattern: "/reduced/limiters/*/*.series"
     # Per-pond systemd-style status cards rendered server-side from
     # ingested journal data.  Sitegen lists journal `.jsonl` files
     # matching `journal_pattern`, filters basenames against
