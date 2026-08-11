@@ -2,17 +2,22 @@
 # run.sh -- Run a watertown instance (called by systemd timer).
 #
 # Usage: run.sh <instance>
-set -ex
+set -e
 
 INSTANCE=$1
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
-EXE="${SCRIPTS}/pond.sh"
 ENV_FILE="${BASE_DIR}/env/${INSTANCE}.env"
 
 # Source env file for variables needed by run.sh itself (e.g., CLOUD_HOST)
 if [ -f "${ENV_FILE}" ]; then
     source "${ENV_FILE}"
+fi
+
+if [ "${POND_RUNTIME:-container}" = "native" ]; then
+    EXE="${SCRIPTS}/pond-native.sh"
+else
+    EXE="${SCRIPTS}/pond.sh"
 fi
 
 # Extract pond type from instance name (e.g., noyo-staging -> noyo).
@@ -26,7 +31,11 @@ TYPE="${TYPE%-prod}"
 # one per sub-command).  Selfmon runs natively and has no image.
 case "${TYPE}" in
     *selfmon) : ;;
-    *) ${EXE} "${INSTANCE}" --pull-image ;;
+    *)
+        if [ "${POND_RUNTIME:-container}" != "native" ]; then
+            ${EXE} "${INSTANCE}" --pull-image
+        fi
+        ;;
 esac
 
 case "${TYPE}" in
@@ -52,11 +61,16 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /templates pull
         ${EXE} "${INSTANCE}" run /img pull
         ${EXE} "${INSTANCE}" run /history-src pull
-        ${EXE} "${INSTANCE}" pull water
-        ${EXE} "${INSTANCE}" pull noyo
-        ${EXE} "${INSTANCE}" pull septic
+        # A migrated pond may be published from its copied snapshot before its
+        # remote URL watermarks are safely transferred.  This is a temporary,
+        # explicit cutover mode; normal scheduled instances always pull.
+        if [ "${SKIP_REMOTE_PULLS:-0}" != "1" ]; then
+            ${EXE} "${INSTANCE}" pull water
+            ${EXE} "${INSTANCE}" pull noyo
+            ${EXE} "${INSTANCE}" pull septic
+        fi
         # Build site with atomic deploy
-        DEPLOY_BASE="${BASE_DIR}/www/${INSTANCE}"
+        DEPLOY_BASE="${SITE_DEPLOY_BASE:-${BASE_DIR}/www/${INSTANCE}}"
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"
@@ -68,7 +82,11 @@ case "${TYPE}" in
         if [ -d "${DEPLOY_BASE}/current/data" ]; then
             cp -al "${DEPLOY_BASE}/current/data" "${DEPLOY_DIR}/data"
         fi
-        SITE_BUILD_DIR="${DEPLOY_DIR}" ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build /www
+        SITE_OUTPUT=/www
+        if [ "${POND_RUNTIME:-container}" = "native" ]; then
+            SITE_OUTPUT="${DEPLOY_DIR}"
+        fi
+        SITE_BUILD_DIR="${DEPLOY_DIR}" ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build "${SITE_OUTPUT}"
         ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
         # Clean old builds (keep last 3)
         ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf

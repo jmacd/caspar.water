@@ -1,13 +1,9 @@
 #!/bin/sh
-# setup_script.sh -- Install caddy on the cloud host.
+# setup_script.sh -- Install cloud host system dependencies.
 #
-# The cloud host's only job is to serve the static site (built and
-# rsync'd in from the watershop pond) plus terminate TLS via caddy.
-# It does NOT run any watertown instance -- that lived here historically
-# but caused redundant R2 imports (cf. caspar.water remote-bandwidth-bug
-# investigation).  Watershop's pond@site-prod builds and rsyncs the
-# site to ${HOME}/watertown/www/build-<ts>/ then atomically retargets
-# the 'current' symlink, so this host needs only caddy + rsync over SSH.
+# Caddy serves the site and proxies InfluxDB.  The native site-prod pond
+# builds directly into ${HOME}/watertown/www and is installed separately
+# from the promoted Watertown deb artifact.
 set -e
 
 # Install caddy if not present
@@ -20,7 +16,7 @@ if ! command -v caddy >/dev/null 2>&1; then
     apt-get install -y caddy
 fi
 
-# Install rsync if not present (watershop pushes builds over SSH)
+# Install rsync for the one-time pond migration and rollback copies.
 if ! command -v rsync >/dev/null 2>&1; then
     apt-get update -y
     apt-get install -y rsync

@@ -18,6 +18,29 @@ r2_endpoint   = ""
 r2_access_key = ""
 r2_secret_key = ""
 
+# MinIO remains each producer's origin. Add Azure mirrors one producer at a
+# time; site-prod can switch only after all three mirrors are present.
+azure_mirror_instances   = []
+site_prod_remote_backend = "minio"
+
+# Fill these from terraform/station/azure outputs before selecting Azure.
+azure_storage_account = ""
+azure_tenant_id        = ""
+azure_producer_credentials = {
+  noyo-prod   = { client_id = "", client_secret = "" }
+  septic-prod = { client_id = "", client_secret = "" }
+  water-prod  = { client_id = "", client_secret = "" }
+}
+azure_site_credentials = {
+  client_id     = ""
+  client_secret = ""
+}
+
+# On the first Azure apply for a producer, name it here to authorize the
+# otherwise-refused initial history push. A host marker makes this one-shot,
+# but reset this list to [] immediately after the successful apply.
+azure_seed_instances = []
+
 # HydroVu API (noyo pond)
 hydrovu_key_id    = ""
 hydrovu_key_value = ""

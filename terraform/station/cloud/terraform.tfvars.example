@@ -3,9 +3,23 @@
 # Copy to terraform.tfvars and fill in secrets.
 # This file is gitignored — credentials stay local.
 #
-# The cloud host serves the static site (rsync'd from watershop) via
-# caddy.  It does not run any watertown instance and so does not need
-# R2 credentials.
+# The cloud host runs site-prod natively and reads production mirrors through
+# the Azure read-only service principal.
 
 # Linode API token
 li_token = ""
+
+azure_storage_account = ""
+azure_tenant_id        = ""
+azure_site_credentials = {
+  client_id     = ""
+  client_secret = ""
+}
+
+minio_site_credentials = {
+  endpoint   = ""
+  region     = ""
+  access_key = ""
+  secret_key = ""
+  allow_http = "true"
+}

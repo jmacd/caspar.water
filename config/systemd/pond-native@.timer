@@ -1,0 +1,9 @@
+[Unit]
+Description=Watertown native %i (every 3h)
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=3h
+
+[Install]
+WantedBy=timers.target

@@ -285,7 +285,24 @@ spec:
               WHERE error IS NULL OR error = ''
             ),
             configured AS (
-              SELECT *
+              SELECT
+                timestamp,
+                CASE
+                  WHEN limiter IN (
+                    '/sys/limits/azure-mirror-ops',
+                    '/sys/limits/azure-mirror-bytes'
+                  )
+                  THEN pond || '-azure'
+                  ELSE pond
+                END AS pond,
+                limiter,
+                unit,
+                charged,
+                observed,
+                observed_complete,
+                window_limit,
+                burst_charged,
+                burst_limit
               FROM typed
               WHERE (
                 pond IN (
@@ -300,6 +317,20 @@ spec:
                   (unit = 'ops' AND limiter = '/sys/limits/backup-ops')
                   OR
                   (unit = 'bytes' AND limiter = '/sys/limits/backup-bytes')
+                )
+              )
+              OR (
+                pond IN ('noyo-prod', 'septic-prod', 'water-prod')
+                AND (
+                  (
+                    unit = 'ops'
+                    AND limiter = '/sys/limits/azure-mirror-ops'
+                  )
+                  OR
+                  (
+                    unit = 'bytes'
+                    AND limiter = '/sys/limits/azure-mirror-bytes'
+                  )
                 )
               )
               OR (
@@ -458,7 +489,70 @@ spec:
               MAX(CASE WHEN pond = 'water-staging' AND unit = 'bytes'
                 AND observed_complete
                 THEN 100.0 * observed / NULLIF(charged, 0) END)
-                AS "water-staging.bytes_attribution.percent"
+                AS "water-staging.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-prod-azure.ops_window.percent",
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-prod-azure.ops_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "noyo-prod-azure.bytes_window.percent",
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "noyo-prod-azure.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-prod-azure.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'noyo-prod-azure' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "noyo-prod-azure.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-prod-azure.ops_window.percent",
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-prod-azure.ops_burst.percent",
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "septic-prod-azure.bytes_window.percent",
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "septic-prod-azure.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-prod-azure.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'septic-prod-azure' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "septic-prod-azure.bytes_attribution.percent",
+
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'ops'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-prod-azure.ops_window.percent",
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'ops'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-prod-azure.ops_burst.percent",
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * charged / NULLIF(window_limit, 0) END)
+                AS "water-prod-azure.bytes_window.percent",
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'bytes'
+                THEN 100.0 * burst_charged / NULLIF(burst_limit, 0) END)
+                AS "water-prod-azure.bytes_burst.percent",
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'ops'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-prod-azure.ops_attribution.percent",
+              MAX(CASE WHEN pond = 'water-prod-azure' AND unit = 'bytes'
+                AND observed_complete
+                THEN 100.0 * observed / NULLIF(charged, 0) END)
+                AS "water-prod-azure.bytes_attribution.percent"
             FROM configured
             GROUP BY timestamp
             ORDER BY timestamp

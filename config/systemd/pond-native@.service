@@ -1,0 +1,14 @@
+[Unit]
+Description=Watertown native %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+MemoryAccounting=yes
+MemoryHigh=500M
+MemoryMax=600M
+MemorySwapMax=512M
+TimeoutStartSec=2h
+ExecStart=/home/jmacd/watertown/config/scripts/run.sh %i
+Environment=HOME=/home/jmacd

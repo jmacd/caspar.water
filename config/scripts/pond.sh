@@ -61,6 +61,13 @@ PODMAN_ARGS=(
     -v "${BASE_DIR}/config:/config:ro"
 )
 
+# Deliberate one-shot seed override. Keep it out of the persistent env file:
+# callers must opt in on the specific command, and the wrapper forwards only
+# this recognized control variable into the container.
+if [ -n "${POND_IGNORE_LIMITS:-}" ]; then
+    PODMAN_ARGS+=(-e "POND_IGNORE_LIMITS=${POND_IGNORE_LIMITS}")
+fi
+
 # Mount data directory if set (water, septic)
 if [ -n "${DATA_DIR}" ]; then
     PODMAN_ARGS+=(-v "${DATA_DIR}:/data:ro")

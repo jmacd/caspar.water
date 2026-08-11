@@ -3,6 +3,9 @@ terraform {
     linode = {
       source = "linode/linode"
     }
+    local = {
+      source = "hashicorp/local"
+    }
   }
 }
 
@@ -10,6 +13,38 @@ variable "li_token" {
   description = "The token for linode"
   type        = string
   sensitive   = true
+}
+
+variable "azure_storage_account" {
+  description = "Azure storage account holding production pond mirrors"
+  type        = string
+}
+
+variable "azure_tenant_id" {
+  description = "Azure tenant for the site-prod read-only service principal"
+  type        = string
+  sensitive   = true
+}
+
+variable "azure_site_credentials" {
+  description = "Read-only Azure service-principal credentials for site-prod"
+  type = object({
+    client_id     = string
+    client_secret = string
+  })
+  sensitive = true
+}
+
+variable "minio_site_credentials" {
+  description = "Existing MinIO credentials used while site-prod watermark migration is pending"
+  type = object({
+    endpoint   = string
+    region     = string
+    access_key = string
+    secret_key = string
+    allow_http = string
+  })
+  sensitive = true
 }
 
 provider "linode" {
@@ -29,8 +64,40 @@ locals {
   deploy_key_src      = "${path.module}/../watershop/deploy_key.pub"
   setup_src           = "${path.module}/setup_script.sh"
   teardown_src        = "${path.module}/teardown_script.sh"
+  config_src          = "${path.module}/../../../config"
+
+  site_env_content = join("\n", [
+    "POND=${local.home}/pond-site-prod",
+    "POND_RUNTIME=native",
+    "POND_MEMORY_LIMIT_MB=512",
+    "DEB_CHANNEL=prod",
+    "S3_ENDPOINT=${var.minio_site_credentials.endpoint}",
+    "S3_REGION=${var.minio_site_credentials.region}",
+    "S3_ACCESS_KEY=${var.minio_site_credentials.access_key}",
+    "S3_SECRET_KEY=${var.minio_site_credentials.secret_key}",
+    "S3_ALLOW_HTTP=${var.minio_site_credentials.allow_http}",
+    "AZURE_STORAGE_ACCOUNT=${var.azure_storage_account}",
+    "AZURE_TENANT_ID=${var.azure_tenant_id}",
+    "AZURE_CLIENT_ID=${var.azure_site_credentials.client_id}",
+    "AZURE_CLIENT_SECRET=${var.azure_site_credentials.client_secret}",
+    "WATER_AZURE_URL=az://water-prod",
+    "NOYO_AZURE_URL=az://noyo-prod",
+    "SEPTIC_AZURE_URL=az://septic-prod",
+    "SITE_BASE_URL=/",
+    "SITE_DEPLOY_BASE=${local.base_dir}/www",
+    "SKIP_REMOTE_PULLS=0",
+    "GIT_REF=main",
+    "RUST_LOG=info",
+    "",
+  ])
 
   host = tolist(linode_instance.debian12-us-west.ipv4)[0]
+}
+
+resource "local_sensitive_file" "site_prod_env" {
+  filename        = "${path.module}/env/site-prod.env"
+  file_permission = "0600"
+  content         = local.site_env_content
 }
 
 resource "linode_instance" "debian12-us-west" {
@@ -163,6 +230,78 @@ resource "null_resource" "system_setup" {
       # not started it.  Ensure it's enabled+running before the Caddyfile
       # resource tries to reload.
       "systemctl enable --now caddy",
+    ]
+  }
+}
+
+# Install the promoted native Watertown package and the site-prod runtime.
+# The pond itself is copied separately from Watershop so its identity and
+# remote watermarks survive the host move; this resource never initializes,
+# resets, or deletes pond state.
+resource "null_resource" "site_runtime" {
+  triggers = {
+    runtime_hash = sha256(join("", [
+      filesha256("${local.config_src}/scripts/install-oras.sh"),
+      filesha256("${local.config_src}/scripts/pond-native.sh"),
+      filesha256("${local.config_src}/scripts/run.sh"),
+      filesha256("${local.config_src}/scripts/update-selfmon.sh"),
+      filesha256("${local.config_src}/site.yaml"),
+      filesha256("${local.config_src}/remotes/site-azure.yaml"),
+      filesha256("${local.config_src}/systemd/pond-native@.service"),
+      filesha256("${local.config_src}/systemd/pond-native@.timer"),
+      filesha256("${local.config_src}/systemd/pond-native-update@.service"),
+      filesha256("${local.config_src}/systemd/pond-native-update@.timer"),
+    ]))
+    env_hash = nonsensitive(sha256(local.site_env_content))
+    host_id  = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [
+    null_resource.system_setup,
+    local_sensitive_file.site_prod_env,
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = file(local.ssh_key)
+    host        = local.host
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "install -d -o jmacd -g jmacd -m 0755 ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/www",
+      "install -d -o jmacd -g jmacd -m 0700 ${local.home}/.config/systemd/user",
+    ]
+  }
+
+  provisioner "file" {
+    source      = "${local.config_src}/"
+    destination = "${local.base_dir}/config"
+  }
+
+  provisioner "file" {
+    source      = local_sensitive_file.site_prod_env.filename
+    destination = "/tmp/site-prod.env"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "install -o jmacd -g jmacd -m 0600 /tmp/site-prod.env ${local.base_dir}/env/site-prod.env",
+      "rm /tmp/site-prod.env",
+      "chmod +x ${local.base_dir}/config/scripts/*.sh",
+      "install -o jmacd -g jmacd -m 0644 ${local.base_dir}/config/systemd/pond-native@.service ${local.home}/.config/systemd/user/",
+      "install -o jmacd -g jmacd -m 0644 ${local.base_dir}/config/systemd/pond-native@.timer ${local.home}/.config/systemd/user/",
+      "install -m 0644 ${local.base_dir}/config/systemd/pond-native-update@.service /etc/systemd/system/",
+      "install -m 0644 ${local.base_dir}/config/systemd/pond-native-update@.timer /etc/systemd/system/",
+      "${local.base_dir}/config/scripts/install-oras.sh",
+      "${local.base_dir}/config/scripts/update-selfmon.sh site-prod",
+      "systemctl daemon-reload",
+      "systemctl enable --now pond-native-update@site-prod.timer",
+      "su - jmacd -c 'XDG_RUNTIME_DIR=/run/user/$(id -u); export XDG_RUNTIME_DIR; systemctl --user daemon-reload'",
+      # Deliberately do not start the site timer until the preserved pond has
+      # been copied and its Azure remotes have been verified.
+      "chown -R jmacd:jmacd ${local.base_dir}",
     ]
   }
 }

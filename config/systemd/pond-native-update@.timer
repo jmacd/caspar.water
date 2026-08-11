@@ -1,0 +1,9 @@
+[Unit]
+Description=Update native Watertown package for %i hourly
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
