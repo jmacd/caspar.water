@@ -600,8 +600,10 @@ spec:
       #   leak_label      - 'leak' (score >= 0.5) | 'no-leak' | NULL
       #   leak_confidence - cumulative-evidence weight in [0,1]
       #
-      # Pump state: well_depth_value < 42 m => pumping (same threshold and
-      # signal as the duty-cycle / pump-cycle analysis).
+      # Pump state comes from the canonical /pump-state series, which detects
+      # each drawdown adaptively and ends pumping at the excursion trough, when
+      # the upward recovery begins.  Static and recovering samples both retain
+      # the overlay's existing 'recovery' label.
       #
       # Leak score (v5 -- pressure-only, ground-truth validated): the system
       # pressure is measured near the main service meter and is NOISY (tank
@@ -657,17 +659,13 @@ spec:
           patterns:
             pressure: "series:///reduced/system-pressure/data/res=1m.series"
             depth: "series:///reduced/well-depth/data/res=1m.series"
+            pump: "series:///pump-state/well-pump-state"
           query: >-
-            WITH samples AS (
-              SELECT timestamp, "well_depth_value.avg" AS depth
-              FROM depth
-              WHERE "well_depth_value.avg" IS NOT NULL
-                AND "well_depth_value.avg" BETWEEN 10 AND 60
-            ),
-            state AS (
+            WITH state AS (
               SELECT timestamp,
-                CASE WHEN depth < 42.0 THEN 'pumping' ELSE 'recovery' END AS pump_state
-              FROM samples
+                CASE WHEN phase = 'pumping' THEN 'pumping'
+                     ELSE 'recovery' END AS pump_state
+              FROM pump
             ),
             changes AS (
               SELECT timestamp, pump_state,
@@ -925,10 +923,9 @@ spec:
     # A single authoritative per-sample classification of the well's three
     # physical states -- static, pumping and recovering -- derived from the
     # reduced 1-minute well-depth series.  Downstream consumers (the usage
-    # estimator in /usage, the calibration in /calibration, and -- in a later
-    # pass -- the /annotations overlay and /leak analysis) all read THIS series
-    # instead of re-deriving pump state, so there is one definition and no
-    # divergent thresholds.
+    # estimator in /usage, the calibration in /calibration, and the
+    # /annotations overlay) all read THIS series instead of re-deriving pump
+    # state, so there is one definition and no divergent thresholds.
     #
     # Detection (adaptive, no absolute depth gate).  The well has three states:
     #   * static     -- at rest near the seasonal static level;

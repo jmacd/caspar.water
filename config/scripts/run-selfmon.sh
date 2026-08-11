@@ -323,16 +323,16 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-# Materialize the perf join into /metrics/perf.series before sitegen, so
-# the /reduced rollup sitegen exports includes this tick's samples.  Must
-# come AFTER the per-pond ingest above (it reads /derived/perf, which reads
-# the ingested jsonl) and BEFORE sitegen.
+# Materialize the perf and limiter wide series before sitegen, so the /reduced
+# rollups include this tick's samples.  Both must come after ingest and before
+# sitegen.
 #
 # Non-fatal for the same reason as ingest: a failure here should leave the
 # dashboard one tick stale, not abort the tick.  The watermark is recomputed
 # from the target on every run, so a skipped tick self-heals -- the next run
 # picks up everything past the last stored row.
 step materialize-perf "${PONDBIN}" run /system/etc/materialize-perf
+step materialize-limiters "${PONDBIN}" run /system/etc/materialize-limiters
 
 # Maintenance already ran at the top of this tick; sitegen reads the pond
 # as-is.  The few versions appended since that pass are collapsed by the
@@ -359,5 +359,9 @@ SG_PEAK_MB=$(grep -oE 'Peak memory usage: [0-9.]+ MB' "${SG_LOG}" \
     | awk '{if ($4+0 > max) max=$4+0} END{printf "%.2f", (max==""?0:max)}')
 printf '{"status":"%s","seconds":%s,"peak_rss_mb":%s}\n' \
     "${SG_STATUS}" "${SG_SECONDS}" "${SG_PEAK_MB}" > "${SITEGEN_TIMING}"
-[ "${SG_STATUS}" = fail ] && cat "${SG_LOG}" >&2
+if [ "${SG_STATUS}" = fail ]; then
+    cat "${SG_LOG}" >&2
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+    FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}sitegen"
+fi
 rm -f "${SG_LOG}"
