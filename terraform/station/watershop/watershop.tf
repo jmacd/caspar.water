@@ -21,67 +21,87 @@ locals {
     secret_key = var.r2_secret_key
     allow_http = "false"
   }
+  empty_azure_credentials = {
+    client_id     = ""
+    client_secret = ""
+  }
+  azure_credentials = merge(
+    var.azure_producer_credentials,
+    { site-prod = var.azure_site_credentials },
+  )
 
   # Instance definitions
   instances = {
     noyo-staging = {
-      s3         = local.staging_s3
-      s3_url     = "s3://noyo-staging"
-      interval   = "1h"
-      boot_delay = "5min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
+      s3             = local.staging_s3
+      s3_url         = "s3://noyo-staging"
+      remote_backend = "minio"
+      azure_mirror   = false
+      interval       = "1h"
+      boot_delay     = "5min"
+      extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
     }
     noyo-prod = {
-      s3         = local.staging_s3
-      s3_url     = "s3://noyo-pond"
-      interval   = "1h"
-      boot_delay = "6min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/"
+      s3           = local.staging_s3
+      s3_url       = "s3://noyo-pond"
+      azure_mirror = contains(var.azure_mirror_instances, "noyo-prod")
+      interval     = "1h"
+      boot_delay   = "6min"
+      extra_env    = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod"
     }
     water-staging = {
-      s3         = local.staging_s3
-      s3_url     = "s3://water-staging"
-      interval   = "1h"
-      boot_delay = "2min"
-      extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
+      s3             = local.staging_s3
+      s3_url         = "s3://water-staging"
+      remote_backend = "minio"
+      azure_mirror   = false
+      interval       = "1h"
+      boot_delay     = "2min"
+      extra_env      = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
-      s3         = local.staging_s3
-      s3_url     = "s3://water-pond"
-      interval   = "1h"
-      boot_delay = "3min"
-      extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
+      s3           = local.staging_s3
+      s3_url       = "s3://water-pond"
+      azure_mirror = contains(var.azure_mirror_instances, "water-prod")
+      interval     = "1h"
+      boot_delay   = "3min"
+      extra_env    = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod"
     }
     septic-staging = {
-      s3         = local.staging_s3
-      s3_url     = "s3://septic-staging"
-      interval   = "1h"
-      boot_delay = "4min"
-      extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
+      s3             = local.staging_s3
+      s3_url         = "s3://septic-staging"
+      remote_backend = "minio"
+      azure_mirror   = false
+      interval       = "1h"
+      boot_delay     = "4min"
+      extra_env      = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
-      s3         = local.staging_s3
-      s3_url     = "s3://septic-pond"
-      interval   = "1h"
-      boot_delay = "5min"
-      extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
+      s3           = local.staging_s3
+      s3_url       = "s3://septic-pond"
+      azure_mirror = contains(var.azure_mirror_instances, "septic-prod")
+      interval     = "1h"
+      boot_delay   = "5min"
+      extra_env    = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod"
     }
     site-staging = {
-      s3         = local.staging_s3
-      s3_url     = ""
-      interval   = "3h"
-      boot_delay = "7min"
-      extra_env  = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
+      s3             = local.staging_s3
+      s3_url         = ""
+      remote_backend = "minio"
+      interval       = "3h"
+      boot_delay     = "7min"
+      extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
-      s3         = local.staging_s3
-      s3_url     = ""
-      interval   = "3h"
-      boot_delay = "8min"
-      extra_env  = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
+      s3             = local.staging_s3
+      s3_url         = ""
+      remote_backend = var.site_prod_remote_backend
+      interval       = "3h"
+      boot_delay     = "8min"
+      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod\nNOYO_AZURE_URL=az://noyo-prod\nSEPTIC_AZURE_URL=az://septic-prod\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
     watershop-selfmon = {
-      s3 = local.staging_s3
+      s3             = local.staging_s3
+      remote_backend = "minio"
       # s3_url provisions a MinIO bucket and the S3_* env used to resolve
       # credentials, but selfmon intentionally gets NO backup remote -- there
       # is no config/remotes/*.yaml applied to it: run-selfmon.sh prunes with
@@ -153,6 +173,10 @@ resource "local_file" "env_files" {
     "S3_ACCESS_KEY=${each.value.s3.access_key}",
     "S3_SECRET_KEY=${each.value.s3.secret_key}",
     "S3_ALLOW_HTTP=${each.value.s3.allow_http}",
+    "AZURE_STORAGE_ACCOUNT=${var.azure_storage_account}",
+    "AZURE_TENANT_ID=${var.azure_tenant_id}",
+    "AZURE_CLIENT_ID=${lookup(local.azure_credentials, each.key, local.empty_azure_credentials).client_id}",
+    "AZURE_CLIENT_SECRET=${lookup(local.azure_credentials, each.key, local.empty_azure_credentials).client_secret}",
     each.value.extra_env,
     "RUST_LOG=info",
     "",
@@ -206,6 +230,44 @@ resource "null_resource" "watershop" {
     local_file.minio_admin_env,
     local_file.timer_files,
   ]
+
+  lifecycle {
+    precondition {
+      condition = (
+        length(var.azure_mirror_instances) == 0 &&
+        var.site_prod_remote_backend == "minio"
+        ) || (
+        var.azure_storage_account != "" &&
+        var.azure_tenant_id != "" &&
+        var.azure_site_credentials.client_id != "" &&
+        var.azure_site_credentials.client_secret != "" &&
+        alltrue([
+          for name in ["noyo-prod", "septic-prod", "water-prod"] :
+          var.azure_producer_credentials[name].client_id != "" &&
+          var.azure_producer_credentials[name].client_secret != ""
+        ])
+      )
+      error_message = "Azure production deployment requires the storage account, tenant, producer credentials, and site credentials."
+    }
+
+    precondition {
+      condition = alltrue([
+        for name in var.azure_seed_instances :
+        var.deploy_production &&
+        contains(local.container_instance_names, name) &&
+        contains(var.azure_mirror_instances, name)
+      ])
+      error_message = "Every Azure seed must be a deployed production producer with an Azure mirror."
+    }
+
+    precondition {
+      condition = var.site_prod_remote_backend != "azure" || alltrue([
+        for name in ["noyo-prod", "septic-prod", "water-prod"] :
+        contains(var.azure_mirror_instances, name)
+      ])
+      error_message = "site-prod may use Azure only after every producer has an Azure mirror."
+    }
+  }
 
   connection {
     type  = "ssh"
@@ -453,15 +515,42 @@ resource "null_resource" "watershop" {
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer.yaml"
         if !startswith(name, "site-")
       ],
+      # Azure is additive for producers: origin remains MinIO while this
+      # document installs a second push-mode remote with independent limiters.
+      # With the default empty mirror list these commands are absent.
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml"
+        if !startswith(name, "site-") &&
+        lookup(local.instances[name], "azure_mirror", false) &&
+        !contains(var.azure_seed_instances, name)
+      ],
+      # The attachment transaction itself runs post-commit auto-push. Forward
+      # the deliberate seed override here as well as on the explicit push, or
+      # that first auto-push would charge the whole history to steady state.
+      [for name in var.azure_seed_instances :
+        "if [ -e ${local.base_dir}/.azure-seeded-${name} ]; then ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml; else POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml; fi"
+      ],
       # Seed each producer's bucket with the pond_init bundle so the site can
       # pull immediately, rather than waiting for the first collection tick.
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} push origin"
         if !startswith(name, "site-")
       ],
+      # Azure's first push can be many GiB and intentionally exceeds steady
+      # state limits. Naming an instance authorizes one seed; a persistent
+      # marker prevents a retained tfvars value from repeating the exemption
+      # on later applies. To reseed deliberately, remove that instance's marker
+      # after clearing or replacing its Azure container.
+      [for name in var.azure_seed_instances :
+        "if [ -e ${local.base_dir}/.azure-seeded-${name} ]; then echo '[azure-seed] ${name}: already seeded'; else POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/pond.sh ${name} push azure && touch ${local.base_dir}/.azure-seeded-${name}; fi"
+      ],
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml"
         if startswith(name, "site-")
+      ],
+      [for name in local.container_instance_names :
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml"
+        if startswith(name, "site-") && lookup(local.instances[name], "remote_backend", "minio") == "azure"
       ],
       # Enable + start producer and selfmon timers.  Each timer's OnBootSec
       # is already in the past, so starting a stopped timer fires its first

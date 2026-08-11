@@ -1,0 +1,59 @@
+# Additional Azure backup for a production producer pond.
+#
+# /sys/remotes/origin remains attached to MinIO. This document adds
+# /sys/remotes/azure with independent limits so Azure setup and failures cannot
+# consume or block the established MinIO budget. Post-commit auto-push visits
+# both remotes independently.
+#
+# The first `pond push azure` must be an explicit, one-time seed with
+# POND_IGNORE_LIMITS=1; ordinary timer runs remain governed.
+
+version: v1
+kind: mknod
+metadata:
+  path: /sys/storage/azure
+spec:
+  factory: storage-azure
+  config:
+    account_name: "${env:AZURE_STORAGE_ACCOUNT}"
+    # object_store defaults to 30 seconds per request. With 5 MiB multipart
+    # parts in flight over Watershop's WAN uplink, that was too short.
+    timeout: 2m
+    service_principal:
+      client_id: "${env:AZURE_CLIENT_ID}"
+      client_secret: "${env:AZURE_CLIENT_SECRET}"
+      tenant_id: "${env:AZURE_TENANT_ID}"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/azure-mirror-bytes
+spec:
+  factory: rate-limit
+  config:
+    unit: MiB/day
+    limit: "${env:AZURE_BACKUP_MIB_PER_DAY:-1024}"
+    burst: 64
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/azure-mirror-ops
+spec:
+  factory: rate-limit
+  config:
+    unit: ops/day
+    limit: "${env:AZURE_BACKUP_OPS_PER_DAY:-100000}"
+    burst: 5000
+---
+version: v1
+kind: backup
+metadata:
+  path: /sys/remotes/azure
+spec:
+  url: "${env:AZURE_URL}"
+  storage: /sys/storage/azure
+  limits:
+    bytes: /sys/limits/azure-mirror-bytes
+    ops: /sys/limits/azure-mirror-ops
+  overwrite: true

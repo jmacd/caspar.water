@@ -1,42 +1,22 @@
 #!/bin/sh
-# teardown_script.sh -- Stop services before redeployment, and remove
-# any residual watertown state from previous deployments that ran a
-# pond on this host.  The cloud host is now caddy + rsync target only;
-# the pond@site-prod that used to live here was orphaned and was the
-# source of the R2 bandwidth bleed (cf. remote-bandwidth-bug.md).
+# teardown_script.sh -- Remove only the obsolete pre-Watertown site runner.
+#
+# The former DuckPond unit ran every 15 minutes from ~/duckpond.  It must not
+# coexist with the native site-prod pond, but Watertown units and pond state
+# are deliberately preserved so routine Terraform applies are non-destructive.
 set -e
 
-# Stop and disable any pond@*.timer left over from older deployments.
-# Use list-units so this is a no-op on a clean host.
-su - jmacd -c "
-    XDG_RUNTIME_DIR=/run/user/\$(id -u)
+su - jmacd -c '
+    XDG_RUNTIME_DIR=/run/user/$(id -u)
     export XDG_RUNTIME_DIR
-    systemctl --user list-units --all --no-legend 'pond@*.timer' \
-        | awk '{print \$1}' \
-        | xargs -r systemctl --user disable --now 2>/dev/null || true
-    systemctl --user list-units --all --no-legend 'pond@*.service' \
-        | awk '{print \$1}' \
-        | xargs -r systemctl --user stop 2>/dev/null || true
-    rm -f \$HOME/.config/systemd/user/pond@*.timer \
-          \$HOME/.config/systemd/user/pond@*.service
-    systemctl --user daemon-reload 2>/dev/null || true
-" || true
+    systemctl --user disable --now pond-site.timer 2>/dev/null || true
+    systemctl --user stop pond-site.service 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/pond-site.timer" \
+          "$HOME/.config/systemd/user/pond-site.service"
+    systemctl --user daemon-reload
+' || true
 
-# Kill any running pond containers and remove the data volume.
-# `podman run --rm` detaches from systemd, so a `systemctl stop` on a
-# pond@*.service does NOT reap the underlying container -- the apparent
-# cause of the Apr 30 bandwidth alert was a leaked container that kept
-# running 43h after its service was killed.  Reap them explicitly.
-su - jmacd -c "
-    podman ps --format '{{.Names}}' --filter 'volume=pond-site-prod' \
-        | xargs -r podman kill 2>/dev/null || true
-    sleep 1
-    podman ps -aq --filter 'volume=pond-site-prod' \
-        | xargs -r podman rm -f 2>/dev/null || true
-    podman volume rm pond-site-prod 2>/dev/null || true
-"
-
-# Stop web servers
+# setup_script.sh starts Caddy again after this resource completes.
 systemctl stop caddy 2>/dev/null || true
 systemctl stop nginx 2>/dev/null || true
 systemctl disable nginx 2>/dev/null || true

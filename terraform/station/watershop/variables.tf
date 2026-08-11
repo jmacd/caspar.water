@@ -39,6 +39,96 @@ variable "r2_secret_key" {
   sensitive = true
 }
 
+# Azure production backups. These remain dormant while the mirror list is
+# empty and site-prod remains on MinIO.
+variable "azure_mirror_instances" {
+  description = "Production producers that carry an additional Azure backup."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for name in var.azure_mirror_instances :
+      contains(["noyo-prod", "septic-prod", "water-prod"], name)
+    ])
+    error_message = "azure_mirror_instances may contain only production producer names."
+  }
+}
+
+variable "site_prod_remote_backend" {
+  description = "Provider used by site-prod imports after producer mirroring is proven."
+  type        = string
+  default     = "minio"
+
+  validation {
+    condition     = contains(["minio", "azure"], var.site_prod_remote_backend)
+    error_message = "site_prod_remote_backend must be minio or azure."
+  }
+}
+
+variable "azure_storage_account" {
+  description = "Azure storage account used by production pond containers."
+  type        = string
+  default     = ""
+}
+
+variable "azure_tenant_id" {
+  description = "Azure tenant containing the pond service principals."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_producer_credentials" {
+  description = "Container-scoped Azure writer credentials by producer instance."
+  type = map(object({
+    client_id     = string
+    client_secret = string
+  }))
+  sensitive = true
+  default = {
+    noyo-prod = {
+      client_id     = ""
+      client_secret = ""
+    }
+    septic-prod = {
+      client_id     = ""
+      client_secret = ""
+    }
+    water-prod = {
+      client_id     = ""
+      client_secret = ""
+    }
+  }
+}
+
+variable "azure_site_credentials" {
+  description = "Azure read-only credentials used by site-prod."
+  type = object({
+    client_id     = string
+    client_secret = string
+  })
+  sensitive = true
+  default = {
+    client_id     = ""
+    client_secret = ""
+  }
+}
+
+variable "azure_seed_instances" {
+  description = "Producer list to seed once with POND_IGNORE_LIMITS during an Azure cutover."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for name in var.azure_seed_instances :
+      contains(["noyo-prod", "septic-prod", "water-prod"], name)
+    ])
+    error_message = "azure_seed_instances may contain only production producer names."
+  }
+}
+
 # HydroVu API
 variable "hydrovu_key_id" {
   sensitive = true

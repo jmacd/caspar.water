@@ -1,0 +1,8 @@
+[Unit]
+Description=Update native Watertown package for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/jmacd/watertown/config/scripts/update-selfmon.sh %i

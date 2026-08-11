@@ -1,0 +1,17 @@
+# The storage account name is globally unique. Change it if Azure reports that
+# the default is already in use.
+storage_account_name = "casparwaterprod"
+
+# Azure budgets begin on the first day of a month.
+budget_start_date = "2026-08-01T00:00:00Z"
+monthly_budget_usd = 10
+
+# Rotate the pond credentials before this date.
+credential_end_date = "2028-08-01T00:00:00Z"
+
+budget_contact_emails = [
+  "operator@example.com",
+]
+
+# The applying identity must be allowed to create app registrations and assign
+# Azure roles at the container scope.
