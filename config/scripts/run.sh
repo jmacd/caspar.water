@@ -8,6 +8,13 @@ INSTANCE=$1
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
 BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
 ENV_FILE="${BASE_DIR}/env/${INSTANCE}.env"
+LOCK_DIR=${XDG_RUNTIME_DIR:-/tmp}
+
+# Serialize all host-launched operations for one pond. The pond also has an
+# internal write lock, but waiting here prevents a weekly email from losing its
+# only scheduled run when it overlaps the regular site build.
+exec 9>"${LOCK_DIR}/watertown-${UID}-${INSTANCE}.lock"
+flock -w 1800 9
 
 # Source env file for variables needed by run.sh itself (e.g., CLOUD_HOST)
 if [ -f "${ENV_FILE}" ]; then

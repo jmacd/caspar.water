@@ -1,0 +1,2 @@
+# Credentials remain in an ignored terraform.tfvars file.
+linode_token = ""

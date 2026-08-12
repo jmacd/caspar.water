@@ -1,0 +1,9 @@
+[Unit]
+Description=Watertown weekly email report %i
+After=network-online.target pond@%i.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/jmacd/watertown/config/scripts/run-email-report.sh %i
+Environment=HOME=/home/jmacd

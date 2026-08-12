@@ -1,0 +1,10 @@
+[Unit]
+Description=Watertown weekly email report %i
+
+[Timer]
+OnCalendar=Mon *-*-* 09:00:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

@@ -166,6 +166,35 @@ variable "deploy_production" {
   default     = true
 }
 
+variable "weekly_report_email_instances" {
+  description = "Site instances with the private weekly email timer enabled."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for name in var.weekly_report_email_instances :
+      contains(["site-staging", "site-prod"], name)
+    ])
+    error_message = "weekly_report_email_instances may contain only site-staging or site-prod."
+  }
+}
+
+variable "weekly_report_email_credentials" {
+  description = "Private ACS Email endpoint, access key, and report recipient."
+  type = object({
+    endpoint   = string
+    access_key = string
+    recipient  = string
+  })
+  sensitive = true
+  default = {
+    endpoint   = ""
+    access_key = ""
+    recipient  = ""
+  }
+}
+
 # Instances to wipe and re-initialize.  DESTRUCTIVE and manual-only: an
 # instance named here has its local volume + host dir removed and its S3
 # backup bucket emptied, then re-initialized from source.  Defaults to empty
