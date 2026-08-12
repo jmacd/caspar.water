@@ -192,6 +192,32 @@ spec:
       - name: "history"
         pattern: "/history/*"
 
+    reports:
+      weekly:
+        title: "Weekly pond summary"
+        message: >-
+          This weekly report confirms that pond reporting is running. Please
+          check the instruments and glance at the latest data.
+        window: 7d
+        include_pond_size: true
+        sections:
+          - export: "metrics"
+            captures: ["well-depth", "data", "res=1h"]
+            value: "well_depth_value.avg"
+            unit: "m"
+            summary: "range"
+            chart: true
+            href: "data/well-depth.html"
+          - export: "usage"
+            # One gallons/minute sample per minute; summing over the exact
+            # report window yields gallons without calendar-day truncation.
+            captures: ["well-usage-rate"]
+            value: "usage_gpm"
+            unit: "gal"
+            summary: "sum"
+            chart: true
+            href: "data/main-meter.html"
+
     subsites:
       - name: "noyo"
         path: "/sources/noyo"
@@ -261,6 +287,8 @@ spec:
             export: "metrics"
 
     labels:
+      well-depth: "Well Depth"
+      well-usage-rate: "Estimated Water Pumped"
       drawdown-by-month: "Well Recovery"
       horner-by-month: "Horner Plot"
       main-meter: "Main Service"
