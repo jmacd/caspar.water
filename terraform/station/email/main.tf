@@ -75,7 +75,6 @@ locals {
     spf    = local.verification.spf[0]
     dkim   = local.verification.dkim[0]
     dkim2  = local.verification.dkim2[0]
-    dmarc  = local.verification.dmarc[0]
   }
   record_names = {
     for name, record in local.records :
