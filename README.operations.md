@@ -95,7 +95,8 @@ Note: `refresh.sh` only sees committed changes (git-ingest reads from the repo).
 that report through Azure Communication Services Email; its endpoint, access
 key, and recipient exist only in each deployed instance's mode-0600 env file.
 
-Provision the verified `casparwater.us` sender domain and its Linode DNS records:
+Provision the verified `casparwater.us` sender domain, its `reports` sender
+username, and its Linode DNS records:
 
 ```bash
 cd terraform/station/email

@@ -16,6 +16,12 @@ variable "domain_name" {
   default     = "casparwater.us"
 }
 
+variable "sender_username" {
+  description = "Local part of the ACS sender address."
+  type        = string
+  default     = "reports"
+}
+
 variable "email_service_name" {
   description = "Azure Email Communication Service name."
   type        = string

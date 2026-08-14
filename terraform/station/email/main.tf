@@ -52,6 +52,12 @@ resource "azurerm_email_communication_service_domain" "reports" {
   }
 }
 
+resource "azurerm_email_communication_service_domain_sender_username" "reports" {
+  name                    = var.sender_username
+  email_service_domain_id = azurerm_email_communication_service_domain.reports.id
+  display_name            = "Caspar Water Reports"
+}
+
 resource "azurerm_communication_service" "reports" {
   name                = var.communication_service_name
   resource_group_name = data.azurerm_resource_group.email.name
