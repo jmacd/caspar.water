@@ -89,6 +89,7 @@ locals {
       remote_backend = "minio"
       interval       = "3h"
       boot_delay     = "7min"
+      email_report   = contains(var.weekly_report_email_instances, "site-staging")
       extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}"
     }
     site-prod = {
@@ -97,6 +98,7 @@ locals {
       remote_backend = var.site_prod_remote_backend
       interval       = "3h"
       boot_delay     = "8min"
+      email_report   = contains(var.weekly_report_email_instances, "site-prod")
       extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod\nNOYO_AZURE_URL=az://noyo-prod\nSEPTIC_AZURE_URL=az://septic-prod\nSITE_BASE_URL=/\nCLOUD_HOST=cloud"
     }
     watershop-selfmon = {
@@ -177,6 +179,9 @@ resource "local_file" "env_files" {
     "AZURE_TENANT_ID=${var.azure_tenant_id}",
     "AZURE_CLIENT_ID=${lookup(local.azure_credentials, each.key, local.empty_azure_credentials).client_id}",
     "AZURE_CLIENT_SECRET=${lookup(local.azure_credentials, each.key, local.empty_azure_credentials).client_secret}",
+    lookup(each.value, "email_report", false) ? "ACS_EMAIL_ENDPOINT=${var.weekly_report_email_credentials.endpoint}" : "",
+    lookup(each.value, "email_report", false) ? "ACS_EMAIL_ACCESS_KEY=${var.weekly_report_email_credentials.access_key}" : "",
+    lookup(each.value, "email_report", false) ? "WEEKLY_REPORT_RECIPIENT=${var.weekly_report_email_credentials.recipient}" : "",
     each.value.extra_env,
     "RUST_LOG=info",
     "",
@@ -267,6 +272,15 @@ resource "null_resource" "watershop" {
       ])
       error_message = "site-prod may use Azure only after every producer has an Azure mirror."
     }
+
+    precondition {
+      condition = length(var.weekly_report_email_instances) == 0 || (
+        var.weekly_report_email_credentials.endpoint != "" &&
+        var.weekly_report_email_credentials.access_key != "" &&
+        var.weekly_report_email_credentials.recipient != ""
+      )
+      error_message = "Weekly report email instances require a private ACS endpoint, access key, and recipient."
+    }
   }
 
   connection {
@@ -340,6 +354,8 @@ resource "null_resource" "watershop" {
         # per selfmon instance below.
         "cp ${local.base_dir}/config/systemd/pond-selfmon-update@.service ${local.home}/.config/systemd/user/",
         "cp ${local.base_dir}/config/systemd/pond-selfmon-update@.timer ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond-email-report@.service ${local.home}/.config/systemd/user/",
+        "cp ${local.base_dir}/config/systemd/pond-email-report@.timer ${local.home}/.config/systemd/user/",
         # Drop ONLY units whose instance name is no longer in the
         # configured set (e.g. retired watershop-selfmon-{staging,prod}
         # split).  Configured-but-not-deployed instances (e.g. -prod
@@ -588,6 +604,11 @@ resource "null_resource" "watershop" {
           ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=5min --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
         : "systemctl --user enable --now pond@${name}.timer")
         if startswith(name, "site-")
+      ],
+      [for name in ["site-staging", "site-prod"] :
+        contains(var.weekly_report_email_instances, name)
+        ? "systemctl --user enable --now pond-email-report@${name}.timer"
+        : "systemctl --user disable --now pond-email-report@${name}.timer 2>/dev/null || true"
       ],
     )
   }

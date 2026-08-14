@@ -88,6 +88,50 @@ Note: `refresh.sh` only sees committed changes (git-ingest reads from the repo).
 
 ## Watershop Staging
 
+### Weekly email report
+
+`sitegen` defines the transport-independent `weekly` report in
+`config/site.yaml`. The separate `/system/etc/95-email-report` factory sends
+that report through Azure Communication Services Email; its endpoint, access
+key, and recipient exist only in each deployed instance's mode-0600 env file.
+
+Provision the verified `casparwater.us` sender domain, its `reports` sender
+username, and its Linode DNS records:
+
+```bash
+cd terraform/station/email
+cp terraform.tfvars.example terraform.tfvars
+# Set the private Linode token, then:
+terraform apply
+./verify-domain.sh
+```
+
+After Azure reports Domain, SPF, DKIM, and DKIM2 as verified, copy
+`email_endpoint` and the sensitive `email_access_key` output into the ignored
+Watershop tfvars. Enable staging first:
+
+```hcl
+weekly_report_email_instances = ["site-staging"]
+weekly_report_email_credentials = {
+  endpoint   = "https://..."
+  access_key = "..."
+  recipient  = "..."
+}
+```
+
+Apply with production excluded, then send one staging smoke test:
+
+```bash
+cd terraform/station/watershop
+terraform apply -var deploy_production=false
+ssh watershop.casparwater.us \
+  '~/watertown/config/scripts/run-email-report.sh site-staging'
+```
+
+The enabled instance sends every Monday at 09:00 America/Los_Angeles. Add
+`site-prod` only after the staging message is received and the corresponding
+Watertown image has been promoted.
+
 ### Deploy / Update configs
 
 ```bash

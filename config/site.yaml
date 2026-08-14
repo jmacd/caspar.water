@@ -416,3 +416,19 @@ spec:
       - "Software"
       - "Operator"
       - "Thanks"
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/95-email-report
+spec:
+  factory: email-report
+  config:
+    sitegen: /system/etc/90-sitegen
+    report: weekly
+    endpoint_env: ACS_EMAIL_ENDPOINT
+    access_key_env: ACS_EMAIL_ACCESS_KEY
+    recipient_env: WEEKLY_REPORT_RECIPIENT
+    sender: reports@casparwater.us
+    subject: "Caspar Water weekly pond summary"
+    timeout: 5m

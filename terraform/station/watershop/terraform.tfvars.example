@@ -41,6 +41,15 @@ azure_site_credentials = {
 # but reset this list to [] immediately after the successful apply.
 azure_seed_instances = []
 
+# Weekly report email remains disabled until the verified ACS domain is ready.
+# Keep the recipient and access key only in this ignored tfvars file.
+weekly_report_email_instances = []
+weekly_report_email_credentials = {
+  endpoint   = ""
+  access_key = ""
+  recipient  = ""
+}
+
 # HydroVu API (noyo pond)
 hydrovu_key_id    = ""
 hydrovu_key_value = ""
