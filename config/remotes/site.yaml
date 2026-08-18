@@ -43,13 +43,11 @@ spec:
 # round-trip per remote to read the tip, so frequent polling across three
 # remotes spends ops steadily even when it transfers nothing.
 #
-# The daily ops figure survived the move to physical metering unchanged, but
-# the burst did not.  Real staging traffic showed that opening one mature
-# producer remote can cost ~2000 provider requests before an up-to-date tip is
-# found, so the former burst of 2000 let water consume the whole burst and
-# refused noyo before its first request.  A site tick opens three remotes; a
-# burst of 10000 clears that measured ~6000-op tick while the 50000/day window
-# still bounds repeated work.
+# Real production traffic now exceeds 6000 provider requests for one complete
+# three-remote tick.  A 10000-op burst let water and noyo consume the available
+# budget before septic, permanently starving the last remote on subsequent
+# three-hour ticks.  The larger daily budget and burst leave room for every
+# scheduled tick while the byte limiter continues to bound actual ingress.
 #
 # INITIAL IMPORT: the first import of water was 11.4 GB and will be refused by
 # these budgets.  Seed it with `POND_IGNORE_LIMITS=1 pond pull`, on that one
@@ -76,8 +74,8 @@ spec:
   factory: rate-limit
   config:
     unit: ops/day
-    limit: "${env:PULL_OPS_PER_DAY:-50000}"
-    burst: 10000
+    limit: "${env:PULL_OPS_PER_DAY:-100000}"
+    burst: 20000
 ---
 version: v1
 kind: remote
