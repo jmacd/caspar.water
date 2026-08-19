@@ -28,4 +28,16 @@ essential that Caspar maintains its current relatively dense zoning
 plan, and we believe a solar development today will enable future
 residential development on this site.
 
+## Explore candidate sites
+
+Use the interactive map below to examine grid capacity, zoning, and
+potential solar sites along the Mendocino Coast.
+
+<iframe
+  src="https://jmacd.github.io/mendo-coast-solar/grid-explorer.html"
+  title="Interactive Mendocino Coast solar site explorer"
+  loading="lazy"
+  style="width: 100%; height: 760px; border: 0;"
+></iframe>
+
 [Explore the site](https://jmacd.github.io/mendo-coast-solar/).
