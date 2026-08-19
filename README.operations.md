@@ -138,7 +138,8 @@ Watertown image has been promoted.
 cd terraform/station/watershop
 terraform apply                    # staging only (default)
 terraform apply -var deploy_production=true   # + production
-terraform apply -var git_ref=my-branch        # staging with custom branch
+terraform apply -var git_ref=my-branch        # Caspar staging with custom branch
+terraform apply -var noyo_git_ref=my-branch   # Noyo staging with custom branch
 ```
 
 Terraform pushes `config/` and env files to the machine.

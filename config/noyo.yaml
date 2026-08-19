@@ -27,7 +27,7 @@ spec:
   factory: git-ingest
   config:
     url: "https://github.com/jmacd/caspar.water.git"
-    ref: "${env:GIT_REF:-main}"
+    ref: "${env:NOYO_GIT_REF:-main}"
     prefix: "config/noyo/site"
 ---
 version: v1

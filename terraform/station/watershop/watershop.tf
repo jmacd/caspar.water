@@ -39,7 +39,7 @@ locals {
       azure_mirror   = false
       interval       = "1h"
       boot_delay     = "5min"
-      extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nGIT_REF=${var.git_ref}"
+      extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_GIT_REF=${var.noyo_git_ref}"
     }
     noyo-prod = {
       s3           = local.staging_s3
@@ -90,7 +90,7 @@ locals {
       interval       = "3h"
       boot_delay     = "7min"
       email_report   = contains(var.weekly_report_email_instances, "site-staging")
-      extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nNOYO_GIT_REF=${var.noyo_git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
     }
     site-prod = {
       s3             = local.staging_s3
@@ -99,7 +99,7 @@ locals {
       interval       = "3h"
       boot_delay     = "8min"
       email_report   = contains(var.weekly_report_email_instances, "site-prod")
-      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod\nNOYO_AZURE_URL=az://noyo-prod\nSEPTIC_AZURE_URL=az://septic-prod\nSITE_BASE_URL=/\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod\nNOYO_AZURE_URL=az://noyo-prod\nSEPTIC_AZURE_URL=az://septic-prod\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
     }
     watershop-selfmon = {
       s3             = local.staging_s3
