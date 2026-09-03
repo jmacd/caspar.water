@@ -206,9 +206,15 @@ variable "reset_instances" {
   default     = []
 }
 
-# Git branch for site content (git-ingest)
+# Git branch for Caspar Water site content (git-ingest)
 variable "git_ref" {
-  description = "Git branch/ref for staging site content (production always uses main)"
+  description = "Git branch/ref for staging Caspar Water content (production always uses main)"
+  default     = "main"
+}
+
+# Git branch for Noyo subsite content, which lives in a separate repository.
+variable "noyo_git_ref" {
+  description = "Git branch/ref for staging Noyo content (production always uses main)"
   default     = "main"
 }
 
