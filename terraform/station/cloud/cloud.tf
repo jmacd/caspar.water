@@ -35,18 +35,6 @@ variable "azure_site_credentials" {
   sensitive = true
 }
 
-variable "minio_site_credentials" {
-  description = "Existing MinIO credentials used while site-prod watermark migration is pending"
-  type = object({
-    endpoint   = string
-    region     = string
-    access_key = string
-    secret_key = string
-    allow_http = string
-  })
-  sensitive = true
-}
-
 provider "linode" {
   token = var.li_token
 }
@@ -71,18 +59,13 @@ locals {
     "POND_RUNTIME=native",
     "POND_MEMORY_LIMIT_MB=512",
     "DEB_CHANNEL=prod",
-    "S3_ENDPOINT=${var.minio_site_credentials.endpoint}",
-    "S3_REGION=${var.minio_site_credentials.region}",
-    "S3_ACCESS_KEY=${var.minio_site_credentials.access_key}",
-    "S3_SECRET_KEY=${var.minio_site_credentials.secret_key}",
-    "S3_ALLOW_HTTP=${var.minio_site_credentials.allow_http}",
     "AZURE_STORAGE_ACCOUNT=${var.azure_storage_account}",
     "AZURE_TENANT_ID=${var.azure_tenant_id}",
     "AZURE_CLIENT_ID=${var.azure_site_credentials.client_id}",
     "AZURE_CLIENT_SECRET=${var.azure_site_credentials.client_secret}",
-    "WATER_AZURE_URL=az://water-prod",
-    "NOYO_AZURE_URL=az://noyo-prod",
-    "SEPTIC_AZURE_URL=az://septic-prod",
+    "WATER_AZURE_URL=az://water-prod-0002",
+    "NOYO_AZURE_URL=az://noyo-prod-0002",
+    "SEPTIC_AZURE_URL=az://septic-prod-0002",
     "SITE_BASE_URL=/",
     "SITE_DEPLOY_BASE=${local.base_dir}/www",
     "SKIP_REMOTE_PULLS=0",

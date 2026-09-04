@@ -26,14 +26,7 @@ output "site_credentials" {
 
 output "container_urls" {
   value = {
-    for name, container in azurerm_storage_container.ponds :
+    for name, container in azurerm_storage_container.production :
     name => container.url
-  }
-}
-
-output "migration_target_container_urls" {
-  value = {
-    for producer, container in azurerm_storage_container.migration_targets :
-    producer => container.url
   }
 }
