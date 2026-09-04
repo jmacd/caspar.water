@@ -5,4 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+Environment=HOME=/home/jmacd
 ExecStart=/home/jmacd/watertown/config/scripts/update-selfmon.sh %i

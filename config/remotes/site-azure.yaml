@@ -1,9 +1,7 @@
 # Azure override for site-prod imports.
 #
-# Apply site.yaml first to install the shared pull limiters, then apply this
-# document to replace the three MinIO remotes with Azure-backed attachments.
-# The existing site-prod pond retains its imported state and watermarks, so the
-# provider transition remains incremental.
+# This document is self-contained so a fresh Azure-only site pond does not
+# need to attach transient MinIO remotes first.
 
 version: v1
 kind: mknod
@@ -20,6 +18,28 @@ spec:
       tenant_id: "${env:AZURE_TENANT_ID}"
 ---
 version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/pull-bytes
+spec:
+  factory: rate-limit
+  config:
+    unit: MiB/day
+    limit: "${env:PULL_MIB_PER_DAY:-1024}"
+    burst: 64
+---
+version: v1
+kind: mknod
+metadata:
+  path: /sys/limits/pull-ops
+spec:
+  factory: rate-limit
+  config:
+    unit: ops/day
+    limit: "${env:PULL_OPS_PER_DAY:-100000}"
+    burst: 20000
+---
+version: v1
 kind: remote
 metadata:
   path: /sys/remotes/water
@@ -28,7 +48,6 @@ spec:
   mount: /sources/water
   storage: /sys/storage/azure
   overwrite: true
-  migrate_watermark: true
   limits:
     bytes: /sys/limits/pull-bytes
     ops: /sys/limits/pull-ops
@@ -42,7 +61,6 @@ spec:
   mount: /sources/noyo
   storage: /sys/storage/azure
   overwrite: true
-  migrate_watermark: true
   limits:
     bytes: /sys/limits/pull-bytes
     ops: /sys/limits/pull-ops
@@ -56,7 +74,6 @@ spec:
   mount: /sources/septic
   storage: /sys/storage/azure
   overwrite: true
-  migrate_watermark: true
   limits:
     bytes: /sys/limits/pull-bytes
     ops: /sys/limits/pull-ops

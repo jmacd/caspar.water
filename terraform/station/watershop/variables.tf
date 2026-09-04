@@ -166,6 +166,12 @@ variable "deploy_production" {
   default     = true
 }
 
+variable "activate_production_timers" {
+  description = "Explicitly enable production timers after a controlled cutover succeeds."
+  type        = bool
+  default     = false
+}
+
 variable "weekly_report_email_instances" {
   description = "Site instances with the private weekly email timer enabled."
   type        = list(string)

@@ -47,7 +47,7 @@ locals {
       azure_mirror = contains(var.azure_mirror_instances, "noyo-prod")
       interval     = "1h"
       boot_delay   = "6min"
-      extra_env    = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod"
+      extra_env    = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0002"
     }
     water-staging = {
       s3             = local.staging_s3
@@ -64,7 +64,7 @@ locals {
       azure_mirror = contains(var.azure_mirror_instances, "water-prod")
       interval     = "1h"
       boot_delay   = "3min"
-      extra_env    = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod"
+      extra_env    = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod-0002"
     }
     septic-staging = {
       s3             = local.staging_s3
@@ -81,7 +81,7 @@ locals {
       azure_mirror = contains(var.azure_mirror_instances, "septic-prod")
       interval     = "1h"
       boot_delay   = "5min"
-      extra_env    = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod"
+      extra_env    = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod-0002"
     }
     site-staging = {
       s3             = local.staging_s3
@@ -95,11 +95,11 @@ locals {
     site-prod = {
       s3             = local.staging_s3
       s3_url         = ""
-      remote_backend = var.site_prod_remote_backend
+      remote_backend = "azure"
       interval       = "3h"
       boot_delay     = "8min"
       email_report   = contains(var.weekly_report_email_instances, "site-prod")
-      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod\nNOYO_AZURE_URL=az://noyo-prod\nSEPTIC_AZURE_URL=az://septic-prod\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod-0002\nNOYO_AZURE_URL=az://noyo-prod-0002\nSEPTIC_AZURE_URL=az://septic-prod-0002\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
     }
     watershop-selfmon = {
       s3             = local.staging_s3
@@ -529,7 +529,7 @@ resource "null_resource" "watershop" {
       # all (see watershop-selfmon above), so it appears in neither pass.
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer.yaml"
-        if !startswith(name, "site-")
+        if !startswith(name, "site-") && !endswith(name, "-prod")
       ],
       # Azure is additive for producers: origin remains MinIO while this
       # document installs a second push-mode remote with independent limiters.
@@ -537,7 +537,7 @@ resource "null_resource" "watershop" {
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml"
         if !startswith(name, "site-") &&
-        lookup(local.instances[name], "azure_mirror", false) &&
+        (endswith(name, "-prod") || lookup(local.instances[name], "azure_mirror", false)) &&
         !contains(var.azure_seed_instances, name)
       ],
       # The attachment transaction itself runs post-commit auto-push. Forward
@@ -550,7 +550,7 @@ resource "null_resource" "watershop" {
       # pull immediately, rather than waiting for the first collection tick.
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} push origin"
-        if !startswith(name, "site-")
+        if !startswith(name, "site-") && !endswith(name, "-prod")
       ],
       # Azure's first push can be many GiB and intentionally exceeds steady
       # state limits. Naming an instance authorizes one seed; a persistent
@@ -562,7 +562,7 @@ resource "null_resource" "watershop" {
       ],
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml"
-        if startswith(name, "site-")
+        if startswith(name, "site-") && !endswith(name, "-prod")
       ],
       [for name in local.container_instance_names :
         "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml"
@@ -577,7 +577,9 @@ resource "null_resource" "watershop" {
       # populate their buckets asynchronously, which is the same work the
       # timer does every cycle.  terraform does not wait on any of it.
       [for name in local.container_instance_names :
-        "systemctl --user enable --now pond@${name}.timer"
+        endswith(name, "-prod") && !var.activate_production_timers
+        ? "systemctl --user disable --now pond@${name}.timer 2>/dev/null || true"
+        : "systemctl --user enable --now pond@${name}.timer"
         if !startswith(name, "site-")
       ],
       [for name in local.selfmon_instance_names :
@@ -600,13 +602,15 @@ resource "null_resource" "watershop" {
       # returns.  Sites not in the reset set already hold data and start
       # immediately.
       [for name in local.container_instance_names :
-        (contains(var.reset_instances, name)
+        endswith(name, "-prod") && !var.activate_production_timers
+        ? "systemctl --user disable --now pond@${name}.timer 2>/dev/null || true"
+        : (contains(var.reset_instances, name)
           ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=5min --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
         : "systemctl --user enable --now pond@${name}.timer")
         if startswith(name, "site-")
       ],
       [for name in ["site-staging", "site-prod"] :
-        contains(var.weekly_report_email_instances, name)
+        contains(var.weekly_report_email_instances, name) && (!endswith(name, "-prod") || var.activate_production_timers)
         ? "systemctl --user enable --now pond-email-report@${name}.timer"
         : "systemctl --user disable --now pond-email-report@${name}.timer 2>/dev/null || true"
       ],
