@@ -28,6 +28,10 @@ locals {
     "septic-prod",
     "water-prod",
   ])
+  target_producers = {
+    for producer in local.producers :
+    producer => "${producer}-0002"
+  }
   identities = setunion(local.producers, toset(["site-prod"]))
 }
 
@@ -76,6 +80,17 @@ resource "azurerm_storage_container" "ponds" {
   container_access_type = "private"
 }
 
+# The production migration writes only to a fresh container generation.
+# Keeping these resources separate preserves the original containers and their
+# Terraform addresses until the post-cutover retention decision.
+resource "azurerm_storage_container" "migration_targets" {
+  for_each = local.target_producers
+
+  name                  = each.value
+  storage_account_id    = azurerm_storage_account.backups.id
+  container_access_type = "private"
+}
+
 resource "azuread_application" "pond" {
   for_each = local.identities
 
@@ -112,6 +127,27 @@ resource "azurerm_role_assignment" "site" {
   for_each = local.producers
 
   scope                = azurerm_storage_container.ponds[each.key].id
+  role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azuread_service_principal.pond["site-prod"].object_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Reuse the existing least-privilege identities for the one-time migration:
+# each producer can seed only its own target, while site-prod remains
+# read-only across the producer targets.
+resource "azurerm_role_assignment" "migration_target_producer" {
+  for_each = local.target_producers
+
+  scope                = azurerm_storage_container.migration_targets[each.key].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.pond[each.key].object_id
+  principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "migration_target_site" {
+  for_each = local.target_producers
+
+  scope                = azurerm_storage_container.migration_targets[each.key].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azuread_service_principal.pond["site-prod"].object_id
   principal_type       = "ServicePrincipal"

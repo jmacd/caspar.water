@@ -30,3 +30,10 @@ output "container_urls" {
     name => container.url
   }
 }
+
+output "migration_target_container_urls" {
+  value = {
+    for producer, container in azurerm_storage_container.migration_targets :
+    producer => container.url
+  }
+}
