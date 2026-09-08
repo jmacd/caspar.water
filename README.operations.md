@@ -146,6 +146,33 @@ Terraform pushes `config/` and env files to the machine.
 For each instance: `pond init` (no-op if exists) + `pond apply -f /config/<type>.yaml`.
 Site content is pulled from git at runtime by `run.sh` — no file push needed.
 
+### Selfmon I/O diagnostics
+
+`run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step and
+one aggregate line when the tick exits:
+
+```text
+selfmon_io scope=tick instance=watershop-selfmon exit_rc=0 failures=0 rchar=... wchar=... syscr=... syscw=... read_bytes=... write_bytes=... cancelled_write_bytes=...
+```
+
+These are per-step or per-tick deltas from `/proc/$$/io`; completed child
+processes are included in the parent shell's counters. `rchar` and `wchar`
+measure bytes passed through read/write syscalls, including cache hits and
+pipes. `read_bytes` and `write_bytes` measure bytes that reached block storage.
+`syscr` and `syscw` count read/write syscalls. This requires no systemd
+`IOAccounting` or journald configuration.
+
+To compare aggregate ticks:
+
+```bash
+journalctl --user -u "pond-selfmon@watershop-selfmon.service" --no-pager \
+  | grep "selfmon_io scope=tick"
+```
+
+Efficiency is evaluated by comparing these counters at similar input volumes
+after retention has reached steady state. Tick bytes, syscall counts, and
+runtime should plateau rather than rise with transaction history.
+
 ### Reset an instance
 
 ```bash

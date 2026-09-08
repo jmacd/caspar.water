@@ -2,10 +2,7 @@ locals {
   home     = "/home/${var.user}"
   base_dir = "${local.home}/watertown"
 
-  # All instances currently use MinIO on watershop.  Production previously
-  # used Cloudflare R2 (see prod_s3 below), but we are running prod against
-  # MinIO too while we continue to harden the remote backup feature.  Prod
-  # and staging stay isolated by bucket name.
+  # Staging uses the local MinIO service. Production uses Azure exclusively.
   staging_s3 = {
     endpoint   = var.minio_endpoint
     region     = "us-east-1"
@@ -13,12 +10,11 @@ locals {
     secret_key = var.minio_secret_key
     allow_http = "true"
   }
-  # Reserved for future re-enable of R2-backed production.  Currently unused.
-  prod_s3 = {
-    endpoint   = var.r2_endpoint
-    region     = "auto"
-    access_key = var.r2_access_key
-    secret_key = var.r2_secret_key
+  no_s3 = {
+    endpoint   = ""
+    region     = ""
+    access_key = ""
+    secret_key = ""
     allow_http = "false"
   }
   empty_azure_credentials = {
@@ -42,12 +38,11 @@ locals {
       extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_GIT_REF=${var.noyo_git_ref}"
     }
     noyo-prod = {
-      s3           = local.staging_s3
-      s3_url       = "s3://noyo-pond"
-      azure_mirror = contains(var.azure_mirror_instances, "noyo-prod")
-      interval     = "1h"
-      boot_delay   = "6min"
-      extra_env    = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0002"
+      s3         = local.no_s3
+      s3_url     = ""
+      interval   = "1h"
+      boot_delay = "6min"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0002"
     }
     water-staging = {
       s3             = local.staging_s3
@@ -59,12 +54,11 @@ locals {
       extra_env      = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/"
     }
     water-prod = {
-      s3           = local.staging_s3
-      s3_url       = "s3://water-pond"
-      azure_mirror = contains(var.azure_mirror_instances, "water-prod")
-      interval     = "1h"
-      boot_delay   = "3min"
-      extra_env    = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod-0002"
+      s3         = local.no_s3
+      s3_url     = ""
+      interval   = "1h"
+      boot_delay = "3min"
+      extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod-0002"
     }
     septic-staging = {
       s3             = local.staging_s3
@@ -76,12 +70,11 @@ locals {
       extra_env      = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/"
     }
     septic-prod = {
-      s3           = local.staging_s3
-      s3_url       = "s3://septic-pond"
-      azure_mirror = contains(var.azure_mirror_instances, "septic-prod")
-      interval     = "1h"
-      boot_delay   = "5min"
-      extra_env    = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod-0002"
+      s3         = local.no_s3
+      s3_url     = ""
+      interval   = "1h"
+      boot_delay = "5min"
+      extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod-0002"
     }
     site-staging = {
       s3             = local.staging_s3
@@ -93,13 +86,13 @@ locals {
       extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nNOYO_GIT_REF=${var.noyo_git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
     }
     site-prod = {
-      s3             = local.staging_s3
+      s3             = local.no_s3
       s3_url         = ""
       remote_backend = "azure"
       interval       = "3h"
       boot_delay     = "8min"
       email_report   = contains(var.weekly_report_email_instances, "site-prod")
-      extra_env      = "WATER_S3_URL=s3://water-pond\nNOYO_S3_URL=s3://noyo-pond\nSEPTIC_S3_URL=s3://septic-pond\nWATER_AZURE_URL=az://water-prod-0002\nNOYO_AZURE_URL=az://noyo-prod-0002\nSEPTIC_AZURE_URL=az://septic-prod-0002\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_AZURE_URL=az://water-prod-0002\nNOYO_AZURE_URL=az://noyo-prod-0002\nSEPTIC_AZURE_URL=az://septic-prod-0002\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
     }
     watershop-selfmon = {
       s3             = local.staging_s3
@@ -150,13 +143,15 @@ locals {
     n if lookup(local.instances[n], "selfmon", false)
   ]
 
-  # MinIO buckets to ensure exist.  All instances now use MinIO; the only
-  # ones that need a bucket are those with a non-empty s3_url (the site-*
-  # instances aggregate from other ponds and have no bucket of their own).
+  # MinIO buckets are staging-only. Production uses Azure.
   staging_bucket_names = [for n in local.instance_names :
     replace(local.instances[n].s3_url, "s3://", "")
     if local.instances[n].s3_url != ""
   ]
+  staging_site_reseed = var.deploy_staging && length(setintersection(
+    toset(var.reset_instances),
+    toset(["noyo-staging", "septic-staging", "water-staging", "site-staging"]),
+  )) > 0
 }
 
 # Generate env files locally for upload
@@ -238,10 +233,7 @@ resource "null_resource" "watershop" {
 
   lifecycle {
     precondition {
-      condition = (
-        length(var.azure_mirror_instances) == 0 &&
-        var.site_prod_remote_backend == "minio"
-        ) || (
+      condition = !var.deploy_production || (
         var.azure_storage_account != "" &&
         var.azure_tenant_id != "" &&
         var.azure_site_credentials.client_id != "" &&
@@ -256,30 +248,19 @@ resource "null_resource" "watershop" {
     }
 
     precondition {
-      condition = alltrue([
-        for name in var.azure_seed_instances :
-        var.deploy_production &&
-        contains(local.container_instance_names, name) &&
-        contains(var.azure_mirror_instances, name)
-      ])
-      error_message = "Every Azure seed must be a deployed production producer with an Azure mirror."
-    }
-
-    precondition {
-      condition = var.site_prod_remote_backend != "azure" || alltrue([
-        for name in ["noyo-prod", "septic-prod", "water-prod"] :
-        contains(var.azure_mirror_instances, name)
-      ])
-      error_message = "site-prod may use Azure only after every producer has an Azure mirror."
-    }
-
-    precondition {
       condition = length(var.weekly_report_email_instances) == 0 || (
         var.weekly_report_email_credentials.endpoint != "" &&
         var.weekly_report_email_credentials.access_key != "" &&
         var.weekly_report_email_credentials.recipient != ""
       )
       error_message = "Weekly report email instances require a private ACS endpoint, access key, and recipient."
+    }
+
+    precondition {
+      condition = alltrue([
+        for name in var.reset_instances : contains(local.instance_names, name)
+      ])
+      error_message = "Every reset target must be enabled by the current deployment flags."
     }
   }
 
@@ -298,6 +279,7 @@ resource "null_resource" "watershop" {
       "mkdir -p ${local.base_dir}/config",
       "mkdir -p ${local.base_dir}/env",
       "mkdir -p ${local.base_dir}/timers",
+      "mkdir -p ${local.base_dir}/state",
       "mkdir -p ${local.base_dir}/www",
       "mkdir -p ${local.home}/.config/systemd/user",
     ]
@@ -339,6 +321,11 @@ resource "null_resource" "watershop" {
   provisioner "remote-exec" {
     inline = concat(
       [
+        # Terraform's remote-exec wrapper does not enable fail-fast shell
+        # behavior. Without this, a failed pond apply/push can be hidden by
+        # later successful commands and the overall apply reports success.
+        "set -e",
+
         # Ensure user services survive logout
         "sudo loginctl enable-linger ${var.user}",
 
@@ -362,18 +349,37 @@ resource "null_resource" "watershop" {
         # when deploy_production=false) are left alone -- toggling a
         # deploy flag must not disturb the other tier.
         "${local.base_dir}/config/scripts/cleanup-stale-pond-units.sh ${join(" ", local.all_configured_names)}",
+        # Quiesce every deployed pond before applying configuration. Timers
+        # otherwise can start a transaction between commands and either race
+        # a reset or hold the write lock. The desired timer state is restored
+        # after all ponds and remotes have converged.
+        join(" ; ", concat(
+          [for name in local.container_instance_names :
+            "systemctl --user stop pond@${name}.timer pond@${name}.service 2>/dev/null || true"
+          ],
+          [for name in local.selfmon_instance_names :
+            "systemctl --user stop pond-selfmon@${name}.timer pond-selfmon@${name}.service 2>/dev/null || true"
+          ],
+          [for name in ["site-staging", "site-prod"] :
+            "systemctl --user stop pond-email-report@${name}.timer pond-email-report@${name}.service 2>/dev/null || true"
+          ],
+          [for name in ["site-staging", "site-prod"] :
+            "systemctl --user stop pond-firstbuild-${name}.timer pond-firstbuild-${name}.service 2>/dev/null || true"
+          ],
+        )),
         # Reap any leaked pond containers belonging to instances we
         # are about to (re)deploy in this apply.  `podman run --rm`
         # detaches from systemd, so a `systemctl stop` on the .service
         # does NOT kill the running container (cf. cloud Apr 30
-        # bandwidth bleed).  Match by image AND volume so we don't
-        # disturb containers for instances we're leaving alone.
+        # bandwidth bleed). The per-instance pond volume uniquely scopes the
+        # container; filtering by a mutable image tag can miss a running
+        # container after that tag is promoted.
         join(" ; ", concat(
           [for name in local.container_instance_names :
-            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman kill 2>/dev/null || true"
+            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' | xargs -r podman kill 2>/dev/null || true"
           ],
           [for name in local.container_instance_names :
-            "podman ps -aq --filter 'volume=pond-${name}' --filter 'ancestor=ghcr.io/jmacd/watertown/watertown' | xargs -r podman rm -f 2>/dev/null || true"
+            "podman ps -aq --filter 'volume=pond-${name}' | xargs -r podman rm -f 2>/dev/null || true"
           ],
         )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
@@ -415,7 +421,7 @@ resource "null_resource" "watershop" {
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
       ],
       # Ensure MinIO buckets exist for all instances that have an s3_url
-      # (staging + prod, plus selfmon).  Uses the aws-cli container
+      # (staging plus selfmon). Uses the aws-cli container
       # against localhost:9000.  `mb` returns non-zero when the bucket
       # already exists; we check the message to distinguish that
       # benign case from a real failure.
@@ -440,7 +446,7 @@ resource "null_resource" "watershop" {
       # container holding THIS volume, (4) rm the volume with no error
       # suppression so terraform aborts if the kill missed something.
       [for name in var.reset_instances :
-        join(" && ", [
+        "${join(" && ", [
           "echo '[reset] ${name}: disabling timer'",
           "(systemctl --user disable --now pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true)",
           "echo '[reset] ${name}: stopping service'",
@@ -461,7 +467,7 @@ resource "null_resource" "watershop" {
           # (site-*: s3_url == "") have nothing to empty.  The bucket
           # itself is (re)created by the `mb` step earlier in this apply.
           local.instances[name].s3_url != ""
-          ? "echo '[reset] ${name}: emptying bucket ${local.instances[name].s3_url}' && (podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 rm ${local.instances[name].s3_url} --recursive --region us-east-1 2>&1 || true)"
+          ? "echo '[reset] ${name}: emptying bucket ${local.instances[name].s3_url}' && podman run --rm --network=host --env-file=${local.base_dir}/env/_minio-admin.env docker.io/amazon/aws-cli --endpoint-url http://localhost:9000 s3 rm ${local.instances[name].s3_url} --recursive --region us-east-1"
           : "echo '[reset] ${name}: no S3 bucket to empty'",
           # Selfmon-only: also wipe the per-pond JSONL source dir and
           # the rendered HTML output dir.  Both are no-ops for
@@ -476,7 +482,7 @@ resource "null_resource" "watershop" {
           "echo '[reset] ${name}: wiping selfmon rendered output'",
           "rm -rf /var/www/selfmon/${name}",
           "echo '[reset] ${name}: done'",
-        ])
+        ])} || exit 1"
       ],
       # Refresh the container image once at deploy time.  pond.sh now uses
       # --pull=missing, so a terraform apply after a new image is promoted must
@@ -528,54 +534,42 @@ resource "null_resource" "watershop" {
       # Producers only -- selfmon is native and deliberately has no remote at
       # all (see watershop-selfmon above), so it appears in neither pass.
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer.yaml"
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"origin\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer.yaml; ${local.base_dir}/config/scripts/pond.sh ${name} push origin; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; [ \"$raw_names\" = origin ] && printf '%s\\n' \"$remotes\" | awk -v url='${local.instances[name].s3_url}' 'NR == 1 { next } $1 == \"origin\" && $2 == url && $3 == \"push\" && $4 == \"-\" { found++; next } { unexpected=1 } END { exit !(found == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: MinIO origin converged'"
         if !startswith(name, "site-") && !endswith(name, "-prod")
       ],
-      # Azure is additive for producers: origin remains MinIO while this
-      # document installs a second push-mode remote with independent limiters.
-      # With the default empty mirror list these commands are absent.
+      # Production producers publish exclusively to Azure. Raw attachment
+      # inventory below removes the former MinIO origin, including a malformed
+      # attachment that the parsed remote listing cannot read.
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml"
-        if !startswith(name, "site-") &&
-        (endswith(name, "-prod") || lookup(local.instances[name], "azure_mirror", false)) &&
-        !contains(var.azure_seed_instances, name)
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"azure\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml; ${local.base_dir}/config/scripts/pond.sh ${name} push azure; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; [ \"$raw_names\" = azure ] && printf '%s\\n' \"$remotes\" | awk -v url='az://${name}-0002' 'NR == 1 { next } $1 == \"azure\" && $2 == url && $3 == \"push\" && $4 == \"-\" { found++; next } { unexpected=1 } END { exit !(found == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: Azure remote converged'"
+        if !startswith(name, "site-") && endswith(name, "-prod")
       ],
-      # The attachment transaction itself runs post-commit auto-push. Forward
-      # the deliberate seed override here as well as on the explicit push, or
-      # that first auto-push would charge the whole history to steady state.
-      [for name in var.azure_seed_instances :
-        "if [ -e ${local.base_dir}/.azure-seeded-${name} ]; then ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml; else POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/producer-azure.yaml; fi"
-      ],
-      # Seed each producer's bucket with the pond_init bundle so the site can
-      # pull immediately, rather than waiting for the first collection tick.
+      # A reset producer must complete its first source replay and seed without
+      # ordinary burst limits before site-staging can import it. The override
+      # is scoped to this one explicit reset run and is never persisted.
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} push origin"
-        if !startswith(name, "site-") && !endswith(name, "-prod")
-      ],
-      # Azure's first push can be many GiB and intentionally exceeds steady
-      # state limits. Naming an instance authorizes one seed; a persistent
-      # marker prevents a retained tfvars value from repeating the exemption
-      # on later applies. To reseed deliberately, remove that instance's marker
-      # after clearing or replacing its Azure container.
-      [for name in var.azure_seed_instances :
-        "if [ -e ${local.base_dir}/.azure-seeded-${name} ]; then echo '[azure-seed] ${name}: already seeded'; else POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/pond.sh ${name} push azure && touch ${local.base_dir}/.azure-seeded-${name}; fi"
+        "POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/run.sh ${name}; POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/pond.sh ${name} push origin"
+        if !startswith(name, "site-") && !endswith(name, "-prod") && contains(var.reset_instances, name)
       ],
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml"
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"s3://water-staging\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"s3://noyo-staging\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"s3://septic-staging\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: MinIO imports converged'"
         if startswith(name, "site-") && !endswith(name, "-prod")
       ],
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml"
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"az://water-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"az://noyo-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"az://septic-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: Azure imports converged'"
         if startswith(name, "site-") && lookup(local.instances[name], "remote_backend", "minio") == "azure"
       ],
+      # A staging reset changes at least one source identity or removes the
+      # consumer itself. Complete the full initial import and build under the
+      # same explicit one-shot authorization used for producer seeding.
+      local.staging_site_reseed
+      ? ["POND_IGNORE_LIMITS=1 ${local.base_dir}/config/scripts/run.sh site-staging"]
+      : [],
       # Enable + start producer and selfmon timers.  Each timer's OnBootSec
       # is already in the past, so starting a stopped timer fires its first
       # run immediately and then settles onto the OnUnitActiveSec cadence.
-      # After a reset the timer was stopped, so this kicks the first ingest
-      # right away; on a routine apply the timer is already running and the
-      # enable --now is a no-op.  There is no synchronous seed: producers
-      # populate their buckets asynchronously, which is the same work the
-      # timer does every cycle.  terraform does not wait on any of it.
+      # Reset staging producers already completed their synchronous seed
+      # above; subsequent timer runs use normal limiter enforcement.
       [for name in local.container_instance_names :
         endswith(name, "-prod") && !var.activate_production_timers
         ? "systemctl --user disable --now pond@${name}.timer 2>/dev/null || true"
@@ -591,21 +585,15 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "systemctl --user enable --now pond-selfmon-update@${name}.timer"
       ],
-      # Site timers.  Starting a stopped site timer fires an immediate build.
-      # Right after a reset the producers have pushed only their empty
-      # pond_init bundle and have not ingested yet, so an immediate build
-      # would race them, fail "table 'source' not found", and then wait a
-      # full 3h interval.  For a site that was just reset, enable the timer
-      # but defer its first start by 5 minutes via a transient systemd timer
-      # so the producers kicked above have populated their buckets first.
-      # This is fire-and-forget: terraform schedules the deferred start and
-      # returns.  Sites not in the reset set already hold data and start
-      # immediately.
+      # A reset site was built synchronously above. Enable its persistent timer
+      # now, but defer activation for one normal 3h interval so OnBootSec does
+      # not trigger an immediate duplicate build. On reboot, the enabled timer
+      # starts normally even if the transient delay has not yet elapsed.
       [for name in local.container_instance_names :
         endswith(name, "-prod") && !var.activate_production_timers
         ? "systemctl --user disable --now pond@${name}.timer 2>/dev/null || true"
-        : (contains(var.reset_instances, name)
-          ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=5min --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
+        : (name == "site-staging" && local.staging_site_reseed
+          ? "systemctl --user enable pond@${name}.timer; systemctl --user stop pond-firstbuild-${name}.timer 2>/dev/null || true; systemd-run --user --on-active=3h --unit=pond-firstbuild-${name} systemctl --user start pond@${name}.timer"
         : "systemctl --user enable --now pond@${name}.timer")
         if startswith(name, "site-")
       ],

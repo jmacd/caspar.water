@@ -13,17 +13,7 @@ minio_endpoint   = "http://localhost:9000"
 minio_access_key = ""
 minio_secret_key = ""
 
-# Cloudflare R2 (production backup)
-r2_endpoint   = ""
-r2_access_key = ""
-r2_secret_key = ""
-
-# MinIO remains each producer's origin. Add Azure mirrors one producer at a
-# time; site-prod can switch only after all three mirrors are present.
-azure_mirror_instances   = []
-site_prod_remote_backend = "minio"
-
-# Fill these from terraform/station/azure outputs before selecting Azure.
+# Production publishes exclusively to the -0002 Azure containers.
 azure_storage_account = ""
 azure_tenant_id        = ""
 azure_producer_credentials = {
@@ -36,10 +26,9 @@ azure_site_credentials = {
   client_secret = ""
 }
 
-# On the first Azure apply for a producer, name it here to authorize the
-# otherwise-refused initial history push. A host marker makes this one-shot,
-# but reset this list to [] immediately after the successful apply.
-azure_seed_instances = []
+# Keep false while initializing or resetting production. Enable only after
+# controlled producer and site cycles have succeeded.
+activate_production_timers = false
 
 # Weekly report email remains disabled until the verified ACS domain is ready.
 # Keep the recipient and access key only in this ignored tfvars file.

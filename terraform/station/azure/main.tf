@@ -28,7 +28,7 @@ locals {
     "septic-prod",
     "water-prod",
   ])
-  target_producers = {
+  production_containers = {
     for producer in local.producers :
     producer => "${producer}-0002"
   }
@@ -72,19 +72,8 @@ resource "azurerm_storage_account" "backups" {
   }
 }
 
-resource "azurerm_storage_container" "ponds" {
-  for_each = local.producers
-
-  name                  = each.key
-  storage_account_id    = azurerm_storage_account.backups.id
-  container_access_type = "private"
-}
-
-# The production migration writes only to a fresh container generation.
-# Keeping these resources separate preserves the original containers and their
-# Terraform addresses until the post-cutover retention decision.
-resource "azurerm_storage_container" "migration_targets" {
-  for_each = local.target_producers
+resource "azurerm_storage_container" "production" {
+  for_each = local.production_containers
 
   name                  = each.value
   storage_account_id    = azurerm_storage_account.backups.id
@@ -114,43 +103,37 @@ resource "azuread_application_password" "pond" {
   end_date       = var.credential_end_date
 }
 
-resource "azurerm_role_assignment" "producer" {
-  for_each = local.producers
+resource "azurerm_role_assignment" "production_producer" {
+  for_each = local.production_containers
 
-  scope                = azurerm_storage_container.ponds[each.key].id
+  scope                = azurerm_storage_container.production[each.key].id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azuread_service_principal.pond[each.key].object_id
   principal_type       = "ServicePrincipal"
 }
 
-resource "azurerm_role_assignment" "site" {
-  for_each = local.producers
+resource "azurerm_role_assignment" "production_site" {
+  for_each = local.production_containers
 
-  scope                = azurerm_storage_container.ponds[each.key].id
+  scope                = azurerm_storage_container.production[each.key].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azuread_service_principal.pond["site-prod"].object_id
   principal_type       = "ServicePrincipal"
 }
 
-# Reuse the existing least-privilege identities for the one-time migration:
-# each producer can seed only its own target, while site-prod remains
-# read-only across the producer targets.
-resource "azurerm_role_assignment" "migration_target_producer" {
-  for_each = local.target_producers
-
-  scope                = azurerm_storage_container.migration_targets[each.key].id
-  role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azuread_service_principal.pond[each.key].object_id
-  principal_type       = "ServicePrincipal"
+moved {
+  from = azurerm_storage_container.migration_targets
+  to   = azurerm_storage_container.production
 }
 
-resource "azurerm_role_assignment" "migration_target_site" {
-  for_each = local.target_producers
+moved {
+  from = azurerm_role_assignment.migration_target_producer
+  to   = azurerm_role_assignment.production_producer
+}
 
-  scope                = azurerm_storage_container.migration_targets[each.key].id
-  role_definition_name = "Storage Blob Data Reader"
-  principal_id         = azuread_service_principal.pond["site-prod"].object_id
-  principal_type       = "ServicePrincipal"
+moved {
+  from = azurerm_role_assignment.migration_target_site
+  to   = azurerm_role_assignment.production_site
 }
 
 resource "azurerm_consumption_budget_resource_group" "backups" {

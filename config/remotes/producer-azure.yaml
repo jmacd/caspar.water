@@ -1,9 +1,7 @@
-# Additional Azure backup for a production producer pond.
+# Azure backup for a production producer pond.
 #
-# /sys/remotes/origin remains attached to MinIO. This document adds
-# /sys/remotes/azure with independent limits so Azure setup and failures cannot
-# consume or block the established MinIO budget. Post-commit auto-push visits
-# both remotes independently.
+# Production publishes exclusively to /sys/remotes/azure. The independent
+# limiters bound normal post-commit traffic.
 #
 # The first `pond push azure` must be an explicit, one-time seed with
 # POND_IGNORE_LIMITS=1; ordinary timer runs remain governed.

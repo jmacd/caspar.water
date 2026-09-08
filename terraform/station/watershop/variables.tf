@@ -26,46 +26,6 @@ variable "minio_secret_key" {
   sensitive = true
 }
 
-# Cloudflare R2
-variable "r2_endpoint" {
-  sensitive = true
-}
-
-variable "r2_access_key" {
-  sensitive = true
-}
-
-variable "r2_secret_key" {
-  sensitive = true
-}
-
-# Azure production backups. These remain dormant while the mirror list is
-# empty and site-prod remains on MinIO.
-variable "azure_mirror_instances" {
-  description = "Production producers that carry an additional Azure backup."
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition = alltrue([
-      for name in var.azure_mirror_instances :
-      contains(["noyo-prod", "septic-prod", "water-prod"], name)
-    ])
-    error_message = "azure_mirror_instances may contain only production producer names."
-  }
-}
-
-variable "site_prod_remote_backend" {
-  description = "Provider used by site-prod imports after producer mirroring is proven."
-  type        = string
-  default     = "minio"
-
-  validation {
-    condition     = contains(["minio", "azure"], var.site_prod_remote_backend)
-    error_message = "site_prod_remote_backend must be minio or azure."
-  }
-}
-
 variable "azure_storage_account" {
   description = "Azure storage account used by production pond containers."
   type        = string
@@ -112,20 +72,6 @@ variable "azure_site_credentials" {
   default = {
     client_id     = ""
     client_secret = ""
-  }
-}
-
-variable "azure_seed_instances" {
-  description = "Producer list to seed once with POND_IGNORE_LIMITS during an Azure cutover."
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition = alltrue([
-      for name in var.azure_seed_instances :
-      contains(["noyo-prod", "septic-prod", "water-prod"], name)
-    ])
-    error_message = "azure_seed_instances may contain only production producer names."
   }
 }
 
@@ -201,15 +147,55 @@ variable "weekly_report_email_credentials" {
   }
 }
 
-# Instances to wipe and re-initialize.  DESTRUCTIVE and manual-only: an
-# instance named here has its local volume + host dir removed and its S3
-# backup bucket emptied, then re-initialized from source.  Defaults to empty
-# so routine applies never reset; pass explicitly, e.g.
-# -var 'reset_instances=["water-prod","septic-prod","noyo-prod","site-prod"]'.
+# Instances to wipe and re-initialize. DESTRUCTIVE and manual-only: an
+# instance named here has its local volume + host dir removed and, for staging,
+# its S3 backup bucket emptied before re-initialization. Production producer
+# resets are refused because their existing Azure containers cannot attach to a
+# newly initialized pond ID; that operation requires a separate controlled
+# container replacement and seed. Defaults to empty so routine applies never
+# reset; pass explicitly, e.g.
+# -var 'reset_instances=["water-staging","site-staging"]'.
 variable "reset_instances" {
-  description = "Instances to wipe and re-initialize (volumes + S3 buckets destroyed)"
+  description = "Non-production-producer instances to wipe and re-initialize"
   type        = list(string)
   default     = []
+
+  validation {
+    condition = alltrue([
+      for name in var.reset_instances :
+      contains([
+        "noyo-prod",
+        "noyo-staging",
+        "septic-prod",
+        "septic-staging",
+        "site-prod",
+        "site-staging",
+        "water-prod",
+        "water-staging",
+        "watershop-selfmon",
+      ], name)
+    ])
+    error_message = "reset_instances contains an unknown or unsupported reset target."
+  }
+
+  validation {
+    condition = alltrue([
+      for name in var.reset_instances :
+      !contains(["noyo-prod", "septic-prod", "site-prod", "water-prod"], name)
+    ])
+    error_message = "Production resets require a controlled Azure replacement and seed; they cannot use reset_instances."
+  }
+
+  validation {
+    condition = (
+      length(setintersection(
+        toset(var.reset_instances),
+        toset(["noyo-staging", "septic-staging", "water-staging"]),
+      )) == 0 ||
+      contains(var.reset_instances, "site-staging")
+    )
+    error_message = "Resetting a staging producer changes its pond identity; include site-staging in reset_instances so its old graft is replaced."
+  }
 }
 
 # Git branch for Caspar Water site content (git-ingest)

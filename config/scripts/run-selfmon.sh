@@ -17,8 +17,8 @@ if [ ! -f "${ENV_FILE}" ]; then
     exit 1
 fi
 
-# shellcheck disable=SC1090
 set -a
+# shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
 
@@ -55,14 +55,102 @@ export SELFMON_INSTANCE="${INSTANCE}"
 FAILURE_COUNT=0
 FAILED_STEPS=""
 STATUS_FILE="${SELFMON_METRICS_DIR:-/tmp}/.tick-status.json"
+PROC_IO="/proc/$$/io"
+IO_DIAGNOSTICS_ENABLED=1
+
+# Linux rolls a waited-for child's I/O counters into its parent.  Since this
+# script waits for every command, snapshots of /proc/$$/io provide both
+# per-step and whole-tick totals without systemd IOAccounting.
+snapshot_proc_io() {
+    local prefix="$1"
+    local key value fields_seen=0
+
+    printf -v "${prefix}_rchar" '%d' 0
+    printf -v "${prefix}_wchar" '%d' 0
+    printf -v "${prefix}_syscr" '%d' 0
+    printf -v "${prefix}_syscw" '%d' 0
+    printf -v "${prefix}_read_bytes" '%d' 0
+    printf -v "${prefix}_write_bytes" '%d' 0
+    printf -v "${prefix}_cancelled_write_bytes" '%d' 0
+
+    [ -r "${PROC_IO}" ] || return 1
+    while read -r key value; do
+        case "${key}" in
+            rchar:|wchar:|syscr:|syscw:|read_bytes:|write_bytes:|cancelled_write_bytes:)
+                printf -v "${prefix}_${key%:}" '%s' "${value}"
+                fields_seen=$((fields_seen + 1))
+                ;;
+        esac
+    done < "${PROC_IO}"
+    [ "${fields_seen}" -eq 7 ]
+}
+
+print_io_delta() {
+    local start_prefix="$1"
+    local end_prefix="$2"
+    local field start_name end_name delta
+
+    for field in rchar wchar syscr syscw read_bytes write_bytes \
+        cancelled_write_bytes
+    do
+        start_name="${start_prefix}_${field}"
+        end_name="${end_prefix}_${field}"
+        delta=$((${!end_name} - ${!start_name}))
+        printf ' %s=%d' "${field}" "${delta}"
+    done
+}
+
+disable_io_diagnostics() {
+    local detail="$1"
+
+    if [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]; then
+        IO_DIAGNOSTICS_ENABLED=0
+        FAILURE_COUNT=$((FAILURE_COUNT + 1))
+        FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}io-diagnostics"
+        echo "ERROR: selfmon I/O diagnostics failed: ${detail}" >&2
+    fi
+}
+
+if ! snapshot_proc_io IO_TICK_START; then
+    disable_io_diagnostics "could not read ${PROC_IO}"
+fi
 
 step() {
-    step_name="$1"
+    local step_name="$1"
+    local step_rc step_outcome step_io_started=0
+
     shift
+    if [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]; then
+        if snapshot_proc_io IO_STEP_START; then
+            step_io_started=1
+        else
+            disable_io_diagnostics "could not start step '${step_name}'"
+        fi
+    fi
+
     set +e
     "$@"
     step_rc=$?
     set -e
+
+    if [ "${step_io_started}" -eq 1 ] &&
+        [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]
+    then
+        if snapshot_proc_io IO_STEP_END; then
+            if [ "${step_rc}" -eq 0 ]; then
+                step_outcome=ok
+            else
+                step_outcome=error
+            fi
+            printf 'selfmon_io scope=step step=%s outcome=%s' \
+                "${step_name}" "${step_outcome}"
+            print_io_delta IO_STEP_START IO_STEP_END
+            printf '\n'
+        else
+            disable_io_diagnostics "could not finish step '${step_name}'"
+        fi
+    fi
+
     if [ "${step_rc}" -ne 0 ]; then
         FAILURE_COUNT=$((FAILURE_COUNT + 1))
         FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}${step_name}"
@@ -79,6 +167,16 @@ write_tick_status() {
     if [ "${exit_rc}" -ne 0 ]; then
         FAILURE_COUNT=$((FAILURE_COUNT + 1))
         FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}tick-aborted"
+    fi
+    if [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]; then
+        if snapshot_proc_io IO_TICK_END; then
+            printf 'selfmon_io scope=tick instance=%s exit_rc=%d failures=%d' \
+                "${INSTANCE}" "${exit_rc}" "${FAILURE_COUNT}"
+            print_io_delta IO_TICK_START IO_TICK_END
+            printf '\n'
+        else
+            disable_io_diagnostics "could not finish tick"
+        fi
     fi
     # Written atomically via rename so a reader never sees a partial record.
     # If even this fails, say so on stderr: the status file is the channel
