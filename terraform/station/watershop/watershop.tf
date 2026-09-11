@@ -30,7 +30,8 @@ locals {
   instances = {
     noyo-staging = {
       s3             = local.staging_s3
-      s3_url         = "s3://noyo-staging"
+      s3_url         = "s3://noyo-staging-0002"
+      volume         = "pond-noyo-staging-0002"
       remote_backend = "minio"
       azure_mirror   = false
       interval       = "1h"
@@ -42,11 +43,13 @@ locals {
       s3_url     = ""
       interval   = "1h"
       boot_delay = "6min"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0002"
+      volume     = "pond-noyo-prod-0003"
+      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0003"
     }
     water-staging = {
       s3             = local.staging_s3
-      s3_url         = "s3://water-staging"
+      s3_url         = "s3://water-staging-0002"
+      volume         = "pond-water-staging-0002"
       remote_backend = "minio"
       azure_mirror   = false
       interval       = "1h"
@@ -58,11 +61,13 @@ locals {
       s3_url     = ""
       interval   = "1h"
       boot_delay = "3min"
-      extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod-0002"
+      volume     = "pond-water-prod-0003"
+      extra_env  = "DATA_DIR=${var.water_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://water-prod-0003"
     }
     septic-staging = {
       s3             = local.staging_s3
-      s3_url         = "s3://septic-staging"
+      s3_url         = "s3://septic-staging-0002"
+      volume         = "pond-septic-staging-0002"
       remote_backend = "minio"
       azure_mirror   = false
       interval       = "1h"
@@ -74,25 +79,28 @@ locals {
       s3_url     = ""
       interval   = "1h"
       boot_delay = "5min"
-      extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod-0002"
+      volume     = "pond-septic-prod-0003"
+      extra_env  = "DATA_DIR=${var.septic_data_dir}\nSITE_BASE_URL=/\nAZURE_URL=az://septic-prod-0003"
     }
     site-staging = {
       s3             = local.staging_s3
       s3_url         = ""
+      volume         = "pond-site-staging-0002"
       remote_backend = "minio"
       interval       = "3h"
       boot_delay     = "7min"
       email_report   = contains(var.weekly_report_email_instances, "site-staging")
-      extra_env      = "WATER_S3_URL=s3://water-staging\nNOYO_S3_URL=s3://noyo-staging\nSEPTIC_S3_URL=s3://septic-staging\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nNOYO_GIT_REF=${var.noyo_git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_S3_URL=s3://water-staging-0002\nNOYO_S3_URL=s3://noyo-staging-0002\nSEPTIC_S3_URL=s3://septic-staging-0002\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nNOYO_GIT_REF=${var.noyo_git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
     }
     site-prod = {
       s3             = local.no_s3
       s3_url         = ""
+      volume         = "pond-site-prod-0003"
       remote_backend = "azure"
       interval       = "3h"
       boot_delay     = "8min"
       email_report   = contains(var.weekly_report_email_instances, "site-prod")
-      extra_env      = "WATER_AZURE_URL=az://water-prod-0002\nNOYO_AZURE_URL=az://noyo-prod-0002\nSEPTIC_AZURE_URL=az://septic-prod-0002\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
+      extra_env      = "WATER_AZURE_URL=az://water-prod-0003\nNOYO_AZURE_URL=az://noyo-prod-0003\nSEPTIC_AZURE_URL=az://septic-prod-0003\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
     }
     watershop-selfmon = {
       s3             = local.staging_s3
@@ -122,7 +130,7 @@ locals {
   # this host, not to a staging/prod tier of any pond).
   instance_names = [for name in keys(local.instances) :
     name if(
-      lookup(local.instances[name], "selfmon", false) ||
+      (var.deploy_selfmon && lookup(local.instances[name], "selfmon", false)) ||
       (var.deploy_staging && endswith(name, "-staging")) ||
       (var.deploy_production && endswith(name, "-prod"))
     )
@@ -142,6 +150,10 @@ locals {
   selfmon_instance_names = [for n in local.instance_names :
     n if lookup(local.instances[n], "selfmon", false)
   ]
+  instance_volumes = {
+    for name, instance in local.instances :
+    name => lookup(instance, "volume", "pond-${name}")
+  }
 
   # MinIO buckets are staging-only. Production uses Azure.
   staging_bucket_names = [for n in local.instance_names :
@@ -161,7 +173,7 @@ resource "local_file" "env_files" {
   filename        = "${path.module}/env/${each.key}.env"
   file_permission = "0600"
   content = join("\n", [
-    "POND_VOLUME=pond-${each.key}",
+    "POND_VOLUME=${local.instance_volumes[each.key]}",
     "POND=${local.home}/pond-${each.key}",
     "SELFMON_METRICS_DIR=/var/log/watertown-selfmon/${each.key}",
     "S3_URL=${each.value.s3_url}",
@@ -376,10 +388,10 @@ resource "null_resource" "watershop" {
         # container after that tag is promoted.
         join(" ; ", concat(
           [for name in local.container_instance_names :
-            "podman ps --format '{{.Names}}' --filter 'volume=pond-${name}' | xargs -r podman kill 2>/dev/null || true"
+            "podman ps --format '{{.Names}}' --filter 'volume=${local.instance_volumes[name]}' | xargs -r podman kill 2>/dev/null || true"
           ],
           [for name in local.container_instance_names :
-            "podman ps -aq --filter 'volume=pond-${name}' | xargs -r podman rm -f 2>/dev/null || true"
+            "podman ps -aq --filter 'volume=${local.instance_volumes[name]}' | xargs -r podman rm -f 2>/dev/null || true"
           ],
         )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
@@ -451,10 +463,10 @@ resource "null_resource" "watershop" {
           "(systemctl --user disable --now pond@${name}.timer pond-selfmon@${name}.timer 2>/dev/null || true)",
           "echo '[reset] ${name}: stopping service'",
           "(systemctl --user stop pond@${name}.service pond-selfmon@${name}.service 2>/dev/null || true)",
-          "echo '[reset] ${name}: killing any container holding pond-${name}'",
-          "podman ps -aq --filter 'volume=pond-${name}' | xargs -r podman rm -f",
-          "echo '[reset] ${name}: removing volume pond-${name}'",
-          "if podman volume exists pond-${name}; then podman volume rm pond-${name}; else echo '[reset] ${name}: no volume to remove'; fi",
+          "echo '[reset] ${name}: killing any container holding ${local.instance_volumes[name]}'",
+          "podman ps -aq --filter 'volume=${local.instance_volumes[name]}' | xargs -r podman rm -f",
+          "echo '[reset] ${name}: removing volume ${local.instance_volumes[name]}'",
+          "if podman volume exists ${local.instance_volumes[name]}; then podman volume rm ${local.instance_volumes[name]}; else echo '[reset] ${name}: no volume to remove'; fi",
           "echo '[reset] ${name}: removing host dir'",
           "rm -rf ${local.home}/pond-${name}",
           # Empty this instance's S3 backup bucket.  Post-D6 `pond backup
@@ -495,7 +507,7 @@ resource "null_resource" "watershop" {
       # we detect that condition on the host (via the volume's mountpoint)
       # and skip init in the no-op case.  Real init failures still surface.
       [for name in local.container_instance_names :
-        "if podman volume exists pond-${name} && [ -d \"$(podman volume inspect pond-${name} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init --birthplace ${name}; fi"
+        "if podman volume exists ${local.instance_volumes[name]} && [ -d \"$(podman volume inspect ${local.instance_volumes[name]} --format '{{.Mountpoint}}')/data/_delta_log\" ]; then echo '[init] ${name}: already initialized'; else ${local.base_dir}/config/scripts/pond.sh ${name} init --birthplace ${name}; fi"
       ],
       # Apply containerized instance configs
       [for name in local.container_instance_names :
@@ -552,11 +564,11 @@ resource "null_resource" "watershop" {
         if !startswith(name, "site-") && !endswith(name, "-prod") && contains(var.reset_instances, name)
       ],
       [for name in local.container_instance_names :
-        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"s3://water-staging\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"s3://noyo-staging\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"s3://septic-staging\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: MinIO imports converged'"
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"s3://water-staging-0002\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"s3://noyo-staging-0002\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"s3://septic-staging-0002\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: MinIO imports converged'"
         if startswith(name, "site-") && !endswith(name, "-prod")
       ],
       [for name in local.container_instance_names :
-        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"az://water-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"az://noyo-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"az://septic-prod-0002\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: Azure imports converged'"
+        "raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"water\" && $1 != \"noyo\" && $1 != \"septic\" { print $1 }'); for remote in $unexpected; do echo \"[remote] ${name}: detaching unexpected $remote\"; ${local.base_dir}/config/scripts/pond.sh ${name} remote remove \"$remote\"; done; ${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/remotes/site-azure.yaml; raw_listing=$(${local.base_dir}/config/scripts/pond.sh ${name} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.base_dir}/config/scripts/pond.sh ${name} remote list) || exit 1; printf '%s\\n' \"$raw_names\" | awk '$1 == \"water\" { water++; next } $1 == \"noyo\" { noyo++; next } $1 == \"septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' && printf '%s\\n' \"$remotes\" | awk 'NR == 1 { next } $1 == \"water\" && $2 == \"az://water-prod-0003\" && $3 == \"pull\" && $4 == \"/sources/water\" { water++; next } $1 == \"noyo\" && $2 == \"az://noyo-prod-0003\" && $3 == \"pull\" && $4 == \"/sources/noyo\" { noyo++; next } $1 == \"septic\" && $2 == \"az://septic-prod-0003\" && $3 == \"pull\" && $4 == \"/sources/septic\" { septic++; next } { unexpected=1 } END { exit !(water == 1 && noyo == 1 && septic == 1 && !unexpected) }' || exit 1; echo '[remote] ${name}: Azure imports converged'"
         if startswith(name, "site-") && lookup(local.instances[name], "remote_backend", "minio") == "azure"
       ],
       # A staging reset changes at least one source identity or removes the

@@ -32,6 +32,10 @@ locals {
     for producer in local.producers :
     producer => "${producer}-0002"
   }
+  native_production_containers = {
+    for producer in local.producers :
+    producer => "${producer}-0003"
+  }
   identities = setunion(local.producers, toset(["site-prod"]))
 }
 
@@ -80,6 +84,14 @@ resource "azurerm_storage_container" "production" {
   container_access_type = "private"
 }
 
+resource "azurerm_storage_container" "native" {
+  for_each = local.native_production_containers
+
+  name                  = each.value
+  storage_account_id    = azurerm_storage_account.backups.id
+  container_access_type = "private"
+}
+
 resource "azuread_application" "pond" {
   for_each = local.identities
 
@@ -116,6 +128,24 @@ resource "azurerm_role_assignment" "production_site" {
   for_each = local.production_containers
 
   scope                = azurerm_storage_container.production[each.key].id
+  role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azuread_service_principal.pond["site-prod"].object_id
+  principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "native_producer" {
+  for_each = local.native_production_containers
+
+  scope                = azurerm_storage_container.native[each.key].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.pond[each.key].object_id
+  principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "native_site" {
+  for_each = local.native_production_containers
+
+  scope                = azurerm_storage_container.native[each.key].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azuread_service_principal.pond["site-prod"].object_id
   principal_type       = "ServicePrincipal"
