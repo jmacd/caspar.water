@@ -48,7 +48,7 @@ and builds the Noyo Harbor subsite from it.
 |------|---------|
 | `config/scripts/pond.sh` | Podman wrapper — runs `pond` in a container with the right volumes, env, and image |
 | `config/scripts/run.sh` | Systemd timer entrypoint — dispatches by pond type (git-pull/ingest/collect/pull/sitegen) |
-| `config/scripts/reset.sh` | Erases S3 bucket for an instance — reads credentials from an env file |
+| `config/scripts/reset.sh` | Erases a staging S3 bucket for an instance — reads credentials from an env file |
 | `config/systemd/pond@.service` | Systemd template unit — runs `run.sh %i` for each instance |
 
 ## Environment Variables
@@ -71,6 +71,14 @@ Used by `${env:VAR}` in configs. Set in env files (terraform-generated) or `loca
 | `WATER_S3_URL` | Site imports | `s3://water-staging` |
 | `NOYO_S3_URL` | Site imports | `s3://noyo-staging` |
 | `SEPTIC_S3_URL` | Site imports | `s3://septic-staging` |
+| `AZURE_STORAGE_ACCOUNT` | Production storage | Azure storage account name |
+| `AZURE_TENANT_ID` | Production storage | Service-principal tenant |
+| `AZURE_CLIENT_ID` | Production storage | Per-instance writer or reader identity |
+| `AZURE_CLIENT_SECRET` | Production storage | Per-instance credential |
+| `AZURE_URL` | Production producer backup | `az://water-prod-0003` |
+| `WATER_AZURE_URL` | Production site import | `az://water-prod-0003` |
+| `NOYO_AZURE_URL` | Production site import | `az://noyo-prod-0003` |
+| `SEPTIC_AZURE_URL` | Production site import | `az://septic-prod-0003` |
 
 ## Local Development
 
@@ -86,7 +94,34 @@ cd local
 Env vars come from `local/env.sh` (MinIO on watershop, staging buckets, GIT_REF from current branch).
 Note: `refresh.sh` only sees committed changes (git-ingest reads from the repo).
 
-## Watershop Staging
+## Watershop deployment
+
+Staging uses MinIO on watershop. Production uses Azure native-v2 publication
+with a separate service principal for each producer and a read-only identity
+for `site-prod`.
+
+### Production state (2026-09-12)
+
+Production is running Watertown `0.165.228` from
+`ghcr.io/jmacd/watertown/watertown:prod-arm64`, digest
+`sha256:f13fe24accc0b9a5cb900f4ae45fcd43944351aee9a92f5c52844d83912e3df9`.
+
+| Instance | Local generation | Azure container | Timer |
+|---|---|---|---|
+| `water-prod` | `pond-water-prod-0003` | `water-prod-0003` | 1h, enabled |
+| `noyo-prod` | `pond-noyo-prod-0003` | `noyo-prod-0003` | 1h, enabled |
+| `septic-prod` | `pond-septic-prod-0003` | `septic-prod-0003` | 1h, enabled |
+| `site-prod` | `pond-site-prod-0003` | read-only imports of all three containers | 3h, enabled |
+
+The native-v2 cutover, normal-limit producer/site canaries, and the first
+timer-triggered cycle all completed successfully. The active site build after
+timer activation was `build-20260912-234140`; it was atomically installed on
+watershop and the cloud host. The public root and `/noyo-harbor/` both returned
+HTTP 200.
+
+Legacy `-0002` Azure containers and the prior local volumes remain rollback
+state. Do not delete or overwrite them as part of routine deployment, and do
+not infer that changing a Terraform generation name authorizes their removal.
 
 ### Weekly email report
 
@@ -145,6 +180,10 @@ terraform apply -var noyo_git_ref=my-branch   # Noyo staging with custom branch
 Terraform pushes `config/` and env files to the machine.
 For each instance: `pond init` (no-op if exists) + `pond apply -f /config/<type>.yaml`.
 Site content is pulled from git at runtime by `run.sh` — no file push needed.
+
+`activate_production_timers` defaults to `false`. A production apply therefore
+leaves all `-prod` timers disabled until an operator completes the seed and
+normal-limit canary below. Set it to `true` only after those checks pass.
 
 ### Selfmon I/O diagnostics
 
@@ -230,75 +269,69 @@ journalctl --user -u "pond-selfmon@<instance>.service" --no-pager \
   | grep "Prefix verification failed" | head -2
 ```
 
-### Full clean reset (recover from stale data)
+### Production generation cutover
 
-Site-* instances aggregate from the producer ponds (water/noyo/septic) by
-importing each producer's S3 bucket. The cross-pond import is isolated per
-`pond_id` with a per-remote watermark (watertown post-D6 remote model, #80), so
-a slow producer is never masked by a faster one during normal operation.
+Do not use `reset_instances` for production. Terraform rejects production
+reset targets because an in-place reset destroys rollback state. A production
+repair that requires a new pond identity must instead use a new numeric
+generation for all four local volumes and all three Azure containers.
 
-Reset all four prod ponds together. A reset gives each producer a new `pond_id`
-and restarts its `txn_seq` at 1; wiping site-prod alongside them clears its
-import state so it re-bootstraps cleanly from each producer's fresh bucket
-(testsuite `542-import-watermark-restore.sh`).
+1. Provision the new Azure containers and identities, configure the new
+   `-NNNN` volume/container names, and apply with production timers disabled.
+2. Pull the promoted immutable build:
 
-```bash
-# 1. Erase prod producer S3 buckets so each re-inits into an empty bucket.
-#    A reset gives the pond a new pond_id, and `pond backup add` refuses a
-#    bucket whose store_id still belongs to the old pond.
-config/scripts/reset.sh \
-    terraform/station/watershop/env/water-prod.env \
-    terraform/station/watershop/env/noyo-prod.env \
-    terraform/station/watershop/env/septic-prod.env
+   ```bash
+   ~/watertown/config/scripts/pond.sh water-prod --pull-image
+   ```
 
-# 2. Wipe all four prod volumes and re-init (terraform).
-cd terraform/station/watershop
-terraform apply -var deploy_production=true \
-    -var 'reset_instances=["water-prod","noyo-prod","septic-prod","site-prod"]'
+3. Seed each fresh producer explicitly. The initial snapshot is expected to
+   exceed the ordinary 64 MiB burst, so the override is scoped to this command
+   and is never placed in an env file:
 
-# 3. Verify (optional): terraform returns once timers are enabled; data
-#    populates asynchronously. Check first ticks once they land.
-ssh watershop.casparwater.us 'systemctl --user list-timers "pond@*-prod*" --all'
-```
+   ```bash
+   POND_IGNORE_LIMITS=1 ~/watertown/config/scripts/run.sh water-prod
+   POND_IGNORE_LIMITS=1 ~/watertown/config/scripts/run.sh septic-prod
+   POND_IGNORE_LIMITS=1 ~/watertown/config/scripts/run.sh noyo-prod
+   ```
 
-The reset is fully asynchronous. terraform wipes and re-inits the four prod
-ponds, attaches their remotes, then enables the timers and returns; it does
-not run a synchronous seed or block on any ingest or site build. Producer
-timers fire their first ingest immediately, and site-prod's first build is
-deferred about 5 minutes so it runs after the producers have populated their
-buckets. The manual fix-up steps this runbook used to list are no longer
-needed:
+   If source ingestion already committed locally but publication failed,
+   retry only the pending publication:
 
-- site-prod comes up without a manual `pond apply` or an early manual trigger:
-  `pond apply` for site-prod runs unconditionally on every terraform apply
-  (`watershop.tf`), and the deferred first build (terraform schedules a
-  one-shot `systemd-run --on-active=5min`) renders the site once producers
-  hold data, so there is no empty-source race.
-- noyo-prod's first hydrovu collect no longer crawls HydroVu from epoch on a
-  fresh pond: live collection resumes from the git-ingested seed archives, and
-  a missing resume point now hard-fails with a clear message instead of issuing
-  the unbounded `startTime=0` query that timed the API out (watertown PR #90,
-  in the prod image).
+   ```bash
+   POND_IGNORE_LIMITS=1 ~/watertown/config/scripts/pond.sh water-prod push azure
+   ```
 
-Total time to fresh data on cloud: terraform returns in ~2-3 min (reset +
-re-init + remote attach); producers ingest within ~1-2 min; site-prod builds
-~5 min after the apply and rsyncs to cloud (~10 min total), all unattended.
+4. Seed the fresh site imports and atomically deploy the result:
 
-The same recipe works for staging: substitute `-staging` for `-prod`
-throughout, and drop `-var deploy_production=true`.
+   ```bash
+   POND_IGNORE_LIMITS=1 ~/watertown/config/scripts/run.sh site-prod
+   ```
+
+5. Run every producer and the site once without an override. Confirm changed
+   work remains below its normal limiter, unchanged pushes are acknowledged
+   no-ops, site pulls are incremental, and the cloud symlink/public endpoints
+   are current.
+6. Enable timers through Terraform with
+   `-var activate_production_timers=true`. Verify the immediately triggered
+   cycle finishes successfully and each timer has its next scheduled
+   activation.
+
+The initial override authorizes only full seed transfer. It is not evidence
+for normal efficiency; the subsequent no-override producer and consumer cycle
+is the release gate.
 
 ### Instances
 
-| Instance | Type | Timer interval | S3 bucket |
-|----------|------|---------------|-----------|
-| water-staging | water | 1h | s3://water-staging |
-| noyo-staging | noyo | 1h | s3://noyo-staging |
-| septic-staging | septic | 1h | s3://septic-staging |
-| site-staging | site | 3h | (no backup) |
-| water-prod | water | 1h | s3://water-pond |
-| noyo-prod | noyo | 1h | s3://noyo-pond |
-| septic-prod | septic | 1h | s3://septic-pond |
-| site-prod | site | 3h | (no backup) |
+| Instance | Type | Timer interval | Remote |
+|----------|------|---------------|--------|
+| water-staging | water | 1h | `s3://water-staging-0002` |
+| noyo-staging | noyo | 1h | `s3://noyo-staging-0002` |
+| septic-staging | septic | 1h | `s3://septic-staging-0002` |
+| site-staging | site | 3h | pulls the three staging MinIO buckets |
+| water-prod | water | 1h | `az://water-prod-0003` |
+| noyo-prod | noyo | 1h | `az://noyo-prod-0003` |
+| septic-prod | septic | 1h | `az://septic-prod-0003` |
+| site-prod | site | 3h | read-only pulls of the three production Azure containers |
 
 ### Diagnostics
 
