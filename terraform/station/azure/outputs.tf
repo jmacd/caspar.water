@@ -26,6 +26,13 @@ output "site_credentials" {
 
 output "container_urls" {
   value = {
+    for name, container in azurerm_storage_container.native :
+    name => container.url
+  }
+}
+
+output "legacy_container_urls" {
+  value = {
     for name, container in azurerm_storage_container.production :
     name => container.url
   }

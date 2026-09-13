@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" role="img" aria-labelledby="title description">
+  <title id="title">Caspar Water pH adjustment system</title>
+  <desc id="description">Water leaves a storage tank through a two-inch main, enters and exits the treatment plant, and is sampled. A take-off supplies a three-quarter-inch variable-speed pressure pump. The pump returns water through a venturi injector that draws in air, then through the top of the tank to an eductor that releases bubbles. The bubbles promote carbon-dioxide off-gassing and raise pH.</desc>
+  <defs>
+    <marker id="arrow-water" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0c4a6e"/>
+    </marker>
+    <marker id="arrow-return" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#157a6e"/>
+    </marker>
+    <marker id="arrow-air" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#60758c"/>
+    </marker>
+    <style>
+      .title { font: 700 25px Arial, Helvetica, sans-serif; fill: #123b5d; }
+      .label { font: 600 16px Arial, Helvetica, sans-serif; fill: #18344d; }
+      .sub { font: 14px Arial, Helvetica, sans-serif; fill: #496178; }
+      .tiny { font: 12px Arial, Helvetica, sans-serif; fill: #496178; }
+      .plant { fill: #f4f8fc; stroke: #7894ae; stroke-width: 2; stroke-dasharray: 8 5; }
+      .tank { fill: #fff; stroke: #365d7e; stroke-width: 3; }
+      .water-fill { fill: #dceef9; }
+      .main { fill: none; stroke: #0c4a6e; stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; }
+      .return { fill: none; stroke: #157a6e; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+      .air { fill: none; stroke: #60758c; stroke-width: 3; stroke-dasharray: 7 5; }
+      .fitting { fill: #fff; stroke: #157a6e; stroke-width: 3; }
+      .bubble { fill: #fff; stroke: #4c9fd1; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="740" fill="#fff"/>
+  <text x="600" y="46" text-anchor="middle" class="title">pH Adjustment and Tank Aeration</text>
+
+  <rect x="52" y="110" width="335" height="525" rx="18" class="tank"/>
+  <path d="M55 305 H384 V616 Q384 632 368 632 H71 Q55 632 55 616 Z" class="water-fill"/>
+  <line x1="55" y1="305" x2="384" y2="305" stroke="#4c9fd1" stroke-width="3"/>
+  <text x="219" y="151" text-anchor="middle" class="label">Storage tank</text>
+  <text x="219" y="173" text-anchor="middle" class="sub">single tank</text>
+  <text x="219" y="590" text-anchor="middle" class="sub">stored water</text>
+
+  <rect x="430" y="130" width="708" height="265" rx="18" class="plant"/>
+  <text x="454" y="162" class="label">Treatment plant</text>
+  <text x="454" y="184" class="sub">main flow enters and leaves the plant</text>
+
+  <path d="M387 268 H1122" class="main" marker-end="url(#arrow-water)"/>
+  <text x="435" y="245" class="label">2 in. main</text>
+  <text x="1040" y="245" class="sub">to distribution</text>
+
+  <path d="M535 268 V205 H485" fill="none" stroke="#0c4a6e" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="475" cy="205" r="10" fill="#fff" stroke="#0c4a6e" stroke-width="4"/>
+  <text x="480" y="226" text-anchor="middle" class="label">Sampling tap</text>
+
+  <circle cx="770" cy="268" r="11" fill="#fff" stroke="#0c4a6e" stroke-width="4"/>
+  <path d="M770 279 V430" class="return" marker-end="url(#arrow-return)"/>
+  <text x="800" y="329" class="label">Take-off</text>
+  <text x="800" y="351" class="sub">3/4 in. recirculation line</text>
+
+  <circle cx="770" cy="477" r="52" fill="#e4f5f1" stroke="#157a6e" stroke-width="4"/>
+  <path d="M744 477 H784 M764 453 L788 477 L764 501" fill="none" stroke="#157a6e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="770" y="550" text-anchor="middle" class="label">Variable-speed</text>
+  <text x="770" y="571" text-anchor="middle" class="label">pressure pump</text>
+
+  <path d="M718 477 H634" class="return" marker-end="url(#arrow-return)"/>
+  <path d="M594 477 H387 V135 H274 V285" class="return" marker-end="url(#arrow-return)"/>
+
+  <path d="M634 449 L594 462 L594 492 L634 505 Z" class="fitting"/>
+  <path d="M614 392 V449" class="air" marker-end="url(#arrow-air)"/>
+  <path d="M592 392 H636" class="air"/>
+  <text x="614" y="373" text-anchor="middle" class="label">Air intake</text>
+  <text x="614" y="531" text-anchor="middle" class="label">Venturi injector</text>
+  <text x="614" y="552" text-anchor="middle" class="sub">air entrained in return water</text>
+
+  <path d="M274 285 V382" class="return" marker-end="url(#arrow-return)"/>
+  <rect x="247" y="382" width="54" height="26" rx="5" class="fitting"/>
+  <path d="M257 408 L274 437 L291 408" fill="#157a6e"/>
+  <text x="222" y="365" text-anchor="end" class="label">Eductor</text>
+  <text x="222" y="386" text-anchor="end" class="sub">releases air bubbles</text>
+
+  <circle cx="252" cy="460" r="8" class="bubble"/>
+  <circle cx="292" cy="466" r="12" class="bubble"/>
+  <circle cx="239" cy="500" r="13" class="bubble"/>
+  <circle cx="286" cy="514" r="7" class="bubble"/>
+  <circle cx="327" cy="489" r="10" class="bubble"/>
+  <circle cx="267" cy="550" r="9" class="bubble"/>
+
+  <rect x="438" y="615" width="700" height="80" rx="12" fill="#f2f8f7" stroke="#8dbcb5" stroke-width="2"/>
+  <text x="788" y="646" text-anchor="middle" class="label">Aeration promotes CO2 off-gassing, reducing H+ and raising pH</text>
+  <text x="788" y="675" text-anchor="middle" class="sub">CO2 + H2O &lt;=&gt; H2CO3 &lt;=&gt; H+ + HCO3-     O2 + HCO- &lt;=&gt; HCO3-</text>
+
+  <line x1="57" y1="688" x2="110" y2="688" class="main" marker-end="url(#arrow-water)"/>
+  <text x="122" y="693" class="tiny">main water flow</text>
+  <line x1="290" y1="688" x2="343" y2="688" class="return" marker-end="url(#arrow-return)"/>
+  <text x="355" y="693" class="tiny">aeration return flow</text>
+  <line x1="555" y1="688" x2="608" y2="688" class="air" marker-end="url(#arrow-air)"/>
+  <text x="620" y="693" class="tiny">air drawn into venturi</text>
+</svg>

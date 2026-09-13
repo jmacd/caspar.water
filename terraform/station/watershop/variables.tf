@@ -99,6 +99,12 @@ variable "deploy_staging" {
   default     = true
 }
 
+variable "deploy_selfmon" {
+  description = "Deploy the native watershop self-monitor instance"
+  type        = bool
+  default     = true
+}
+
 # Production instances deploy by default.  A routine apply is non-destructive
 # and image-stable: prod instances are pinned to the separately-promoted
 # `prod-<arch>` image tag, which only `promote.yml` moves, so a plain apply
