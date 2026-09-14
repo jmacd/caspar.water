@@ -17,15 +17,6 @@ In modern times, the Caspar Water System has been described as a "chlorinator in
 - **Service:** Our water system has 12 service connections, including the Caspar Community Center and the historic Caspar Inn.
 - **Pressure:** Our water system delivers water using gravity feed with static pressures between 35psi and 60psi.
 
-The aeration process works by removing carbon dioxide from the water through natural off-gassing. It's the reverse of the process causing ocean acidification, because the water has a higher concentration of carbon dioxide than the atmosphere. The addition of O₂ to the water disrupts the following chemical equilibrium:
-
-<div class="science">
-<strong>CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻</strong><br>
-<strong>O₂ + HCO⁻ ⇌ HCO₃⁻</strong>
-</div>
-
-As CO₂ is removed, fewer hydrogen ions (H⁺) are present, effectively raising the water's pH level. Our water is served with pH measuring around 6.8.
-
 In winter months, we serve approximately 800 gallons per day. In summer months, we serve approximately 2,000 gallons per day.
 
 ## Telemetry
