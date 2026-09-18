@@ -386,7 +386,7 @@ resource "null_resource" "watershop" {
         # bandwidth bleed). The per-instance pond volume uniquely scopes the
         # container; filtering by a mutable image tag can miss a running
         # container after that tag is promoted.
-        join(" ; ", concat(
+        length(local.container_instance_names) == 0 ? ":" : join(" ; ", concat(
           [for name in local.container_instance_names :
             "podman ps --format '{{.Names}}' --filter 'volume=${local.instance_volumes[name]}' | xargs -r podman kill 2>/dev/null || true"
           ],
@@ -490,9 +490,11 @@ resource "null_resource" "watershop" {
           # Caddy keeps serving stale HTML files (e.g. orphan
           # status.html after a route rename) from prior runs.
           "echo '[reset] ${name}: wiping selfmon metrics source'",
-          "rm -rf /var/log/watertown-selfmon/${name}",
+          "sudo rm -rf /var/log/watertown-selfmon/${name}",
+          "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/watertown-selfmon/${name}",
           "echo '[reset] ${name}: wiping selfmon rendered output'",
-          "rm -rf /var/www/selfmon/${name}",
+          "sudo rm -rf /var/www/selfmon/${name}",
+          "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}",
           "echo '[reset] ${name}: done'",
         ])} || exit 1"
       ],

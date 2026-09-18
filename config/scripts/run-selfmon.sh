@@ -421,9 +421,10 @@ if [ -d "${TEMPLATE_SRC}" ]; then
     done
 fi
 
-# Materialize the perf and limiter wide series before sitegen, so the /reduced
-# rollups include this tick's samples.  Both must come after ingest and before
-# sitegen.
+# Materialize the perf and limiter wide series plus exact Azure access events
+# before sitegen.  All must come after journal/measure ingest and before
+# sitegen.  The Azure series is not a dashboard rollup: it preserves one row
+# per storage-meter scope for later billing-category analysis.
 #
 # Non-fatal for the same reason as ingest: a failure here should leave the
 # dashboard one tick stale, not abort the tick.  The watermark is recomputed
@@ -431,6 +432,8 @@ fi
 # picks up everything past the last stored row.
 step materialize-perf "${PONDBIN}" run /system/etc/materialize-perf
 step materialize-limiters "${PONDBIN}" run /system/etc/materialize-limiters
+step materialize-azure-access \
+    "${PONDBIN}" run /system/etc/materialize-azure-access
 
 # Maintenance already ran at the top of this tick; sitegen reads the pond
 # as-is.  The few versions appended since that pass are collapsed by the
