@@ -61,6 +61,15 @@ PODMAN_ARGS=(
     -v "${BASE_DIR}/config:/config:ro"
 )
 
+# Host-published monitoring output. The env file stores the host path for the
+# wrapper; inside the container the factory always writes to /monitor.
+if [ -n "${MONITOR_OUTPUT_DIR:-}" ]; then
+    PODMAN_ARGS+=(
+        -v "${MONITOR_OUTPUT_DIR}:/monitor"
+        -e MONITOR_OUTPUT_DIR=/monitor
+    )
+fi
+
 # Deliberate one-shot seed override. Keep it out of the persistent env file:
 # callers must opt in on the specific command, and the wrapper forwards only
 # this recognized control variable into the container.

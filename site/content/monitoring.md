@@ -7,13 +7,21 @@ section: Main
 
 ## Monitoring
 
-Owner/operator Joshua MacDonald is a software engineer with professional experience in telemetry systems, hence our monitoring system uses "cloud-native" software practices. We monitor five instruments:
+Owner/operator Joshua MacDonald is a software engineer with professional experience in telemetry systems, hence our monitoring system uses "cloud-native" software practices. We collect five instruments and currently evaluate two operational checks:
 
-- **[Well depth](/data/well-depth.html):** measures the height of the water column relative to the bottom of the well.
-- **[Chlorine tank level](/data/chlorine-level.html):** lets us observe that the chlorine pump is operational.
-- **[Water tank level](/data/tank-level.html):** tells us how much treated water is in storage.
-- **[System pressure](/data/system-pressure.html):** lets us observe dynamic pressure and see that the aeration pump is running.
-- **[pH level](/data/ph.html):** An in-tank probe measures the pH of the water, lets us see that our aeration process is effective.
+The current water checks are evaluated from committed pond data. Each check
+links to the most relevant existing graph; future graphs will show the exact
+derived quantity used by the check.
+
+<link rel="stylesheet" href="assets/monitor-status.css">
+
+<div class="monitor-summary" data-water-monitors data-status-url="pond-status/water/status.json">
+  <p data-loading>Loading water monitoring status...</p>
+</div>
+
+<script type="module" src="assets/monitor-status.js"></script>
+
+See the [operations status](/status.html) for an overview of all four ponds.
 
 Operators access our [Influxdb](https://influx.casparwater.us) instance with live monitoring data collected through several OpenTelemetry Collectors.
 

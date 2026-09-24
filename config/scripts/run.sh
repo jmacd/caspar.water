@@ -67,6 +67,7 @@ case "${TYPE}" in
         ${EXE} "${INSTANCE}" run /content pull
         ${EXE} "${INSTANCE}" run /templates pull
         ${EXE} "${INSTANCE}" run /img pull
+        ${EXE} "${INSTANCE}" run /assets pull
         ${EXE} "${INSTANCE}" run /history-src pull
         # A migrated pond may be published from its copied snapshot before its
         # remote URL watermarks are safely transferred.  This is a temporary,
@@ -94,6 +95,22 @@ case "${TYPE}" in
             SITE_OUTPUT="${DEPLOY_DIR}"
         fi
         SITE_BUILD_DIR="${DEPLOY_DIR}" ${EXE} "${INSTANCE}" run /system/etc/90-sitegen build "${SITE_OUTPUT}"
+
+        # Publish the exact authoritative reports from this environment with
+        # the atomic site build. The browser never reaches Watershop directly.
+        ENVIRONMENT="${INSTANCE##*-}"
+        MONITOR_ROOT=$(dirname "${MONITOR_OUTPUT_DIR}")
+        for POND_TYPE in noyo septic water site; do
+            STATUS_SOURCE="${MONITOR_ROOT}/${POND_TYPE}-${ENVIRONMENT}/status.json"
+            STATUS_DESTINATION="${DEPLOY_DIR}/pond-status/${POND_TYPE}/status.json"
+            if [ ! -f "${STATUS_SOURCE}" ]; then
+                echo "ERROR: Missing monitor status for ${POND_TYPE}-${ENVIRONMENT}: ${STATUS_SOURCE}" >&2
+                exit 1
+            fi
+            mkdir -p "$(dirname "${STATUS_DESTINATION}")"
+            cp "${STATUS_SOURCE}" "${STATUS_DESTINATION}"
+        done
+
         ln -sfn "${DEPLOY_DIR}" "${DEPLOY_BASE}/current"
         # Clean old builds (keep last 3)
         ls -dt "${DEPLOY_BASE}"/build-* 2>/dev/null | tail -n +4 | xargs rm -rf

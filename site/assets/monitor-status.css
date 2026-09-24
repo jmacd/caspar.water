@@ -1,0 +1,95 @@
+.monitor-summary {
+  margin: 1rem 0;
+}
+
+.monitor-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.monitor-card {
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #d0d5dd);
+  border-left-width: 0.5rem;
+  border-radius: 0.4rem;
+  padding: 1rem;
+}
+
+.monitor-card header {
+  align-items: baseline;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.monitor-card h2,
+.monitor-card h3 {
+  margin: 0;
+}
+
+.monitor-card p:last-child {
+  margin-bottom: 0;
+}
+
+.monitor-state {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.monitor-state-healthy,
+.monitor-state-reporting {
+  background: #ecfdf3;
+  border-left-color: #18753c;
+}
+
+.monitor-state-healthy .monitor-state,
+.monitor-state-reporting .monitor-state {
+  color: #126331;
+}
+
+.monitor-state-alarm,
+.monitor-state-unavailable {
+  background: #fef3f2;
+  border-left-color: #b42318;
+}
+
+.monitor-state-alarm .monitor-state,
+.monitor-state-unavailable .monitor-state {
+  color: #912018;
+}
+
+.monitor-state-unknown,
+.monitor-state-stale {
+  background: #f2f4f7;
+  border-left-color: #667085;
+}
+
+.monitor-state-unknown .monitor-state,
+.monitor-state-stale .monitor-state {
+  color: #475467;
+}
+
+.monitor-check-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.monitor-check-list li {
+  border-top: 1px solid var(--border, #d0d5dd);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-top: 0.6rem;
+}
+
+.monitor-meta {
+  color: var(--fg-muted, #667085);
+  font-size: 0.9rem;
+}
+
+.monitor-error {
+  color: #912018;
+  font-weight: 600;
+}

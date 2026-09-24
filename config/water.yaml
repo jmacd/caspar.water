@@ -39,6 +39,61 @@ spec:
 version: v1
 kind: mknod
 metadata:
+  # /system/run entries execute in lexical order after every committed write.
+  # Monitoring is intentionally first; remote backup runs after the complete
+  # post-commit factory queue.
+  path: /system/run/00-monitor
+spec:
+  factory: monitor-report
+  config:
+    pond: "${env:POND_INSTANCE}"
+    title: "Caspar Water status"
+    output_dir: "${env:MONITOR_OUTPUT_DIR}"
+    checks:
+      - id: well-depth-low
+        label: "Well depth above 40"
+        description: >-
+          At least one well-depth reading must reach 40 m or higher in the
+          trailing three hours.
+        href: "/data/well-depth.html"
+        source: "oteljson:///ingest/casparwater*.json"
+        timestamp_column: timestamp
+        value_column: well_depth_value
+        unit: m
+        threshold: 40
+        window: 3h
+      - id: chlorine-feed-response
+        label: "Chlorine feed responds while well pump runs"
+        description: >-
+          Chlorine level must increase by at least 2.5 sensor units per pump
+          hour while the well pump is running, after refill drops are ignored.
+        href: "/data/chlorine-level.html"
+        type: rate-while
+        measurement:
+          source: "oteljson:///ingest/casparwater*.json"
+          timestamp: timestamp
+          column: chlorine_level_value
+          accumulation: positive-deltas
+        condition:
+          source: "series:///pump-state/well-pump-state"
+          timestamp: timestamp
+          predicate:
+            column: phase
+            operator: eq
+            value: pumping
+        alignment:
+          method: previous
+          tolerance: 2m
+        window: 24h
+        minimum_active_time: 30m
+        alarm:
+          operator: lt
+          value: 2.5
+          unit: sensor-units-per-pump-hour
+---
+version: v1
+kind: mknod
+metadata:
   path: /reduced
 spec:
   factory: dynamic-dir
