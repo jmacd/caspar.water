@@ -1,5 +1,4 @@
 const SCHEMA_VERSION = 3;
-const OVERVIEW_PONDS = ["water", "septic", "noyo", "site"];
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const STATES = new Set(["healthy", "alarm", "unknown"]);
 
@@ -59,16 +58,6 @@ async function fetchStatus(url) {
   return { status, generatedAt };
 }
 
-function effectiveState(status, generatedAt) {
-  if (Date.now() - generatedAt > STALE_AFTER_MS) {
-    return "stale";
-  }
-  if (status.checks.length === 0) {
-    return "reporting";
-  }
-  return status.state;
-}
-
 function stateCard(title, state, headingLevel = "h2") {
   const card = append(
     document.createDocumentFragment(),
@@ -89,54 +78,10 @@ function formatTime(timestamp) {
   }).format(timestamp);
 }
 
-function renderPond(status, generatedAt) {
-  const state = effectiveState(status, generatedAt);
-  const card = stateCard(status.title, state);
-  append(
-    card,
-    "p",
-    `Updated ${formatTime(generatedAt)} from transaction ${status.transaction_sequence}.`,
-    "monitor-meta",
-  );
-
-  if (status.checks.length === 0) {
-    append(card, "p", "No health checks are configured; this pond is reporting.");
-    return card;
-  }
-
-  const list = append(card, "ul", undefined, "monitor-check-list");
-  for (const check of status.checks) {
-    const item = append(list, "li");
-    const link = append(item, "a", check.label);
-    link.href = check.href;
-    append(item, "strong", check.state, "monitor-state");
-  }
-  return card;
-}
-
 function renderFailure(title, error) {
   const card = stateCard(title, "unavailable");
   append(card, "p", error.message, "monitor-error");
   return card;
-}
-
-async function renderOverview(container) {
-  const base = container.dataset.statusBase || "pond-status";
-  const grid = append(container, "div", undefined, "monitor-grid");
-  const cards = await Promise.all(
-    OVERVIEW_PONDS.map(async (pond) => {
-      try {
-        const { status, generatedAt } = await fetchStatus(
-          `${base}/${pond}/status.json`,
-        );
-        return renderPond(status, generatedAt);
-      } catch (error) {
-        return renderFailure(`${pond} pond`, error);
-      }
-    }),
-  );
-  grid.append(...cards);
-  container.querySelector("[data-loading]")?.remove();
 }
 
 function renderWaterCheck(check, stale) {
@@ -168,10 +113,6 @@ async function renderWater(container) {
     container.append(renderFailure("Water monitoring", error));
   }
   container.querySelector("[data-loading]")?.remove();
-}
-
-for (const container of document.querySelectorAll("[data-pond-overview]")) {
-  renderOverview(container);
 }
 
 for (const container of document.querySelectorAll("[data-water-monitors]")) {

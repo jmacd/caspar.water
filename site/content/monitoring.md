@@ -21,8 +21,6 @@ derived quantity used by the check.
 
 <script type="module" src="assets/monitor-status.js"></script>
 
-See the [operations status](/status.html) for an overview of all four ponds.
-
 Operators access our [Influxdb](https://influx.casparwater.us) instance with live monitoring data collected through several OpenTelemetry Collectors.
 
 We have high-resolution well depth measurements dating back to August 2022, with which we can see the history of leaks, leak repairs, faucets left running, and other kinds of fine detail about our impact on the aquifer. See the [Well Depth History](/well-depth-history.html) page for an annotated 4-year timeline.

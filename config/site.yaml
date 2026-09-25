@@ -408,7 +408,6 @@ spec:
       - "Blog"
       - "History"
       - "Water"
-      - "Operations status"
       - label: "System"
         children:
           - label: "Drawdown"

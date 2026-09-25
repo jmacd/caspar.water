@@ -37,14 +37,12 @@
   text-transform: uppercase;
 }
 
-.monitor-state-healthy,
-.monitor-state-reporting {
+.monitor-state-healthy {
   background: #ecfdf3;
   border-left-color: #18753c;
 }
 
-.monitor-state-healthy .monitor-state,
-.monitor-state-reporting .monitor-state {
+.monitor-state-healthy .monitor-state {
   color: #126331;
 }
 
@@ -68,20 +66,6 @@
 .monitor-state-unknown .monitor-state,
 .monitor-state-stale .monitor-state {
   color: #475467;
-}
-
-.monitor-check-list {
-  list-style: none;
-  margin: 1rem 0 0;
-  padding: 0;
-}
-
-.monitor-check-list li {
-  border-top: 1px solid var(--border, #d0d5dd);
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  padding-top: 0.6rem;
 }
 
 .monitor-meta {
