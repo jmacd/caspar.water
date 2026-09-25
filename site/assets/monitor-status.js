@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const STATES = new Set(["healthy", "alarm", "unknown"]);
 
