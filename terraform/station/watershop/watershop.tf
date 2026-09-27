@@ -175,6 +175,8 @@ resource "local_file" "env_files" {
   content = join("\n", [
     "POND_VOLUME=${local.instance_volumes[each.key]}",
     "POND=${local.home}/pond-${each.key}",
+    "POND_INSTANCE=${each.key}",
+    "MONITOR_OUTPUT_DIR=/var/www/monitor/${each.key}",
     "SELFMON_METRICS_DIR=/var/log/watertown-selfmon/${each.key}",
     "S3_URL=${each.value.s3_url}",
     "S3_ENDPOINT=${each.value.s3.endpoint}",
@@ -386,7 +388,7 @@ resource "null_resource" "watershop" {
         # bandwidth bleed). The per-instance pond volume uniquely scopes the
         # container; filtering by a mutable image tag can miss a running
         # container after that tag is promoted.
-        join(" ; ", concat(
+        length(local.container_instance_names) == 0 ? ":" : join(" ; ", concat(
           [for name in local.container_instance_names :
             "podman ps --format '{{.Names}}' --filter 'volume=${local.instance_volumes[name]}' | xargs -r podman kill 2>/dev/null || true"
           ],
@@ -432,6 +434,10 @@ resource "null_resource" "watershop" {
       [for name in local.selfmon_instance_names :
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
       ],
+      # Per-pond host publication roots for committed-snapshot monitoring.
+      [for name in local.all_configured_names :
+        "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/monitor/${name}"
+      ],
       # Ensure MinIO buckets exist for all instances that have an s3_url
       # (staging plus selfmon). Uses the aws-cli container
       # against localhost:9000.  `mb` returns non-zero when the bucket
@@ -469,6 +475,9 @@ resource "null_resource" "watershop" {
           "if podman volume exists ${local.instance_volumes[name]}; then podman volume rm ${local.instance_volumes[name]}; else echo '[reset] ${name}: no volume to remove'; fi",
           "echo '[reset] ${name}: removing host dir'",
           "rm -rf ${local.home}/pond-${name}",
+          "echo '[reset] ${name}: wiping monitor output'",
+          "sudo rm -rf /var/www/monitor/${name}",
+          "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/monitor/${name}",
           # Empty this instance's S3 backup bucket.  Post-D6 `pond backup
           # add` refuses a bucket whose store_id does not match the local
           # pond_id ("refusing to push into a foreign pond"); a reset
@@ -490,9 +499,11 @@ resource "null_resource" "watershop" {
           # Caddy keeps serving stale HTML files (e.g. orphan
           # status.html after a route rename) from prior runs.
           "echo '[reset] ${name}: wiping selfmon metrics source'",
-          "rm -rf /var/log/watertown-selfmon/${name}",
+          "sudo rm -rf /var/log/watertown-selfmon/${name}",
+          "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/log/watertown-selfmon/${name}",
           "echo '[reset] ${name}: wiping selfmon rendered output'",
-          "rm -rf /var/www/selfmon/${name}",
+          "sudo rm -rf /var/www/selfmon/${name}",
+          "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}",
           "echo '[reset] ${name}: done'",
         ])} || exit 1"
       ],

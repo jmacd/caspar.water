@@ -13,6 +13,14 @@ http://watershop.casparwater.us, http://:80 {
 		encode zstd gzip
 	}
 
+	# Per-pond status generated from each pond's freshly committed snapshot.
+	handle_path /monitor/* {
+		root * /var/www/monitor
+		header Cache-Control "no-cache"
+		file_server
+		encode zstd gzip
+	}
+
 	root * /home/jmacd/watertown/www/site-staging/current
 
 	# Webserver-style JSON access log to a rolling file under

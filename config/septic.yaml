@@ -4,6 +4,23 @@ metadata:
   path: /ingest
 ---
 version: v1
+kind: mkdir
+metadata:
+  path: /system/run
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/run/00-monitor
+spec:
+  factory: monitor-report
+  config:
+    pond: "${env:POND_INSTANCE}"
+    title: "Septic pond status"
+    output_dir: "${env:MONITOR_OUTPUT_DIR}"
+    checks: []
+---
+version: v1
 kind: mknod
 metadata:
   path: /etc/ingest

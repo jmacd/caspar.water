@@ -557,6 +557,117 @@ spec:
             GROUP BY timestamp
             ORDER BY timestamp
 
+      # One durable row for every completed Azure storage-meter scope emitted
+      # by a production pond.  steward already logs the physical request shape
+      # at the ObjectStore boundary; this query turns those journal records
+      # into typed data rather than inventing another counter.
+      #
+      # Keep operation categories separate.  Azure bills reads, writes, lists,
+      # and other operations at different rates, and folding them into the
+      # limiter's one `ops` dimension is exactly what prevents a defensible
+      # monthly estimate today.  Path-class counts are retained so an expensive
+      # category can later be traced to Delta metadata, content objects, packs,
+      # or fallback traffic.
+      - name: "azure-access"
+        factory: "sql-derived-series"
+        config:
+          patterns:
+            # Include the selfmon unit as a permanent schema-bearing source
+            # even before the first post-reset production run has logged an
+            # Azure access summary.  The WHERE clause below still admits only
+            # az:// records from the four production units.
+            m: "jsonlogs:///logs/journal/user-pond*.service.jsonl"
+          query: >-
+            SELECT
+              to_timestamp_micros(
+                CAST("__REALTIME_TIMESTAMP" AS BIGINT)
+              ) AS timestamp,
+              CASE "_SYSTEMD_USER_UNIT"
+                WHEN 'pond@water-prod.service' THEN 'water-prod'
+                WHEN 'pond@septic-prod.service' THEN 'septic-prod'
+                WHEN 'pond@noyo-prod.service' THEN 'noyo-prod'
+                WHEN 'pond@site-prod.service' THEN 'site-prod'
+              END AS pond,
+              split_part(split_part("MESSAGE", ' remote=', 2), ' ', 1)
+                AS remote,
+              CAST(split_part(split_part("MESSAGE", ' inherited_arrears_ops=', 2), ' ', 1) AS BIGINT)
+                AS inherited_arrears_ops,
+              CAST(split_part(split_part("MESSAGE", ' inherited_arrears_bytes=', 2), ' ', 1) AS BIGINT)
+                AS inherited_arrears_bytes,
+              CAST(split_part(split_part("MESSAGE", ' total_ops=', 2), ' ', 1) AS BIGINT)
+                AS total_ops,
+              CAST(split_part(split_part("MESSAGE", ' total_bytes=', 2), ' ', 1) AS BIGINT)
+                AS total_bytes,
+              CAST(split_part(split_part("MESSAGE", ' get_ops=', 2), ' ', 1) AS BIGINT)
+                AS get_ops,
+              CAST(split_part(split_part("MESSAGE", ' get_bytes=', 2), ' ', 1) AS BIGINT)
+                AS get_bytes,
+              CAST(split_part(split_part("MESSAGE", ' head_ops=', 2), ' ', 1) AS BIGINT)
+                AS head_ops,
+              CAST(split_part(split_part("MESSAGE", ' head_bytes=', 2), ' ', 1) AS BIGINT)
+                AS head_bytes,
+              CAST(split_part(split_part("MESSAGE", ' list_ops=', 2), ' ', 1) AS BIGINT)
+                AS list_ops,
+              CAST(split_part(split_part("MESSAGE", ' list_bytes=', 2), ' ', 1) AS BIGINT)
+                AS list_bytes,
+              CAST(split_part(split_part("MESSAGE", ' put_ops=', 2), ' ', 1) AS BIGINT)
+                AS put_ops,
+              CAST(split_part(split_part("MESSAGE", ' put_bytes=', 2), ' ', 1) AS BIGINT)
+                AS put_bytes,
+              CAST(split_part(split_part("MESSAGE", ' multipart_ops=', 2), ' ', 1) AS BIGINT)
+                AS multipart_ops,
+              CAST(split_part(split_part("MESSAGE", ' multipart_bytes=', 2), ' ', 1) AS BIGINT)
+                AS multipart_bytes,
+              CAST(split_part(split_part("MESSAGE", ' delete_ops=', 2), ' ', 1) AS BIGINT)
+                AS delete_ops,
+              CAST(split_part(split_part("MESSAGE", ' delete_bytes=', 2), ' ', 1) AS BIGINT)
+                AS delete_bytes,
+              CAST(split_part(split_part("MESSAGE", ' copy_ops=', 2), ' ', 1) AS BIGINT)
+                AS copy_ops,
+              CAST(split_part(split_part("MESSAGE", ' copy_bytes=', 2), ' ', 1) AS BIGINT)
+                AS copy_bytes,
+              CAST(split_part(split_part("MESSAGE", ' delta_log_ops=', 2), ' ', 1) AS BIGINT)
+                AS delta_log_ops,
+              CAST(split_part(split_part("MESSAGE", ' delta_objects_ops=', 2), ' ', 1) AS BIGINT)
+                AS delta_objects_ops,
+              CAST(split_part(split_part("MESSAGE", ' delta_commits_ops=', 2), ' ', 1) AS BIGINT)
+                AS delta_commits_ops,
+              CAST(split_part(split_part("MESSAGE", ' delta_refs_ops=', 2), ' ', 1) AS BIGINT)
+                AS delta_refs_ops,
+              CAST(split_part(split_part("MESSAGE", ' delta_meta_ops=', 2), ' ', 1) AS BIGINT)
+                AS delta_meta_ops,
+              CAST(split_part(split_part("MESSAGE", ' content_v2_objects_ops=', 2), ' ', 1) AS BIGINT)
+                AS content_v2_objects_ops,
+              CAST(split_part(split_part("MESSAGE", ' content_v2_receipts_ops=', 2), ' ', 1) AS BIGINT)
+                AS content_v2_receipts_ops,
+              CAST(split_part(split_part("MESSAGE", ' content_v2_publications_ops=', 2), ' ', 1) AS BIGINT)
+                AS content_v2_publications_ops,
+              CAST(split_part(split_part("MESSAGE", ' publication_delta_log_ops=', 2), ' ', 1) AS BIGINT)
+                AS publication_delta_log_ops,
+              CAST(split_part(split_part("MESSAGE", ' publication_delta_data_ops=', 2), ' ', 1) AS BIGINT)
+                AS publication_delta_data_ops,
+              CAST(split_part(split_part("MESSAGE", ' content_v2_packs_ops=', 2), ' ', 1) AS BIGINT)
+                AS content_v2_packs_ops,
+              CAST(split_part(split_part("MESSAGE", ' pack_indexes_ops=', 2), ' ', 1) AS BIGINT)
+                AS pack_indexes_ops,
+              CAST(split_part(split_part("MESSAGE", ' pack_objects_ops=', 2), ' ', 1) AS BIGINT)
+                AS pack_objects_ops,
+              CAST(split_part(split_part("MESSAGE", ' blobs_ops=', 2), ' ', 1) AS BIGINT)
+                AS blobs_ops,
+              CAST(split_part(split_part("MESSAGE", ' recovery_ops=', 2), ' ', 1) AS BIGINT)
+                AS recovery_ops,
+              CAST(split_part(split_part("MESSAGE", ' fallback_ops=', 2), ' ', 1) AS BIGINT)
+                AS fallback_ops
+            FROM m
+            WHERE "MESSAGE" LIKE '%storage_access_summary remote=az://%'
+              AND "_SYSTEMD_USER_UNIT" IN (
+                'pond@water-prod.service',
+                'pond@septic-prod.service',
+                'pond@noyo-prod.service',
+                'pond@site-prod.service'
+              )
+            ORDER BY timestamp
+
       # ── Per-pond typed series ────────────────────────────────────
       # All have the same SQL skeleton; only the source URL differs.
       # CASTs are required because jsonlogs returns all-Utf8.
@@ -724,6 +835,21 @@ spec:
   config:
     source: "series:///derived/limiters"
     target: /metrics/limiters.series
+    time_column: timestamp
+---
+# Materialize exact Azure access events from the journal.  This table remains
+# long-form (`pond`, `remote`, operation columns) so future cost queries can
+# apply whatever billing-category mapping Azure uses at decision time instead
+# of baking today's prices into selfmon.
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/materialize-azure-access
+spec:
+  factory: materialize-series
+  config:
+    source: "series:///derived/azure-access"
+    target: /metrics/azure-access.series
     time_column: timestamp
 ---
 # Multi-resolution rollup of the materialized perf series.
