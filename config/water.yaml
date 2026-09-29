@@ -76,18 +76,19 @@ spec:
         threshold: 3
         window: 3h
       - id: system-pressure-range
-        label: "System pressure stays within its operating range"
+        label: "System pressure stays within its safe range"
         description: >-
-          The average system pressure over the trailing hour must remain
-          between 1.2 and 2.2, inclusive.
+          The average system pressure over the trailing five minutes must
+          remain between 0.5 and 2.2 psi, inclusive.
         href: "/data/system-pressure.html"
         type: average-range
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
         value_column: system_pressure_value
-        lower_bound: 1.2
+        unit: psi
+        lower_bound: 0.5
         upper_bound: 2.2
-        window: 1h
+        window: 5m
       - id: chlorine-feed-response
         label: "Chlorine feed responds while well pump runs"
         description: >-
