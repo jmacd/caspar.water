@@ -1196,6 +1196,9 @@ spec:
       - name: "well-usage-rate"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             state: "series:///pump-state/well-pump-state"
           query: >-
@@ -1207,7 +1210,6 @@ spec:
                    ELSE 0.0 END AS usage_gpm
             FROM state
             WHERE timestamp >= TIMESTAMP '2024-02-15'
-            ORDER BY timestamp
 
       # -- Daily pumped volume ------------------------------------------------------
       #   timestamp    - day (00:00)
