@@ -76,11 +76,18 @@ Usage examples
 import argparse
 import math
 import sys
+from pathlib import Path
 
 try:
     import numpy as np
 except ImportError:
     np = None
+
+
+# Default location for the pH-vs-flow plot: this script lives in
+# <repo>/model/aeration/, and the blog site expects images in
+# <repo>/site/img/, so walk up two parents to find the repo root.
+DEFAULT_PH_PLOT_PATH = Path(__file__).resolve().parents[2] / "site" / "img" / "ph-model.png"
 
 
 # ---------------------------------------------------------------------------
@@ -243,20 +250,69 @@ def run_part1(args):
             print("[part1] matplotlib not installed; skipping plot (--no-plots to silence)")
             return e0, k, tref_f
 
-        plt.figure(figsize=(8, 5.5))
+        try:
+            plt.style.use("seaborn-v0_8-whitegrid")
+        except (OSError, ValueError):
+            pass
+
+        matplotlib.rcParams.update({
+            "font.family": "sans-serif",
+            "font.size": 11,
+            "axes.titlesize": 14,
+            "axes.titleweight": "bold",
+            "axes.labelsize": 12,
+            "axes.edgecolor": "#444444",
+            "axes.linewidth": 0.8,
+        })
+
+        fig, ax = plt.subplots(figsize=(8.5, 5.8))
+
+        # Color each line by temperature on a cool->warm perceptual colormap,
+        # so the ordering of the lines is visually obvious at a glance
+        # (cold = blue, hot = red) instead of an arbitrary categorical palette.
+        cmap = matplotlib.colormaps.get_cmap("coolwarm")
+        t_min, t_max = min(temps_f), max(temps_f)
+        t_span = (t_max - t_min) or 1.0
+
         for t in temps_f:
-            plt.plot(flows, results[t], marker="o", markersize=3, label=f"{t:.0f}F")
-        plt.xlabel("Raw water throughput (gallons/day)")
-        plt.ylabel("Steady-state tank pH")
-        plt.title(
-            f"CSTR pH model — 10 GPM loop, {args.alkalinity} mg/L alk, "
-            f"E0={e0:.3f}, k={k:.4f}/F"
+            color = cmap((t - t_min) / t_span)
+            ax.plot(
+                flows,
+                results[t],
+                color=color,
+                linewidth=2.4,
+                solid_capstyle="round",
+                marker="o",
+                markersize=4.5,
+                markerfacecolor="white",
+                markeredgewidth=1.3,
+                markeredgecolor=color,
+                label=f"{t:.0f}\u00b0F",
+            )
+
+        ax.set_xlabel("Raw water throughput (gallons/day)")
+        ax.set_ylabel("Steady-state tank pH")
+        ax.set_title("Continuous reaction model")
+        ax.grid(True, which="major", alpha=0.35, linewidth=0.7)
+        ax.set_axisbelow(True)
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+
+        legend = ax.legend(
+            title="Tank temp",
+            frameon=True,
+            framealpha=0.9,
+            edgecolor="#dddddd",
+            loc="upper right",
+            fontsize=9.5,
+            title_fontsize=10,
         )
-        plt.grid(True, alpha=0.3)
-        plt.legend(title="Tank temp")
-        plt.tight_layout()
-        out = args.plot_prefix + "_ph_vs_flow.png"
-        plt.savefig(out, dpi=150)
+        legend.get_frame().set_linewidth(0.6)
+
+        fig.tight_layout()
+        out = Path(args.ph_plot_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, dpi=200, facecolor="white")
         print(f"[part1] wrote {out}")
 
     return e0, k, tref_f
@@ -458,6 +514,8 @@ def build_arg_parser():
     g1.add_argument("--k", type=float, default=None,
                      help="efficiency temperature sensitivity, per degF (override auto-calibration)")
     g1.add_argument("--tref-f", type=float, default=55.0, help="reference temp (F) for E0")
+    g1.add_argument("--ph-plot-out", default=str(DEFAULT_PH_PLOT_PATH),
+                     help="output path for the pH-vs-flow plot")
 
     # Part 2 args
     g2 = p.add_argument_group("Part 2: energy accounting")
