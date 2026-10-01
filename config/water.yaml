@@ -1023,7 +1023,7 @@ spec:
     #   * disturbed & after the trough       -> 'recovering'
     #   * not disturbed                      -> 'static'
     # The trough split is the same technique the /analysis drawdown/horner
-    # entries use; here it is materialized once for everyone.
+    # entries use; here it is defined once for everyone.
     #
     # Columns:
     #   timestamp - 1-minute sample time (series/partition key)
@@ -1032,53 +1032,15 @@ spec:
     #
     entries:
       - name: "well-pump-state"
-        factory: "sql-derived-series"
+        factory: "pump-state-series"
         config:
-          patterns:
-            depth: "series:///reduced/well-depth/data/res=1m.series"
-          query: >-
-            WITH r AS (
-              SELECT timestamp AS ts,
-                CAST(EXTRACT(EPOCH FROM timestamp)/60 AS BIGINT) AS min_idx,
-                "well_depth_value.avg" AS depth
-              FROM depth
-              WHERE "well_depth_value.avg" IS NOT NULL
-                AND "well_depth_value.avg" BETWEEN 10 AND 60
-            ),
-            base AS (
-              SELECT ts, min_idx, depth,
-                MAX(depth) OVER (ORDER BY min_idx
-                  RANGE BETWEEN 60 PRECEDING AND CURRENT ROW) AS ceil60
-              FROM r
-            ),
-            dist AS (
-              SELECT ts, min_idx, depth,
-                CASE WHEN depth < ceil60 - 0.3 THEN 1 ELSE 0 END AS disturbed
-              FROM base
-            ),
-            isl AS (
-              SELECT ts, min_idx, depth, disturbed,
-                min_idx - ROW_NUMBER() OVER (
-                  PARTITION BY disturbed ORDER BY min_idx) AS grp
-              FROM dist
-            ),
-            troughed AS (
-              SELECT min_idx,
-                first_value(min_idx) OVER (PARTITION BY grp
-                  ORDER BY depth ASC, min_idx ASC
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
-                  AS trough_idx
-              FROM isl WHERE disturbed = 1
-            )
-            SELECT d.ts AS timestamp, d.depth,
-              CASE
-                WHEN d.disturbed = 1 AND d.min_idx <= t.trough_idx THEN 'pumping'
-                WHEN d.disturbed = 1 THEN 'recovering'
-                ELSE 'static'
-              END AS phase
-            FROM dist d
-            LEFT JOIN troughed t USING (min_idx)
-            ORDER BY d.ts
+          source: "series:///reduced/well-depth/data/res=1m.series"
+          time_column: "timestamp"
+          depth_column: "well_depth_value.avg"
+          lookback: 60m
+          disturbance_drop: 0.3
+          valid_depth_min: 10.0
+          valid_depth_max: 60.0
 ---
 version: v1
 kind: mknod
@@ -1207,7 +1169,8 @@ spec:
               depth,
               CASE WHEN phase = 'pumping'
                    THEN 429.5 / (160.0 - 3.28084*depth)
-                   ELSE 0.0 END AS usage_gpm
+                   ELSE 0.0 END AS usage_gpm,
+              CASE WHEN phase = 'pumping' THEN 1 ELSE 0 END AS pump_minutes
             FROM state
             WHERE timestamp >= TIMESTAMP '2024-02-15'
 
@@ -1216,18 +1179,18 @@ spec:
       #   gallons      - modeled gallons pumped that day (SUM of the per-minute rate)
       #   pump_minutes - pumping minutes that day
       - name: "well-usage-daily"
-        factory: "sql-derived-series"
+        factory: "temporal-reduce-series"
         config:
-          patterns:
-            state: "series:///pump-state/well-pump-state"
-          query: >-
-            SELECT
-              date_trunc('day', timestamp) AS timestamp,
-              SUM(CASE WHEN phase = 'pumping'
-                  THEN 429.5 / (160.0 - 3.28084*depth) ELSE 0 END) AS gallons,
-              CAST(SUM(CASE WHEN phase = 'pumping' THEN 1 ELSE 0 END)
-                  AS BIGINT) AS pump_minutes
-            FROM state
-            WHERE timestamp >= TIMESTAMP '2024-02-15'
-            GROUP BY 1
-            ORDER BY 1
+          in_pattern: "series:///usage/well-usage-rate"
+          time_column: "timestamp"
+          resolution: 1d
+          allowed_lateness: 14d
+          seal_target_bytes: 0
+          aggregations:
+            - type: "sum"
+              columns:
+                - "usage_gpm"
+                - "pump_minutes"
+          output_aliases:
+            "usage_gpm.sum": "gallons"
+            "pump_minutes.sum": "pump_minutes"
