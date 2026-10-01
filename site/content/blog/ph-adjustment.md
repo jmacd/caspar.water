@@ -162,7 +162,7 @@ we can fit parameters for the extraction process `E(T)`. Finished pH
 can then be modeled as a function of temperature and flow, here is the
 predicted pH of our system.
 
-{{ figure src="/img/ph-model.svg" /}}
+{{ figure src="/img/ph-model.png" /}}
 
 ## Cost
 
