@@ -89,6 +89,10 @@ except ImportError:
 # <repo>/site/img/, so walk up two parents to find the repo root.
 DEFAULT_PH_PLOT_PATH = Path(__file__).resolve().parents[2] / "site" / "img" / "ph-model.png"
 
+# Unit constants for the CO2 mass-rate calculation (see DERIVATION.md section 3).
+GAL_TO_L = 3.785411784
+CO2_MG_PER_MMOL = 44.01  # CO2 molar mass (g/mol == mg/mmol)
+
 
 # ---------------------------------------------------------------------------
 # Part 1: Chemistry / CSTR pH model
@@ -126,6 +130,21 @@ def raw_co2_mM(alk_mM: float, pk1: float, ph_raw: float) -> float:
     """Dissolved CO2 concentration (mM) implied by Henderson-Hasselbalch,
     given alkalinity (~ [HCO3-]) and pK1 at this temperature."""
     return alk_mM * 10 ** (pk1 - ph_raw)
+
+
+def co2_offgassed_g_per_day(q_raw_gpd: float, c_raw_mM: float, c_tank_mM: float) -> float:
+    """Grams of CO2 per day driven off as gas by the aeration loop.
+
+    At CSTR steady state, raw water enters at C_raw (mM dissolved CO2) and
+    leaves at the tank/outflow concentration C_tank (mM); alkalinity is
+    unchanged (see DERIVATION.md section 2), so the entire concentration
+    drop C_raw - C_tank must have left the system as stripped CO2 gas. Scale
+    that per-liter molar drop by the raw throughput (converted to L/day) and
+    CO2's molar mass to get a mass rate; divide by 1000 to convert mg -> g.
+    """
+    delta_mM = c_raw_mM - c_tank_mM
+    mass_mg_per_day = delta_mM * CO2_MG_PER_MMOL * q_raw_gpd * GAL_TO_L
+    return mass_mg_per_day / 1000.0
 
 
 def single_pass_efficiency(t_f: float, e0: float, k: float, tref_f: float) -> float:
@@ -221,6 +240,7 @@ def run_part1(args):
     header = f"{'Q_raw (gpd)':>12}" + "".join(f"{'pH @'+str(t)+'F':>12}" for t in temps_f)
     print(header)
     results = {t: [] for t in temps_f}
+    results_co2 = {t: [] for t in temps_f}
     for q in flows:
         row = f"{q:>12,}"
         for t in temps_f:
@@ -228,6 +248,9 @@ def run_part1(args):
                 q, t, q_loop_gpd, args.alkalinity, args.raw_ph, e0, k, tref_f
             )
             results[t].append(r["ph_final"])
+            results_co2[t].append(
+                co2_offgassed_g_per_day(q, r["c_raw_mM"], r["c_tank_mM"])
+            )
             row += f"{r['ph_final']:>12.2f}"
         print(row)
     print()
@@ -274,40 +297,89 @@ def run_part1(args):
         t_min, t_max = min(temps_f), max(temps_f)
         t_span = (t_max - t_min) or 1.0
 
+        ax2 = ax.twinx()
+        # twinx() stacks ax2 as a layer entirely on top of ax, so ax2's
+        # lines would otherwise render over ax's legend no matter what
+        # per-artist zorder the legend is given. Flip the axes stacking
+        # order so ax (which owns the legend) is the top layer, and hide
+        # ax's own background patch so ax2's gridlines still show through.
+        ax.set_zorder(ax2.get_zorder() + 1)
+        ax.patch.set_visible(False)
+
         for t in temps_f:
             color = cmap((t - t_min) / t_span)
+            # A darkened version of the same hue for the CO2 line, so it
+            # reads as visually distinct from the pH line of a neighboring
+            # temperature wherever the two families cross.
+            co2_color = tuple(c * 0.7 for c in color[:3]) + (1.0,)
             ax.plot(
                 flows,
                 results[t],
                 color=color,
                 linewidth=2.4,
                 solid_capstyle="round",
-                marker="o",
-                markersize=4.5,
-                markerfacecolor="white",
-                markeredgewidth=1.3,
-                markeredgecolor=color,
                 label=f"{t:.0f}\u00b0F",
             )
+            # Thin solid companion line (darkened hue, no markers) on the
+            # right axis: grams of CO2 driven off per day at this
+            # flow/temperature.
+            ax2.plot(
+                flows,
+                results_co2[t],
+                color=co2_color,
+                linewidth=1.0,
+                linestyle="-",
+                alpha=0.9,
+            )
 
-        ax.set_xlabel("Raw water throughput (gallons/day)")
-        ax.set_ylabel("Steady-state tank pH")
-        ax.set_title("Continuous reaction model")
+        ax.set_xlabel("Water usage (gallons/day)")
+        ax.set_ylabel("Tank pH")
+        ax2.set_ylabel(r"CO$_2$ gas")
+        ax.set_title("Continuous aeration model")
         ax.grid(True, which="major", alpha=0.35, linewidth=0.7)
         ax.set_axisbelow(True)
-        for spine in ("top", "right"):
+        for spine in ("top",):
             ax.spines[spine].set_visible(False)
+            ax2.spines[spine].set_visible(False)
+        ax2.set_ylim(bottom=0)
 
+        # Two small legends: one for temperature color coding (shared by
+        # both pH and CO2 lines), one explaining the thick-vs-thin
+        # line-weight convention. Both use a fully opaque white box with a
+        # visible border and drop shadow, drawn above the line artwork
+        # (high zorder) so crossing lines never show through or blend into
+        # the legend edge.
         legend = ax.legend(
             title="Tank temp",
             frameon=True,
-            framealpha=0.9,
-            edgecolor="#dddddd",
+            framealpha=1.0,
+            facecolor="white",
+            edgecolor="#999999",
             loc="upper right",
             fontsize=9.5,
             title_fontsize=10,
+            shadow=True,
         )
-        legend.get_frame().set_linewidth(0.6)
+        legend.get_frame().set_linewidth(0.8)
+        legend.set_zorder(10)
+        ax.add_artist(legend)
+
+        style_legend = ax.legend(
+            handles=[
+                matplotlib.lines.Line2D([0], [0], color="#444444", linewidth=2.4, linestyle="-"),
+                matplotlib.lines.Line2D([0], [0], color="#444444", linewidth=1.0, linestyle="-"),
+            ],
+            labels=["pH", r"CO$_2$ g/day"],
+            loc="lower left",
+            frameon=True,
+            framealpha=1.0,
+            facecolor="white",
+            edgecolor="#999999",
+            fontsize=8.5,
+            shadow=True,
+        )
+        style_legend.get_frame().set_linewidth(0.8)
+        style_legend.set_zorder(10)
 
         fig.tight_layout()
         out = Path(args.ph_plot_out)
