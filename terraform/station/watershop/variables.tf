@@ -105,23 +105,19 @@ variable "deploy_selfmon" {
   default     = true
 }
 
-# Production instances deploy by default.  A routine apply is non-destructive
-# and image-stable: prod instances are pinned to the separately-promoted
-# `prod-<arch>` image tag, which only `promote.yml` moves, so a plain apply
-# just re-converges config (init-if-needed, `pond apply -f <yaml>`, re-pull the
-# already-promoted image, keep timers running) without changing the prod
-# binary.  The deliberate gate for the prod binary is image promotion, not this
-# flag; the only destructive lever is `reset_instances`, which stays manual.
+# Production deployment is opt-in so routine staging/selfmon applies never
+# quiesce the continuously running production instances. Production upgrades
+# explicitly set this flag after the `prod-<arch>` image has been promoted.
 variable "deploy_production" {
-  description = "Deploy production instances"
+  description = "Include production instances in this apply. Enable only for an intentional production deployment."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "activate_production_timers" {
-  description = "Explicitly enable production timers after a controlled cutover succeeds."
+  description = "Keep production timers active. Set false only during a controlled production initialization or reset."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "weekly_report_email_instances" {
