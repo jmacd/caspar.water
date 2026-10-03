@@ -26,9 +26,13 @@ azure_site_credentials = {
   client_secret = ""
 }
 
-# Keep false while initializing or resetting production. Enable only after
-# controlled producer and site cycles have succeeded.
-activate_production_timers = false
+# Routine applies must not interrupt production. Override this only for an
+# intentional production deployment.
+deploy_production = false
+
+# Production timers remain active during routine applies. Set false only while
+# initializing or resetting production, then restore true after canaries pass.
+activate_production_timers = true
 
 # Weekly report email remains disabled until the verified ACS domain is ready.
 # Keep the recipient and access key only in this ignored tfvars file.

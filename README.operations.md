@@ -178,12 +178,18 @@ terraform apply -var noyo_git_ref=my-branch   # Noyo staging with custom branch
 ```
 
 Terraform pushes `config/` and env files to the machine.
-For each instance: `pond init` (no-op if exists) + `pond apply -f /config/<type>.yaml`.
+For each selected instance: `pond init` (no-op if exists) + `pond apply -f /config/<type>.yaml`.
 Site content is pulled from git at runtime by `run.sh` — no file push needed.
 
-`activate_production_timers` defaults to `false`. A production apply therefore
-leaves all `-prod` timers disabled until an operator completes the seed and
-normal-limit canary below. Set it to `true` only after those checks pass.
+`deploy_production` defaults to `false`; routine applies do not stop, configure,
+or restart production instances. Set it to `true` explicitly only for an
+intentional production deployment.
+
+When production is selected, `activate_production_timers` defaults to `true`,
+so the apply restores all `-prod` timers after configuration convergence. Set
+it to `false` explicitly only for a controlled production initialization or
+reset, and restore it to `true` after the seed and normal-limit canaries below
+pass.
 
 ### Selfmon I/O diagnostics
 
