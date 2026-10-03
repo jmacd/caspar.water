@@ -94,6 +94,17 @@ cd local
 Env vars come from `local/env.sh` (MinIO on watershop, staging buckets, GIT_REF from current branch).
 Note: `refresh.sh` only sees committed changes (git-ingest reads from the repo).
 
+Validate the exact checked-in water configuration against the current
+Watertown checkout with a disposable, empty pond:
+
+```bash
+make test-water-config
+```
+
+This applies `config/water.yaml` twice, checks its typed public schemas,
+validates the empty-input monitor report, and runs a quick filesystem check.
+Set `KEEP_WATER_SMOKE=1` to retain the temporary pond for inspection.
+
 ## Watershop deployment
 
 Staging uses MinIO on watershop. Production uses Azure native-v2 publication
