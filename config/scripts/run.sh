@@ -82,13 +82,20 @@ case "${TYPE}" in
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         DEPLOY_DIR="${DEPLOY_BASE}/build-${TIMESTAMP}"
         mkdir -p "${DEPLOY_DIR}"
-        # Seed the new build's data/ from the previous build so the sitegen
-        # export can reconcile per-partition: unchanged partitions are reused
-        # (hardlinked) and only changed partitions are rewritten. Hardlinks are
-        # safe because the export publishes rewritten partitions via
-        # temp-then-rename, never modifying a shared inode in place.
-        if [ -d "${DEPLOY_BASE}/current/data" ]; then
-            cp -al "${DEPLOY_BASE}/current/data" "${DEPLOY_DIR}/data"
+        # Seed every site's data/ from the previous build so the parent and
+        # subsites can reconcile per-partition. Unchanged partitions are reused
+        # as hardlinks and changed partitions are published via
+        # temp-then-rename, never modified through a shared inode.
+        CURRENT_DIR=$(readlink -f "${DEPLOY_BASE}/current" 2>/dev/null || true)
+        if [ -n "${CURRENT_DIR}" ] && [ -d "${CURRENT_DIR}" ]; then
+            while IFS= read -r -d '' DATA_DIR; do
+                RELATIVE_DATA_DIR=${DATA_DIR#"${CURRENT_DIR}/"}
+                DEST_DATA_DIR="${DEPLOY_DIR}/${RELATIVE_DATA_DIR}"
+                mkdir -p "$(dirname "${DEST_DATA_DIR}")"
+                cp -al "${DATA_DIR}" "${DEST_DATA_DIR}"
+            done < <(
+                find -H "${CURRENT_DIR}" -type d -name data -prune -print0
+            )
         fi
         SITE_OUTPUT=/www
         if [ "${POND_RUNTIME:-container}" = "native" ]; then
