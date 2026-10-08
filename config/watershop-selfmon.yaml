@@ -675,6 +675,9 @@ spec:
       - name: "p-_self"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/_self.jsonl"
           query: >-
@@ -686,11 +689,13 @@ spec:
               CAST("sitegen.seconds" AS DOUBLE)            as "sitegen.seconds",
               CAST("sitegen_peak_rss.bytes" AS BIGINT)     as "sitegen_peak_rss.bytes"
             FROM m
-            ORDER BY timestamp
 
       - name: "p-noyo-staging"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/noyo-staging.jsonl"
           query: &pondseries >-
@@ -703,15 +708,18 @@ spec:
               CAST("list.seconds" AS DOUBLE)               as "list.seconds",
               CAST("peak_rss.bytes" AS BIGINT)             as "peak_rss.bytes",
               CAST("run.seconds" AS DOUBLE)                as "run.seconds",
-              CAST("timer.active" AS BIGINT)               as "timer.active",
-              CAST("last_run.seconds_ago" AS BIGINT)       as "last_run.seconds_ago",
-              CAST("timer.interval_s" AS BIGINT)           as "timer.interval_s"
+              CAST("run.wall_s" AS BIGINT)                  as "run.wall_s",
+              CAST("timer.active" AS BIGINT)                as "timer.active",
+              CAST("last_run.seconds_ago" AS BIGINT)        as "last_run.seconds_ago",
+              CAST("timer.interval_s" AS BIGINT)            as "timer.interval_s"
             FROM m
-            ORDER BY timestamp
 
       - name: "p-noyo-prod"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/noyo-prod.jsonl"
           query: *pondseries
@@ -719,6 +727,9 @@ spec:
       - name: "p-septic-staging"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/septic-staging.jsonl"
           query: *pondseries
@@ -726,6 +737,9 @@ spec:
       - name: "p-septic-prod"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/septic-prod.jsonl"
           query: *pondseries
@@ -733,6 +747,9 @@ spec:
       - name: "p-site-staging"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/site-staging.jsonl"
           query: *pondseries
@@ -740,6 +757,9 @@ spec:
       - name: "p-site-prod"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/site-prod.jsonl"
           query: *pondseries
@@ -747,6 +767,9 @@ spec:
       - name: "p-water-staging"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/water-staging.jsonl"
           query: *pondseries
@@ -754,6 +777,9 @@ spec:
       - name: "p-water-prod"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/water-prod.jsonl"
           query: *pondseries
@@ -761,6 +787,9 @@ spec:
       - name: "p-watershop-selfmon"
         factory: "sql-derived-series"
         config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/watershop-selfmon.jsonl"
           query: *pondseries
@@ -1055,8 +1084,10 @@ spec:
     # surviving unit sitegen substitutes `{pond}` with the bare pond
     # name (basename minus `user-pond@` / `user-pond-selfmon@` prefix
     # and `.service` suffix) and reads the latest `(timer.active,
-    # last_run.seconds_ago, timer.interval_s)` row from the per-pond
-    # series produced upstream.  The card is then coloured
+    # last_run.seconds_ago, timer.interval_s, run.wall_s)` row from the per-pond
+    # series produced upstream. These single-source projection views are
+    # explicitly timestamp-local so the status grid's hot-window bound prunes
+    # old JSONL versions before conversion. The card is then coloured
     # green/yellow/red based on `Health::classify`; missing perf data
     # leaves the card grey rather than failing the build.
     status_grid:
