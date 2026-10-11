@@ -12,3 +12,10 @@ There are four CSV files named `business.csv`, `cycles.csv`, `payments.csv`, and
 3. Create or symlink the file `statements/YYYY-MMM.txt` with body text.
 4. Run `go run ./cmd/billing`
 5. Distributed the PDFs found in `./Statements/YYYY-MMM`.
+
+## Migrate historical books to Ledger journals
+
+The statement generator remains the source-compatible reader for the four
+historical CSV files. To convert those same authoritative inputs into
+deterministic double-entry Ledger journals, use
+[`cmd/ledger-migrate`](../ledger-migrate/README.md).
