@@ -446,7 +446,17 @@ step materialize-azure-access \
 # sitegen's find_vendor_dir() searches for them.
 SITE_OUT="/var/www/selfmon/${INSTANCE}"
 SITEGEN_TIMING="${SELFMON_METRICS_DIR}/.sitegen-last.json"
+SITEGEN_SUMMARY="${SELFMON_METRICS_DIR}/.sitegen-last.log"
+SITEGEN_SUMMARY_PATTERN='Sitegen (export summary|phase summary|status-grid discovery summary):|Query execution summary:|Peak memory usage:'
 
+SG_IO_STARTED=0
+if [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]; then
+    if snapshot_proc_io IO_SITEGEN_START; then
+        SG_IO_STARTED=1
+    else
+        disable_io_diagnostics "could not start step 'sitegen'"
+    fi
+fi
 SG_START=$(date +%s.%N)
 SG_LOG=$(mktemp)
 if "${PONDBIN}" run /system/etc/sitegen build "${SITE_OUT}" >"${SG_LOG}" 2>&1; then
@@ -455,14 +465,43 @@ else
     SG_STATUS=fail
 fi
 SG_END=$(date +%s.%N)
+if [ "${SG_STATUS}" = ok ]; then
+    SG_OUTCOME=ok
+else
+    SG_OUTCOME=error
+fi
+if [ "${SG_IO_STARTED}" -eq 1 ] &&
+    [ "${IO_DIAGNOSTICS_ENABLED}" -eq 1 ]
+then
+    if snapshot_proc_io IO_SITEGEN_END; then
+        printf 'selfmon_io scope=step step=sitegen outcome=%s' "${SG_OUTCOME}"
+        print_io_delta IO_SITEGEN_START IO_SITEGEN_END
+        printf '\n'
+    else
+        disable_io_diagnostics "could not finish step 'sitegen'"
+    fi
+fi
 SG_SECONDS=$(awk -v a="${SG_END}" -v b="${SG_START}" 'BEGIN{printf "%.3f", a-b}')
 SG_PEAK_MB=$(grep -oE 'Peak memory usage: [0-9.]+ MB' "${SG_LOG}" \
     | awk '{if ($4+0 > max) max=$4+0} END{printf "%.2f", (max==""?0:max)}')
 printf '{"status":"%s","seconds":%s,"peak_rss_mb":%s}\n' \
     "${SG_STATUS}" "${SG_SECONDS}" "${SG_PEAK_MB}" > "${SITEGEN_TIMING}"
 if [ "${SG_STATUS}" = fail ]; then
+    cp "${SG_LOG}" "${SITEGEN_SUMMARY}"
     cat "${SG_LOG}" >&2
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
     FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}sitegen"
+elif grep -E "${SITEGEN_SUMMARY_PATTERN}" "${SG_LOG}" \
+    > "${SITEGEN_SUMMARY}.tmp"
+then
+    mv "${SITEGEN_SUMMARY}.tmp" "${SITEGEN_SUMMARY}"
+    cat "${SITEGEN_SUMMARY}"
+else
+    rm -f "${SITEGEN_SUMMARY}.tmp"
+    cp "${SG_LOG}" "${SITEGEN_SUMMARY}"
+    echo "ERROR: successful sitegen emitted no retained summary lines;" \
+        "full output saved to ${SITEGEN_SUMMARY}" >&2
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+    FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}sitegen-summary"
 fi
 rm -f "${SG_LOG}"

@@ -204,10 +204,12 @@ pass.
 
 ### Selfmon I/O diagnostics
 
-`run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step and
-one aggregate line when the tick exits:
+`run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step,
+including the custom Sitegen invocation, and one aggregate line when the tick
+exits:
 
 ```text
+selfmon_io scope=step step=sitegen outcome=ok rchar=... wchar=... syscr=... syscw=... read_bytes=... write_bytes=... cancelled_write_bytes=...
 selfmon_io scope=tick instance=watershop-selfmon exit_rc=0 failures=0 rchar=... wchar=... syscr=... syscw=... read_bytes=... write_bytes=... cancelled_write_bytes=...
 ```
 
@@ -217,6 +219,12 @@ measure bytes passed through read/write syscalls, including cache hits and
 pipes. `read_bytes` and `write_bytes` measure bytes that reached block storage.
 `syscr` and `syscw` count read/write syscalls. This requires no systemd
 `IOAccounting` or journald configuration.
+
+Each successful Sitegen run also writes its discovery, export, query-execution,
+phase, and peak-memory summaries to the service journal and to
+`${SELFMON_METRICS_DIR}/.sitegen-last.log`. Failures save the full Sitegen
+output there instead. The adjacent `.sitegen-last.json` remains the compact
+status, elapsed-time, and peak-memory record consumed by the next tick.
 
 To compare aggregate ticks:
 
