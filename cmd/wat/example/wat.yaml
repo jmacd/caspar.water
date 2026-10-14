@@ -1,0 +1,6 @@
+version: 1
+name: Caspar Water
+year: 2021
+journal: books/books.journal
+write_journal: books/2021.journal
+sources: sources

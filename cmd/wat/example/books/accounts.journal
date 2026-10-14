@@ -1,0 +1,24 @@
+; Starter accounts only, not a complete or approved acquisition chart.
+; Confirm the entity, acquisition treatment, and applicable CPUC requirements.
+commodity $
+account Assets:101-Water-Plant-in-Service
+account Assets:104-Water-Plant-Purchased-or-Sold
+account Assets:105-Construction-Work-in-Progress
+account Assets:108-Accumulated-Depreciation
+account Assets:114-Water-Plant-Acquisition-Adjustments
+account Assets:121-Non-Water-Utility-Property-and-Other-Assets
+account Assets:131.2-Cash-in-Bank
+account Assets:174-Other-Current-Assets
+account Equity:211-Other-Paid-in-Capital
+account Equity:215-Retained-Earnings
+account Liabilities:224-Long-Term-Debt
+account Liabilities:231-Accounts-Payable
+account Liabilities:236-Taxes-Accrued
+account Expenses:403-Depreciation
+account Expenses:408-Taxes-Other-Than-Income
+account Expenses:615-Power
+account Expenses:640-Materials
+account Expenses:650-Contract-Work
+account Expenses:682-Professional-Services
+account Expenses:684-Insurance
+account Expenses:688-Regulatory-Compliance
