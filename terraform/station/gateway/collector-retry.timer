@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry Caspar Water Gateway Collector startup
+
+[Timer]
+OnBootSec=30s
+OnCalendar=minutely
+AccuracySec=1s
+Unit=collector.service
+
+[Install]
+WantedBy=timers.target
