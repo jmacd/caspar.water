@@ -5,12 +5,12 @@ package logic
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"os"
 	"path"
 	"text/template"
 
 	"github.com/jmacd/caspar.water/cmd/internal/billing/account"
+	"github.com/jmacd/caspar.water/cmd/internal/billing/assessment"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/business"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/constant"
 	"github.com/jmacd/caspar.water/cmd/internal/billing/csv"
@@ -121,25 +121,6 @@ func (vars *Vars) BodyText() (string, error) {
 	return textBuf.String(), nil
 }
 
-func getPayment(user user.User, charges []currency.Amount, cycle expense.Cycle) (currency.Amount, float64, int, []currency.Amount) {
-	if cycle.Inactive.Contains(user) {
-		return currency.Units(0), 0, 0, charges
-	}
-
-	pay := charges[0]
-	charges = charges[1:]
-	weight := 1
-
-	if user.Commercial && cycle.Method == expense.NormalMethod {
-		weight = 2
-		pay = currency.Sum(pay, charges[0])
-		charges = charges[1:]
-	}
-
-	fraction := float64(weight) / float64(cycle.EffectiveConnections)
-	return pay, fraction, weight, charges
-}
-
 func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 	accts := account.NewAccounts()
 
@@ -224,32 +205,20 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 		)
 
 		savingsRate := 1 + cycle.Margin
-		total := sumExpenses.Scale(savingsRate)
-
-		// Check that effective connection count is not exceeded
-		realCount := 0
-		for _, user := range users {
-			if cycle.Inactive.Contains(user) {
-				continue
-			}
-			realCount++
-			if user.Commercial && cycle.Method == expense.NormalMethod {
-				realCount++
-			}
-		}
-		if realCount > cycle.EffectiveConnections {
-			return nil, fmt.Errorf("logic error: too many connections found: %v > %v", realCount, cycle.EffectiveConnections)
-		}
 
 		fmt.Printf("Billing cycle %v..%v cycles %v savingsRate %.3f\n", startMonthDate, closeMonthDate, sumExpenses.Display(), savingsRate)
 
-		charges := total.Split(cycle.EffectiveConnections)
-
-		// Deterministically shuffle the $0.01 rounding
-		// differences so they are shared by different users.
-		rand.New(rand.NewSource(cycle.PeriodStart.Closing().Date().UnixNano())).Shuffle(len(charges), func(i, j int) {
-			charges[i], charges[j] = charges[j], charges[i]
-		})
+		allocation, err := assessment.Allocate(users, cycle)
+		if err != nil {
+			return nil, fmt.Errorf("allocate %s: %w", closeMonthDate, err)
+		}
+		assessmentByAccount := make(
+			map[string]assessment.Assessment,
+			len(allocation.Assessments),
+		)
+		for _, item := range allocation.Assessments {
+			assessmentByAccount[item.User.AccountName] = item
+		}
 
 		marginStr := fmt.Sprintf("%.0f%%", 100*(savingsRate-1))
 
@@ -267,8 +236,10 @@ func Logic(inputs Inputs, fs afero.Fs) (*Result, error) {
 			}
 			compStmt.Statements = append(compStmt.Statements, userStmt)
 
-			owes, fraction, weight, reduced := getPayment(user, charges, cycle)
-			charges = reduced
+			allocated := assessmentByAccount[user.AccountName]
+			owes := allocated.Amount
+			fraction := allocated.Fraction
+			weight := allocated.Weight
 
 			pctStr := fmt.Sprintf("%.2f%%", fraction*100)
 			fracStr := fmt.Sprintf("%.4f", fraction)

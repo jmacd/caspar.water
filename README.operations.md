@@ -105,6 +105,41 @@ This applies `config/water.yaml` twice, checks its typed public schemas,
 validates the empty-input monitor report, and runs a quick filesystem check.
 Set `KEEP_WATER_SMOKE=1` to retain the temporary pond for inspection.
 
+## Gateway collector boot recovery
+
+The gateway (`192.168.80.40`, hostname `linux`) retains
+`RequiresMountsFor=/home/system` so the collector cannot write underneath an
+unmounted NFS archive. NetworkManager can finish its boot wait before Ethernet
+has carrier; a failed mount then blocks collector startup. `Restart=always`
+retries process exits, not failed dependency jobs.
+
+`collector-retry.timer` retries starting the service every minute, with an
+additional activation 30 seconds after boot. Starting an already-active service
+does not restart it. While the collector is active, the timer normally shows
+`running` with no next activation; it rearms when the service becomes inactive.
+This covers delayed networking or archive availability
+without changing the collector binary or telemetry configuration. It does not
+detect an unreachable NFS server while its mount remains active.
+
+For intentional maintenance, stop the timer before stopping the service:
+
+```bash
+sudo systemctl stop collector-retry.timer
+sudo systemctl stop collector.service
+```
+
+Resume automatic recovery with:
+
+```bash
+sudo systemctl start collector.service
+sudo systemctl start collector-retry.timer
+```
+
+The gateway Terraform setup installs and enables both units; teardown stops
+the timer first. Inspect recovery with `systemctl list-timers
+collector-retry.timer --all --no-pager` and `journalctl -u collector.service
+-u home-system.mount --no-pager`.
+
 ## Watershop deployment
 
 Staging uses MinIO on watershop. Production uses Azure native-v2 publication
@@ -204,10 +239,12 @@ pass.
 
 ### Selfmon I/O diagnostics
 
-`run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step and
-one aggregate line when the tick exits:
+`run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step,
+including the custom Sitegen invocation, and one aggregate line when the tick
+exits:
 
 ```text
+selfmon_io scope=step step=sitegen outcome=ok rchar=... wchar=... syscr=... syscw=... read_bytes=... write_bytes=... cancelled_write_bytes=...
 selfmon_io scope=tick instance=watershop-selfmon exit_rc=0 failures=0 rchar=... wchar=... syscr=... syscw=... read_bytes=... write_bytes=... cancelled_write_bytes=...
 ```
 
@@ -217,6 +254,12 @@ measure bytes passed through read/write syscalls, including cache hits and
 pipes. `read_bytes` and `write_bytes` measure bytes that reached block storage.
 `syscr` and `syscw` count read/write syscalls. This requires no systemd
 `IOAccounting` or journald configuration.
+
+Each successful Sitegen run also writes its discovery, export, query-execution,
+phase, and peak-memory summaries to the service journal and to
+`${SELFMON_METRICS_DIR}/.sitegen-last.log`. Failures save the full Sitegen
+output there instead. The adjacent `.sitegen-last.json` remains the compact
+status, elapsed-time, and peak-memory record consumed by the next tick.
 
 To compare aggregate ticks:
 
