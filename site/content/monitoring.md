@@ -26,3 +26,13 @@ Operators access our [Influxdb](https://influx.casparwater.us) instance with liv
 We have high-resolution well depth measurements dating back to August 2022, with which we can see the history of leaks, leak repairs, faucets left running, and other kinds of fine detail about our impact on the aquifer. See the [Well Depth History](/well-depth-history.html) page for an annotated 4-year timeline.
 
 We also publish pump-cycle analyses showing how the well pump draws down the aquifer and how it recovers afterward: a [Drawdown by month](/analysis/drawdown-by-month.html) chart and a [Horner recovery by month](/analysis/horner-by-month.html) plot, each aggregated into per-month median and P10-P90 bands.
+
+We also watch whether our other ponds are still receiving new data at all, independent of any instrument-specific check:
+
+<div class="monitor-summary" data-monitor data-title="Septic monitoring" data-status-url="pond-status/septic/status.json">
+  <p data-loading>Loading septic monitoring status...</p>
+</div>
+
+<div class="monitor-summary" data-monitor data-title="Noyo Harbor monitoring" data-status-url="pond-status/noyo/status.json">
+  <p data-loading>Loading Noyo Harbor monitoring status...</p>
+</div>
