@@ -15,7 +15,7 @@ derived quantity used by the check.
 
 <link rel="stylesheet" href="assets/monitor-status.css">
 
-<div class="monitor-summary" data-water-monitors data-status-url="pond-status/water/status.json">
+<div class="monitor-summary" data-monitor data-title="Water monitoring" data-status-url="pond-status/water/status.json">
   <p data-loading>Loading water monitoring status...</p>
 </div>
 

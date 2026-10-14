@@ -84,7 +84,7 @@ function renderFailure(title, error) {
   return card;
 }
 
-function renderWaterCheck(check, stale) {
+function renderCheck(check, stale) {
   const state = stale ? "stale" : check.state;
   const card = stateCard(check.label, state);
   append(card, "p", check.description);
@@ -93,15 +93,15 @@ function renderWaterCheck(check, stale) {
   return card;
 }
 
-async function renderWater(container) {
-  const url =
-    container.dataset.statusUrl || "pond-status/water/status.json";
+async function renderMonitor(container) {
+  const url = container.dataset.statusUrl;
+  const fallbackTitle = container.dataset.title || "Monitoring";
   try {
     const { status, generatedAt } = await fetchStatus(url);
     const stale = Date.now() - generatedAt > STALE_AFTER_MS;
     const grid = append(container, "div", undefined, "monitor-grid");
     for (const check of status.checks) {
-      grid.append(renderWaterCheck(check, stale));
+      grid.append(renderCheck(check, stale));
     }
     append(
       container,
@@ -110,11 +110,11 @@ async function renderWater(container) {
       "monitor-meta",
     );
   } catch (error) {
-    container.append(renderFailure("Water monitoring", error));
+    container.append(renderFailure(fallbackTitle, error));
   }
   container.querySelector("[data-loading]")?.remove();
 }
 
-for (const container of document.querySelectorAll("[data-water-monitors]")) {
-  renderWater(container);
+for (const container of document.querySelectorAll("[data-monitor]")) {
+  renderMonitor(container);
 }

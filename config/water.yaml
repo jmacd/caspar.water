@@ -117,6 +117,17 @@ spec:
           operator: lt
           value: 2.5
           unit: sensor-units-per-pump-hour
+      - id: water-data-stale
+        label: "Water station is reporting data"
+        description: >-
+          At least one well-depth reading must arrive in the trailing 24
+          hours; a longer gap means ingestion has stalled upstream.
+        href: "/data/well-depth.html"
+        type: stale-after
+        source: "oteljson:///ingest/casparwater*.json"
+        timestamp_column: timestamp
+        value_column: well_depth_value
+        window: 24h
 ---
 version: v1
 kind: mknod
