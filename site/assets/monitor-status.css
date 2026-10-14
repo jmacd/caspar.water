@@ -16,6 +16,18 @@
   padding: 1rem;
 }
 
+a.monitor-card {
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+}
+
+a.monitor-card:hover,
+a.monitor-card:focus-visible {
+  border-color: var(--fg, #101828);
+}
+
 .monitor-card header {
   align-items: baseline;
   display: flex;
@@ -37,13 +49,33 @@
   text-transform: uppercase;
 }
 
-.monitor-state-healthy {
+.monitor-state-healthy,
+.monitor-state-good {
   background: #ecfdf3;
   border-left-color: #18753c;
 }
 
-.monitor-state-healthy .monitor-state {
+.monitor-state-healthy .monitor-state,
+.monitor-state-good .monitor-state {
   color: #126331;
+}
+
+.monitor-state-watch {
+  background: #fffaeb;
+  border-left-color: #b54708;
+}
+
+.monitor-state-watch .monitor-state {
+  color: #93370d;
+}
+
+.monitor-state-concern {
+  background: #fff6ed;
+  border-left-color: #c4320a;
+}
+
+.monitor-state-concern .monitor-state {
+  color: #b93815;
 }
 
 .monitor-state-alarm,

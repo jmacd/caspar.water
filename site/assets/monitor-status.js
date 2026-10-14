@@ -1,6 +1,7 @@
 const SCHEMA_VERSION = 4;
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const STATES = new Set(["healthy", "alarm", "unknown"]);
+const TONES = new Set(["good", "watch", "concern", "alarm"]);
 
 function append(parent, tag, text, className) {
   const child = document.createElement(tag);
@@ -36,7 +37,8 @@ function validateStatus(status) {
       typeof check.href !== "string" ||
       !check.href.startsWith("/") ||
       check.href.startsWith("//") ||
-      !STATES.has(check.state)
+      !STATES.has(check.state) ||
+      (check.tone !== undefined && !TONES.has(check.tone))
     ) {
       throw new Error("invalid monitor check");
     }
@@ -58,10 +60,10 @@ async function fetchStatus(url) {
   return { status, generatedAt };
 }
 
-function stateCard(title, state, headingLevel = "h2") {
+function stateCard(title, state, headingLevel = "h2", tag = "article") {
   const card = append(
     document.createDocumentFragment(),
-    "article",
+    tag,
     undefined,
     `monitor-card monitor-state-${state}`,
   );
@@ -85,11 +87,10 @@ function renderFailure(title, error) {
 }
 
 function renderCheck(check, stale) {
-  const state = stale ? "stale" : check.state;
-  const card = stateCard(check.label, state);
+  const state = stale ? "stale" : (check.tone ?? check.state);
+  const card = stateCard(check.label, state, "h2", "a");
+  card.href = check.href;
   append(card, "p", check.description);
-  const link = append(card, "a", "View the relevant graph");
-  link.href = check.href;
   return card;
 }
 

@@ -128,6 +128,21 @@ spec:
         timestamp_column: timestamp
         value_column: well_depth_value
         window: 24h
+      - id: leak-score
+        label: "Leak risk"
+        description: >-
+          7-day trailing leak-probability score (0.0-1.0) from the overnight
+          main-pressure drawdown model; 0.5 is the calibrated leak/no-leak
+          threshold. A missing score counts as the worst band, not unknown.
+        href: "/leak"
+        type: graded-score
+        source: "series:///leak/leak-analysis"
+        timestamp_column: timestamp
+        value_column: leak_score
+        good_max: 0.25
+        watch_max: 0.5
+        concern_max: 0.75
+        window: 3d
 ---
 version: v1
 kind: mknod
