@@ -143,6 +143,20 @@ spec:
         watch_max: 0.5
         concern_max: 0.75
         window: 3d
+      - id: ph-stale-or-low
+        label: "pH stays above 6.5"
+        description: >-
+          Every pH reading must remain at or above 6.5; a 3-hour gap with no
+          reading counts as a failure too, since a stale probe can mask a
+          real low-pH event just as easily as reporting one.
+        href: "/data/ph.html"
+        type: stale-or-below
+        source: "oteljson:///ingest/casparwater*.json"
+        timestamp_column: timestamp
+        value_column: atlasph_ph
+        threshold: 6.5
+        window: 3h
+        window: 3d
 ---
 version: v1
 kind: mknod
