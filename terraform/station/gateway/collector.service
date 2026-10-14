@@ -1,17 +1,15 @@
 [Unit]
 Description=Caspar Water Gateway Collector
-# Couple to the NFS mount that holds the jsonfile output target.  Without
-# this, a lost mount silently breaks the jsonfile exporter for as long as
-# the unit stays up (lumberjack returns "mkdir ... file exists" on every
-# write) without restarting the unit.  RequiresMountsFor stops the unit
-# when /home/system goes away and starts it again when the mount returns.
-After=network.target home-system.mount
+# Do not write beneath an unmounted archive. A failed mount prevents startup;
+# collector-retry.timer retries dependency failures that Restart= cannot cover.
+Wants=network-online.target
+After=network-online.target
 RequiresMountsFor=/home/system
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 Restart=always
-StartLimitIntervalSec=0
 RestartSec=5
 ExecStart=/home/jmacd/bin/collector.sh --config /home/jmacd/etc/config.yaml
 

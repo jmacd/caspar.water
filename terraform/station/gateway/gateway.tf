@@ -40,6 +40,11 @@ resource "null_resource" "setup-script" {
   }
 
   provisioner "file" {
+      source      = "collector-retry.timer"
+      destination = "/etc/systemd/system/collector-retry.timer"
+  }
+
+  provisioner "file" {
       source      = "../../../collector/collector.linux"
       destination = "/home/jmacd/bin/collector"
   }
