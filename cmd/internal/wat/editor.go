@@ -174,6 +174,9 @@ func (d *Draft) PreviewText(text string) (err error) {
 			}
 		}
 	}
+	if err := d.checkStatement(tx); err != nil {
+		return err
+	}
 	if !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}

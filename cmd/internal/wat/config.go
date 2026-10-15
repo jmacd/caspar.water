@@ -11,13 +11,21 @@ import (
 )
 
 type Config struct {
-	Version      int    `yaml:"version"`
-	Name         string `yaml:"name"`
-	Year         int    `yaml:"year"`
-	Journal      string `yaml:"journal"`
-	WriteJournal string `yaml:"write_journal"`
-	Sources      string `yaml:"sources"`
+	Version      int             `yaml:"version"`
+	Name         string          `yaml:"name"`
+	Year         int             `yaml:"year"`
+	Journal      string          `yaml:"journal"`
+	WriteJournal string          `yaml:"write_journal"`
+	Sources      string          `yaml:"sources"`
+	BankAccount  string          `yaml:"bank_account"`
+	Statement    StatementConfig `yaml:"statement"`
 	root         string
+}
+
+type StatementConfig struct {
+	Python    string `yaml:"python"`
+	OllamaURL string `yaml:"ollama_url"`
+	Model     string `yaml:"model"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -41,6 +49,11 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if strings.TrimSpace(cfg.Name) == "" || cfg.Year < 1 || cfg.Year > 9998 {
 		return cfg, fmt.Errorf("name and a year between 1 and 9998 are required")
+	}
+	if cfg.BankAccount != "" && (strings.TrimSpace(cfg.BankAccount) == "" ||
+		!singleLine(cfg.BankAccount) || strings.Contains(cfg.BankAccount, "  ") ||
+		strings.ContainsAny(cfg.BankAccount, ";[]()")) {
+		return cfg, fmt.Errorf("bank_account must name a regular posting account")
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {

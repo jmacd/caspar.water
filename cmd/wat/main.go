@@ -11,6 +11,9 @@ import (
 func command() *cobra.Command {
 	var config string
 	var books *wat.Books
+	var statement, extraction string
+	var statementPages []int
+	var statementCheck bool
 	root := &cobra.Command{
 		Use:           "wat",
 		Short:         "Water Accounting Terminal - local hledger bookkeeping",
@@ -25,9 +28,42 @@ func command() *cobra.Command {
 			books, err = wat.Open(cfg)
 			return err
 		},
-		RunE: func(_ *cobra.Command, _ []string) error { return wat.RunTerminal(books) },
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if statement == "" {
+				if extraction != "" || len(statementPages) != 0 || statementCheck {
+					return fmt.Errorf("statement options require --statement PDF")
+				}
+				return wat.RunTerminal(books)
+			}
+			s, err := books.LoadStatement(statement, wat.StatementOptions{Extraction: extraction, Pages: statementPages}, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			if statementCheck {
+				statuses, err := books.StatementStatuses(s)
+				if err != nil {
+					return err
+				}
+				recorded := 0
+				for _, status := range statuses {
+					if status.Recorded {
+						recorded++
+					}
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Statement: %d transactions; %d recorded, %d pending. Amounts match statement balances; this is not proof of reconciliation.\n", len(statuses), recorded, len(statuses)-recorded)
+				for _, warning := range s.Warnings {
+					fmt.Fprintln(cmd.ErrOrStderr(), "Statement notice:", warning)
+				}
+				return nil
+			}
+			return wat.RunStatementTerminal(books, s)
+		},
 	}
 	root.PersistentFlags().StringVar(&config, "config", "wat.yaml", "workspace YAML configuration")
+	root.Flags().StringVar(&statement, "statement", "", "extract or resume review of a bank statement PDF")
+	root.Flags().StringVar(&extraction, "statement-extraction", "", "seed a new statement cache from reviewed bankstatementparser JSON")
+	root.Flags().IntSliceVar(&statementPages, "statement-pages", nil, "explicit transaction pages for a new extraction, e.g. 1,2")
+	root.Flags().BoolVar(&statementCheck, "statement-check", false, "extract/validate a statement and print progress without opening the terminal")
 	root.AddCommand(&cobra.Command{
 		Use:   "check",
 		Short: "Validate the complete books with hledger strict checks",

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,9 +22,14 @@ type journalTransaction struct {
 	Description string      `json:"tdescription"`
 	Tags        [][2]string `json:"ttags"`
 	Postings    []struct {
+		Account string `json:"paccount"`
 		Type    string `json:"ptype"`
 		Amounts []struct {
 			Commodity string `json:"acommodity"`
+			Quantity  struct {
+				Mantissa json.Number `json:"decimalMantissa"`
+				Places   int         `json:"decimalPlaces"`
+			} `json:"aquantity"`
 		} `json:"pamount"`
 	} `json:"tpostings"`
 }
@@ -54,6 +60,15 @@ func Open(cfg Config) (*Books, error) {
 	}
 	if _, err := books.snapshot(); err != nil {
 		return nil, err
+	}
+	if cfg.BankAccount != "" {
+		accounts, err := books.Accounts()
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(accounts, cfg.BankAccount) {
+			return nil, fmt.Errorf("bank_account is not a declared account: %q", cfg.BankAccount)
+		}
 	}
 	return books, nil
 }

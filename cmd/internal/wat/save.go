@@ -15,13 +15,14 @@ type fileState struct {
 }
 
 type Draft struct {
-	books    *Books
-	files    map[string]fileState
-	accounts []string
-	history  completionHistory
-	id       string
-	text     string
-	saved    bool
+	books     *Books
+	files     map[string]fileState
+	accounts  []string
+	history   completionHistory
+	id        string
+	text      string
+	saved     bool
+	statement *statementDraft
 }
 
 func (b *Books) snapshot() (map[string]fileState, error) {
@@ -95,6 +96,11 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 	text, err := entry.render(d.books.Config.Year, d.accounts, d.id)
 	if err != nil {
 		return "", err
+	}
+	if d.statement != nil {
+		if err := d.PreviewText(text); err != nil {
+			return "", err
+		}
 	}
 	d.text = text
 	return text, nil

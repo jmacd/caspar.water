@@ -47,6 +47,7 @@ year: 2021
 journal: books/books.journal
 write_journal: books/2021.journal
 sources: sources
+bank_account: Asset:131.2-Cash-in-Bank
 ```
 
 Paths are relative to the configuration file. All included journals must be
@@ -55,6 +56,78 @@ Use relative includes. `write_journal` must already exist and be included by
 `journal`. Unknown configuration keys and additional YAML documents are errors.
 `sources` names the supporting-document directory; references are currently
 free-form text, not imported or automatically verified document links.
+`bank_account` optionally identifies the ledger account for bank-statement work.
+When set, it must exactly match a declared regular account, including the root
+prefix (`Asset:` in the example). Existing configurations may omit it.
+This setting does not itself import or post statement transactions.
+
+## Work through a bank statement
+
+```sh
+./cmd/wat/run.sh --statement ../caspar_water_bank/casparwater-2021-11.pdf
+```
+
+The statement queue shows pending, recorded, and possible-match rows. Enter
+opens a pending row in the existing entry form with its bank account, date,
+description and opposite signed amounts filled in. Focus starts on the
+counteraccount. Choose the account, split the counterposting when needed, and
+press F2 to save. Acknowledge the save message to advance to the next pending
+row. Esc / Back discards the current unsaved edits and returns to the queue;
+it does not mark that row recorded. The main menu can resume the statement.
+
+Only Save writes journal postings. `bank-row` and `bank-description` metadata
+identify the original source row and description. They survive payee edits and
+must remain intact in F4. The original bank account, date and signed amount
+are checked even for ledger-text edits; counterpostings remain editable.
+Recorded status is read from the journals, not a second bookkeeping database.
+The same PDF resumes its stable cached row order without calling Ollama again.
+Overlapping statements or manually recorded entries with the same bank date
+and amount are flagged for explicit review, not automatically posted or skipped.
+
+Suggestions reuse **unambiguous prior accepted counteraccounts** for the same
+bank description (case/whitespace normalized), bank account and payment direction.
+Conflicting assignments or multi-account splits do not become a one-account
+rule. Unknown descriptions start with a blank counteraccount: this version does
+not ask an LLM to invent account assignments. A deposit is not assumed to be income.
+
+The source PDF and extracted JSON are kept privately under
+`sources/statements/<PDF-SHA256>/`. Do not reorder or edit cached rows after
+posting. Extraction notices are available with **i** in the statement queue.
+Matching opening/closing balances is an arithmetic check, not evidence that all
+rows were extracted correctly or that the books are reconciled. Compare with
+the original PDF before recording.
+
+For a new PDF, install the optional Python parser in a separate environment
+(Python 3.13 is supported by the pinned hybrid dependencies):
+
+```sh
+python3.13 -m venv local/wat-python
+local/wat-python/bin/python -m pip install -r cmd/wat/requirements-statement.txt
+```
+
+Configure the same workspace YAML; executable paths containing `/` are relative
+to that YAML file, while bare executable names are looked up on PATH:
+
+```yaml
+statement:
+  python: ../wat-python/bin/python
+  ollama_url: http://watershop:11434
+  model: qwen3:30b-a3b
+```
+
+PDF extraction uses `bankstatementparser` with streaming JSON and thinking
+disabled against **only the configured Ollama endpoint**. It can take several
+minutes on a CPU-only server and never posts automatically. This first version
+requires text-bearing transaction pages; it refuses scanned/textless pages
+rather than silently omitting them. After inspecting the PDF, explicitly select
+pages for a **new** extraction with `--statement-pages 1,2`. The entire original
+PDF is still retained, and excluded pages are noted in the cache.
+
+`--statement-check` extracts/validates and prints queue counts without opening a
+terminal. `--statement-extraction reviewed.json` can seed a new cache from a
+previously reviewed `bankstatementparser` JSON export; the operator must ensure
+it belongs to the supplied PDF. Neither option writes journal postings. Once
+cached, omit extraction/page-selection options so row identities remain stable.
 
 ## Use the terminal
 

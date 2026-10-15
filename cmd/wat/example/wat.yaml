@@ -4,3 +4,8 @@ year: 2021
 journal: books/books.journal
 write_journal: books/2021.journal
 sources: sources
+bank_account: Asset:131.2-Cash-in-Bank
+statement:
+  python: python3.13
+  ollama_url: http://watershop:11434
+  model: qwen3:30b-a3b

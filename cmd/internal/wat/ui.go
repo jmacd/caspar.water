@@ -9,17 +9,30 @@ import (
 )
 
 type terminal struct {
-	app   *tview.Application
-	books *Books
+	app       *tview.Application
+	books     *Books
+	statement *Statement
 }
 
 func RunTerminal(books *Books) error {
+	return runTerminal(books, nil)
+}
+
+func RunStatementTerminal(books *Books, statement *Statement) error {
+	return runTerminal(books, statement)
+}
+
+func runTerminal(books *Books, statement *Statement) error {
 	tview.Styles.PrimitiveBackgroundColor = tcell.NewHexColor(0x101b2b)
 	tview.Styles.ContrastBackgroundColor = tcell.NewHexColor(0x25466b)
 	tview.Styles.BorderColor = tcell.NewHexColor(0x629ac2)
 	tview.Styles.PrimaryTextColor = tcell.NewHexColor(0xe6edf3)
-	ui := &terminal{app: tview.NewApplication(), books: books}
-	ui.menu()
+	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement}
+	if statement == nil {
+		ui.menu()
+	} else {
+		ui.statementList()
+	}
 	return ui.app.Run()
 }
 
@@ -45,7 +58,7 @@ func (ui *terminal) message(title, text string, back func()) {
 func (ui *terminal) menu() {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Water Accounting Terminal ")
-	list.AddItem("Record a transaction", "Balanced postings with a journal preview", '1', ui.entry).
+	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
 		AddItem("Review journal", "Transactions in the selected year", '2', func() { ui.report("journal") }).
 		AddItem("Reports", "Trial balance, balance sheet, income statement", '3', ui.reports).
 		AddItem("Check books", "Run hledger strict validation", '4', func() {
@@ -56,6 +69,9 @@ func (ui *terminal) menu() {
 			ui.message(" Check books ", "The books pass hledger strict checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
+	if ui.statement != nil {
+		list.AddItem("Continue bank statement", "Resume unrecorded statement transactions", '5', ui.statementList)
+	}
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ui.app.Stop()
@@ -110,7 +126,10 @@ func (ui *terminal) entry() {
 		return
 	}
 	entry := Entry{Postings: make([]Posting, 2)}
-	focus := 0
+	ui.entryForm(draft, entry, ui.menu, 0)
+}
+
+func (ui *terminal) entryForm(draft *Draft, entry Entry, back func(), focus int) {
 	var showForm func()
 	showForm = func() {
 		discard := func() {
@@ -118,7 +137,7 @@ func (ui *terminal) entry() {
 				AddButtons([]string{"Keep editing", "Discard"})
 			modal.SetDoneFunc(func(index int, _ string) {
 				if index == 1 {
-					ui.menu()
+					back()
 				} else {
 					showForm()
 				}
@@ -146,6 +165,9 @@ func (ui *terminal) entry() {
 			ui.save(draft, showForm)
 		}
 		form := newEntryGrid(ui.app, &entry, draft, &focus, add, remove, save, discard)
+		if draft.statement != nil {
+			form.SetTitle(fmt.Sprintf(" Statement row %d/%d - UNSAVED ", draft.statement.index+1, len(draft.statement.statement.Rows)))
+		}
 		navigate := form.GetInputCapture()
 		form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyF4 {
@@ -179,7 +201,11 @@ func (ui *terminal) save(draft *Draft, back func()) {
 		ui.message(" Save result ", err.Error(), back)
 		return
 	}
-	ui.message(" Saved ", "Transaction saved and validated.\nRecovery copy: "+backup, ui.menu)
+	next := ui.menu
+	if draft.statement != nil {
+		next = func() { ui.statementNext(draft.statement.index) }
+	}
+	ui.message(" Saved ", "Transaction saved and validated.\nRecovery copy: "+backup, next)
 }
 
 func formNavigation(event *tcell.EventKey) *tcell.EventKey {

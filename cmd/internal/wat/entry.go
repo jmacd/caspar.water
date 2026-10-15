@@ -17,12 +17,14 @@ type Posting struct {
 }
 
 type Entry struct {
-	Date        string
-	Payee       string
-	Description string
-	Reference   string
-	Source      string
-	Postings    []Posting
+	Date            string
+	Payee           string
+	Description     string
+	Reference       string
+	Source          string
+	BankRow         string
+	BankDescription string
+	Postings        []Posting
 }
 
 func ParseCents(text string) (int64, error) {
@@ -115,7 +117,7 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 	if err != nil || date.Year() != year {
 		return "", fmt.Errorf("date must be YYYY-MM-DD within %d", year)
 	}
-	for _, value := range []string{e.Payee, e.Description, e.Reference, e.Source} {
+	for _, value := range []string{e.Payee, e.Description, e.Reference, e.Source, e.BankRow, e.BankDescription} {
 		if !singleLine(value) {
 			return "", fmt.Errorf("transaction fields must not contain control characters")
 		}
@@ -123,7 +125,7 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 	if strings.TrimSpace(e.Payee) == "" || strings.ContainsAny(e.Payee+e.Description, ";|") {
 		return "", fmt.Errorf("payee is required; payee and description cannot contain ';' or '|'")
 	}
-	if strings.Contains(e.Reference+e.Source, ",") {
+	if strings.Contains(e.Reference+e.Source+e.BankRow+e.BankDescription, ",") {
 		return "", fmt.Errorf("reference and source cannot contain commas")
 	}
 	if len(e.Postings) < 2 {
@@ -175,6 +177,7 @@ func (e Entry) journalText(id string) string {
 	fmt.Fprintf(&text, "\n    ; id: %s\n", id)
 	for _, tag := range []struct{ name, value string }{
 		{"reference", e.Reference}, {"source", e.Source},
+		{"bank-row", e.BankRow}, {"bank-description", e.BankDescription},
 	} {
 		if tag.value != "" {
 			fmt.Fprintf(&text, "    ; %s: %s\n", tag.name, tag.value)

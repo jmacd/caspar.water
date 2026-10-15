@@ -70,6 +70,10 @@ func TestConfig(t *testing.T) {
 	}{
 		{"valid", base, true},
 		{"unknown", base + "typo: true\n", false},
+		{"bank account", base + "bank_account: Assets:Bank\n", true},
+		{"blank bank account", base + "bank_account: ' '\n", false},
+		{"multiline bank account", base + "bank_account: \"Assets:Bank\\nEquity:Capital\"\n", false},
+		{"virtual bank account", base + "bank_account: '[Assets:Bank]'\n", false},
 		{"documents", base + "---\nname: other\n", false},
 		{"version", strings.Replace(base, "version: 1", "version: 2", 1), false},
 		{"year", strings.Replace(base, "2021", "0", 1), false},
@@ -91,6 +95,22 @@ func TestConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, filepath.Join(directory, "books.journal"), cfg.Journal)
 			require.Equal(t, filepath.Join(directory, "2021.journal"), cfg.WriteJournal)
+		})
+	}
+}
+
+func TestBankAccountConfiguration(t *testing.T) {
+	books, _ := fixture(t, "")
+	for _, account := range []string{"", "Assets:Bank", "Asset:Bank", "Assets:Unknown"} {
+		t.Run(account, func(t *testing.T) {
+			cfg := books.Config
+			cfg.BankAccount = account
+			_, err := Open(cfg)
+			if account == "" || account == "Assets:Bank" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "bank_account is not a declared account")
+			}
 		})
 	}
 }

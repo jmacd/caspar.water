@@ -1,0 +1,1 @@
+bankstatementparser[hybrid-plus]==0.0.28

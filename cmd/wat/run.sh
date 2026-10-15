@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+invocation_dir="$PWD"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 test_dir="$repo_root/local/wat-test"
 
@@ -18,4 +19,6 @@ fi
 
 printf 'Test workspace: %s\n' "$test_dir" >&2
 cd -- "$repo_root"
-exec go run ./cmd/wat --config "$test_dir/wat.yaml" "$@"
+go build -o "$test_dir/.wat" ./cmd/wat
+cd -- "$invocation_dir"
+exec "$test_dir/.wat" --config "$test_dir/wat.yaml" "$@"

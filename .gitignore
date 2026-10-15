@@ -1,4 +1,5 @@
 *.csv
+__pycache__/
 *~
 dead.code
 statements/*-Sep
