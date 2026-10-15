@@ -1,6 +1,7 @@
 const SCHEMA_VERSION = 4;
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const STATES = new Set(["healthy", "alarm", "unknown"]);
+const TONES = new Set(["good", "watch", "concern", "alarm"]);
 
 function append(parent, tag, text, className) {
   const child = document.createElement(tag);
@@ -36,7 +37,8 @@ function validateStatus(status) {
       typeof check.href !== "string" ||
       !check.href.startsWith("/") ||
       check.href.startsWith("//") ||
-      !STATES.has(check.state)
+      !STATES.has(check.state) ||
+      (check.tone !== undefined && !TONES.has(check.tone))
     ) {
       throw new Error("invalid monitor check");
     }
@@ -58,10 +60,10 @@ async function fetchStatus(url) {
   return { status, generatedAt };
 }
 
-function stateCard(title, state, headingLevel = "h2") {
+function stateCard(title, state, headingLevel = "h2", tag = "article") {
   const card = append(
     document.createDocumentFragment(),
-    "article",
+    tag,
     undefined,
     `monitor-card monitor-state-${state}`,
   );
@@ -84,24 +86,23 @@ function renderFailure(title, error) {
   return card;
 }
 
-function renderWaterCheck(check, stale) {
-  const state = stale ? "stale" : check.state;
-  const card = stateCard(check.label, state);
+function renderCheck(check, stale) {
+  const state = stale ? "stale" : (check.tone ?? check.state);
+  const card = stateCard(check.label, state, "h2", "a");
+  card.href = check.href;
   append(card, "p", check.description);
-  const link = append(card, "a", "View the relevant graph");
-  link.href = check.href;
   return card;
 }
 
-async function renderWater(container) {
-  const url =
-    container.dataset.statusUrl || "pond-status/water/status.json";
+async function renderMonitor(container) {
+  const url = container.dataset.statusUrl;
+  const fallbackTitle = container.dataset.title || "Monitoring";
   try {
     const { status, generatedAt } = await fetchStatus(url);
     const stale = Date.now() - generatedAt > STALE_AFTER_MS;
     const grid = append(container, "div", undefined, "monitor-grid");
     for (const check of status.checks) {
-      grid.append(renderWaterCheck(check, stale));
+      grid.append(renderCheck(check, stale));
     }
     append(
       container,
@@ -110,11 +111,11 @@ async function renderWater(container) {
       "monitor-meta",
     );
   } catch (error) {
-    container.append(renderFailure("Water monitoring", error));
+    container.append(renderFailure(fallbackTitle, error));
   }
   container.querySelector("[data-loading]")?.remove();
 }
 
-for (const container of document.querySelectorAll("[data-water-monitors]")) {
-  renderWater(container);
+for (const container of document.querySelectorAll("[data-monitor]")) {
+  renderMonitor(container);
 }

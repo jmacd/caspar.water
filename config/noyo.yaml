@@ -18,7 +18,19 @@ spec:
     pond: "${env:POND_INSTANCE}"
     title: "Noyo pond status"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
-    checks: []
+    checks:
+      - id: noyo-data-stale
+        label: "Noyo Harbor Field Station is reporting data"
+        description: >-
+          At least one Field Station surface-probe reading must arrive in
+          the trailing 24 hours; a longer gap means HydroVu collection has
+          stalled.
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
+        type: stale-after
+        source: "/combined/FieldStation"
+        timestamp_column: timestamp
+        value_column: "AT500_Surface.Temperature.C"
+        window: 24h
 ---
 version: v1
 kind: mkdir
