@@ -156,7 +156,6 @@ spec:
         value_column: atlasph_ph
         threshold: 6.5
         window: 3h
-        window: 3d
 ---
 version: v1
 kind: mknod
