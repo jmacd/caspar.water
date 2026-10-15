@@ -69,6 +69,47 @@ func singleLine(text string) bool {
 	return !strings.ContainsFunc(text, unicode.IsControl)
 }
 
+func (e Entry) postingTotal() (int64, error) {
+	var total int64
+	for i, posting := range e.Postings {
+		if strings.TrimSpace(posting.Amount) == "" {
+			continue
+		}
+		cents, err := ParseCents(posting.Amount)
+		if err != nil {
+			return 0, fmt.Errorf("posting %d: %w", i+1, err)
+		}
+		if (cents > 0 && total > math.MaxInt64-cents) || (cents < 0 && total < math.MinInt64-cents) {
+			return 0, fmt.Errorf("posting total exceeds supported USD range")
+		}
+		total += cents
+	}
+	return total, nil
+}
+
+func (e Entry) balanceStatus() string {
+	total, err := e.postingTotal()
+	if err != nil {
+		return "Balance unavailable: " + err.Error()
+	}
+	if total == math.MinInt64 {
+		return "Balance unavailable: balancing amount exceeds supported USD range"
+	}
+	if total == 0 {
+		for _, posting := range e.Postings {
+			if strings.TrimSpace(posting.Amount) != "" {
+				return "Balance: $0.00 | Balanced"
+			}
+		}
+		return "Balance: $0.00 | Enter posting amounts"
+	}
+	needed, side := formatCents(-total), "credit"
+	if total < 0 {
+		needed, side = "+"+needed, "debit"
+	}
+	return fmt.Sprintf("Balance: $%s | To balance: %s USD (%s)", formatCents(total), needed, side)
+}
+
 func (e Entry) render(year int, accounts []string, id string) (string, error) {
 	date, err := time.Parse("2006-01-02", e.Date)
 	if err != nil || date.Year() != year {
@@ -90,7 +131,6 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 	}
 	normalized := e
 	normalized.Postings = append([]Posting(nil), e.Postings...)
-	var total int64
 	for i, posting := range e.Postings {
 		found := false
 		for _, account := range accounts {
@@ -110,11 +150,11 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 		if cents == 0 {
 			return "", fmt.Errorf("posting to %s must be nonzero", posting.Account)
 		}
-		if (cents > 0 && total > math.MaxInt64-cents) || (cents < 0 && total < math.MinInt64-cents) {
-			return "", fmt.Errorf("posting total exceeds supported USD range")
-		}
-		total += cents
 		normalized.Postings[i].Amount = formatCents(cents)
+	}
+	total, err := normalized.postingTotal()
+	if err != nil {
+		return "", err
 	}
 	if total != 0 {
 		return "", fmt.Errorf("postings do not balance (signed sum: %d cents)", total)

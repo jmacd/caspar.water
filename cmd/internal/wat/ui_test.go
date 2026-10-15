@@ -13,6 +13,8 @@ import (
 type terminalFrame struct {
 	text  string
 	focus string
+	value string
+	x, y  int
 }
 
 func TestTerminalRecordReviewAndCancel(t *testing.T) {
@@ -48,8 +50,8 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 				frame.focus = focus.GetLabel()
 			case *tview.InputField:
 				frame.focus = focus.GetLabel()
-			case *tview.DropDown:
-				frame.focus = focus.GetLabel()
+				frame.value = focus.GetText()
+				frame.x, frame.y, _, _ = focus.GetRect()
 			}
 			return frame
 		case err := <-done:
@@ -74,6 +76,18 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	frame := key(tcell.KeyRune, '1')
 	require.Contains(t, frame.text, "UNSAVED")
 	require.Equal(t, "Date (YYYY-MM-DD)", frame.focus)
+	frame = key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "date must be")
+	require.Equal(t, "; original text\n", read(t, books.Config.WriteJournal))
+	key(tcell.KeyEnter, 0)
+	frame = key(tcell.KeyBacktab, 0)
+	require.Equal(t, "Back (Esc)", frame.focus)
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Discard this unsaved transaction")
+	frame = key(tcell.KeyEnter, 0)
+	require.Equal(t, "Back (Esc)", frame.focus)
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "Date (YYYY-MM-DD)", frame.focus)
 	frame = key(tcell.KeyDown, 0)
 	require.Equal(t, "Payee", frame.focus)
 	frame = key(tcell.KeyUp, 0)
@@ -88,31 +102,49 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	key(tcell.KeyTab, 0)
 	typeText("sources/power.pdf")
 	frame = key(tcell.KeyDown, 0)
-	require.Equal(t, "Account 1", frame.focus)
+	accountX, firstY := frame.x, frame.y
+	typeText("pow")
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, firstY, frame.y)
+	require.Greater(t, frame.x, accountX)
+	key(tcell.KeyBacktab, 0)
+	key(tcell.KeyEnter, 0)
 	frame = key(tcell.KeyDown, 0)
-	require.Equal(t, "USD amount 1 (+debit/-credit)", frame.focus)
+	require.Equal(t, accountX, frame.x)
+	require.Equal(t, firstY+1, frame.y)
 	frame = key(tcell.KeyUp, 0)
-	require.Equal(t, "Account 1", frame.focus)
-	key(tcell.KeyEnter, 0)
-	key(tcell.KeyDown, 0)
-	key(tcell.KeyDown, 0)
-	key(tcell.KeyEnter, 0)
+	require.Equal(t, accountX, frame.x)
+	require.Equal(t, firstY, frame.y)
 	key(tcell.KeyTab, 0)
 	typeText("12.34")
 	key(tcell.KeyTab, 0)
+	typeText("bank")
+	key(tcell.KeyEnter, 0)
 	key(tcell.KeyTab, 0)
 	typeText("-12.34")
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "Add posting", frame.focus)
+	frame = key(tcell.KeyEnter, 0)
+	require.Equal(t, accountX, frame.x)
+	require.Equal(t, firstY+2, frame.y)
+	key(tcell.KeyTab, 0)
+	key(tcell.KeyTab, 0)
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "Remove last posting", frame.focus)
+	frame = key(tcell.KeyEnter, 0)
+	require.Equal(t, accountX, frame.x)
+	require.Equal(t, firstY+1, frame.y)
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "-12.34", frame.value)
 	for i := 0; i < 4; i++ {
 		frame = key(tcell.KeyTab, 0)
-		if frame.focus == "Preview" {
+		if frame.focus == "Save (F2)" {
 			break
 		}
 	}
-	require.Equal(t, "Preview", frame.focus)
-	frame = key(tcell.KeyEnter, 0)
-	require.Contains(t, frame.text, "NOT SAVED")
-	require.Contains(t, frame.text, "Expenses:Power")
-	require.Contains(t, frame.text, "Assets:Bank")
+	require.Equal(t, "Save (F2)", frame.focus)
+	require.Contains(t, frame.text, "Balance: $0.00 | Balanced")
+	require.Contains(t, frame.text, "Back (Esc)")
 	require.Equal(t, "; original text\n", read(t, books.Config.WriteJournal))
 	frame = key(tcell.KeyF4, 0)
 	require.Contains(t, frame.text, "Edited power")
@@ -129,12 +161,32 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Contains(t, frame.text, "Electric company")
 	key(tcell.KeyEscape, 0)
 	key(tcell.KeyRune, '1')
+	key(tcell.KeyTab, 0)
+	typeText("elect")
+	frame = key(tcell.KeyEnter, 0)
+	require.Equal(t, "Electric company", frame.value)
+	key(tcell.KeyTab, 0)
+	typeText("edited")
+	frame = key(tcell.KeyEnter, 0)
+	require.Equal(t, "Edited power", frame.value)
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Discard this unsaved transaction")
 	key(tcell.KeyRight, 0)
 	frame = key(tcell.KeyEnter, 0)
 	require.Contains(t, frame.text, "Water Accounting Terminal")
 	require.Equal(t, saved, read(t, books.Config.WriteJournal))
+	key(tcell.KeyRune, '1')
+	for _, value := range []string{
+		"2021-04-06", "Electric company", "Direct save", "", "",
+		"Expenses:Power", "12.34", "Assets:Bank", "-12.34",
+	} {
+		typeText(value)
+		key(tcell.KeyTab, 0)
+	}
+	frame = key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "Transaction saved and validated")
+	require.Contains(t, read(t, books.Config.WriteJournal), "2021-04-06 Electric company | Direct save")
+	key(tcell.KeyEnter, 0)
 	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone))
 	select {
 	case err := <-done:
@@ -142,4 +194,158 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal did not exit")
 	}
+}
+
+func TestEntryGridCompletionAndNavigation(t *testing.T) {
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	t.Cleanup(screen.Fini)
+	screen.SetSize(100, 24)
+	bank := "Assets:131.2-Cash-in-Bank"
+	savings := "Assets:131.3-Savings"
+	payee := "City [red] Water"
+	draft := &Draft{
+		accounts: []string{bank, savings, "Expenses:Power"},
+		history:  completionHistory{payees: []string{payee}, descriptions: []string{"Power bill"}},
+	}
+	entry := Entry{Postings: make([]Posting, 2)}
+	focus := 0
+	added := false
+	grid := newEntryGrid(app, &entry, draft, &focus,
+		func() { added = true }, func() {}, func() {}, func() {})
+	grid.SetRect(0, 0, 100, 24)
+	app.SetFocus(grid.controls[0].primitive)
+	draw := func() { grid.Draw(screen) }
+	draw()
+	key := func(key tcell.Key, r rune) {
+		t.Helper()
+		grid.InputHandler()(tcell.NewEventKey(key, r, tcell.ModNone), func(p tview.Primitive) { app.SetFocus(p) })
+		draw()
+	}
+	typeText := func(text string) {
+		for _, r := range text {
+			key(tcell.KeyRune, r)
+		}
+	}
+	assertFocus := func(index int) {
+		t.Helper()
+		require.Equal(t, index, focus)
+		require.Same(t, grid.controls[index].primitive, app.GetFocus())
+	}
+	key(tcell.KeyBacktab, 0)
+	assertFocus(12)
+	key(tcell.KeyTab, 0)
+	assertFocus(0)
+	key(tcell.KeyUp, 0)
+	assertFocus(0)
+	key(tcell.KeyDown, 0)
+	typeText("city")
+	key(tcell.KeyDown, 0)
+	assertFocus(2)
+	require.Equal(t, "city", entry.Payee, "arrows must not accept completion")
+	key(tcell.KeyUp, 0)
+	key(tcell.KeyEnter, 0)
+	require.Equal(t, payee, entry.Payee, "completion must preserve literal color-tag text")
+	key(tcell.KeyEnter, 0)
+	assertFocus(2)
+	typeText("BILL")
+	key(tcell.KeyEnter, 0)
+	require.Equal(t, "Power bill", entry.Description)
+	key(tcell.KeyTab, 0)
+	key(tcell.KeyDown, 0)
+	key(tcell.KeyDown, 0)
+	assertFocus(5)
+	typeText("13")
+	key(tcell.KeyTab, 0)
+	assertFocus(6)
+	require.Equal(t, "13", entry.Postings[0].Account)
+	x1, y1, _, _ := grid.controls[5].primitive.GetRect()
+	x2, y2, _, _ := grid.controls[6].primitive.GetRect()
+	require.Equal(t, y1, y2)
+	require.Greater(t, x2, x1, "account and amount must occupy separate columns")
+	key(tcell.KeyDown, 0)
+	assertFocus(8)
+	key(tcell.KeyDown, 0)
+	assertFocus(8)
+	key(tcell.KeyUp, 0)
+	assertFocus(6)
+	key(tcell.KeyBacktab, 0)
+	assertFocus(5)
+	key(tcell.KeyCtrlN, 0)
+	require.Equal(t, "13", entry.Postings[0].Account, "cycling must preserve the query")
+	key(tcell.KeyCtrlP, 0)
+	key(tcell.KeyCtrlN, 0)
+	key(tcell.KeyEnter, 0)
+	require.Equal(t, savings, entry.Postings[0].Account)
+	key(tcell.KeyDown, 0)
+	assertFocus(7)
+	typeText("131.2")
+	key(tcell.KeyEnter, 0)
+	require.Equal(t, bank, entry.Postings[1].Account)
+	key(tcell.KeyTab, 0)
+	assertFocus(8)
+	key(tcell.KeyTab, 0)
+	assertFocus(9)
+	key(tcell.KeyEnter, 0)
+	require.True(t, added)
+	key(tcell.KeyTab, 0)
+	assertFocus(11) // The disabled remove button is skipped.
+	key(tcell.KeyBacktab, 0)
+	assertFocus(9)
+	key(tcell.KeyUp, 0)
+	assertFocus(7)
+
+	entry.Postings = make([]Posting, 30)
+	grid = newEntryGrid(app, &entry, draft, &focus,
+		func() {}, func() {}, func() {}, func() {})
+	grid.SetRect(0, 0, 60, 10)
+	app.SetFocus(grid.controls[64].primitive)
+	grid.Draw(screen)
+	_, y, _, height := app.GetFocus().GetRect()
+	require.GreaterOrEqual(t, y, 1)
+	require.LessOrEqual(t, y+height, 9, "focused posting must scroll into the viewport")
+	for _, index := range []int{65, 67, 68} {
+		_, buttonY, _, buttonHeight := grid.controls[index].primitive.GetRect()
+		require.GreaterOrEqual(t, buttonY, 1)
+		require.LessOrEqual(t, buttonY+buttonHeight, 9, "actions must stay visible while posting rows scroll")
+	}
+	field, ok := grid.controls[64].primitive.(*tview.InputField)
+	require.True(t, ok)
+	field.SetText("-100")
+	require.Contains(t, grid.balance.GetText(false), "To balance: +100.00 USD (debit)")
+	other, ok := grid.controls[62].primitive.(*tview.InputField)
+	require.True(t, ok)
+	other.SetText("40")
+	require.Contains(t, grid.balance.GetText(false), "To balance: +60.00 USD (debit)")
+	other.SetText("100")
+	require.Equal(t, "Balance: $0.00 | Balanced", grid.balance.GetText(false))
+	other.SetText("-")
+	require.Contains(t, grid.balance.GetText(false), "Balance unavailable: posting 29")
+	other.SetText("")
+	account, ok := grid.controls[63].primitive.(*tview.InputField)
+	require.True(t, ok)
+	app.SetFocus(account)
+	account.SetText("13")
+	account.Autocomplete()
+	draw()
+	_, balanceY, _, _ := grid.balance.GetRect()
+	var balanceRow strings.Builder
+	for x := 1; x < 59; x++ {
+		r, _, _, _ := screen.GetContent(x, balanceY)
+		balanceRow.WriteRune(r)
+	}
+	require.Contains(t, balanceRow.String(), "To balance: +100.00")
+	_, backY, _, _ := grid.controls[68].primitive.GetRect()
+	var actionRow strings.Builder
+	for x := 1; x < 59; x++ {
+		r, _, _, _ := screen.GetContent(x, backY)
+		actionRow.WriteRune(r)
+	}
+	require.Contains(t, actionRow.String(), "Back (Esc)")
+	app.SetFocus(grid.controls[64].primitive)
+	key(tcell.KeyUp, 0)
+	assertFocus(62)
+	key(tcell.KeyBacktab, 0)
+	assertFocus(61)
 }

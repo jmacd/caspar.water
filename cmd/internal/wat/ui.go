@@ -109,36 +109,10 @@ func (ui *terminal) entry() {
 		ui.message(" Cannot start transaction ", err.Error(), ui.menu)
 		return
 	}
-	entry := Entry{Postings: []Posting{{Account: draft.accounts[0]}, {Account: draft.accounts[0]}}}
+	entry := Entry{Postings: make([]Posting, 2)}
+	focus := 0
 	var showForm func()
 	showForm = func() {
-		form := tview.NewForm()
-		form.SetBorder(true).SetTitle(" New transaction - UNSAVED ")
-		form.AddInputField("Date (YYYY-MM-DD)", entry.Date, 12, nil, func(s string) { entry.Date = s }).
-			AddInputField("Payee", entry.Payee, 48, nil, func(s string) { entry.Payee = s }).
-			AddInputField("Description", entry.Description, 48, nil, func(s string) { entry.Description = s }).
-			AddInputField("Reference", entry.Reference, 48, nil, func(s string) { entry.Reference = s }).
-			AddInputField("Source reference", entry.Source, 48, nil, func(s string) { entry.Source = s })
-		options := make([]string, len(draft.accounts))
-		for i, account := range draft.accounts {
-			options[i] = tview.Escape(account)
-		}
-		for i := range entry.Postings {
-			i := i
-			selected := 0
-			for j, account := range draft.accounts {
-				if account == entry.Postings[i].Account {
-					selected = j
-				}
-			}
-			form.AddDropDown(fmt.Sprintf("Account %d", i+1), options, selected, func(_ string, index int) {
-				if index >= 0 {
-					entry.Postings[i].Account = draft.accounts[index]
-				}
-			})
-			form.AddInputField(fmt.Sprintf("USD amount %d (+debit/-credit)", i+1),
-				entry.Postings[i].Amount, 24, nil, func(s string) { entry.Postings[i].Amount = s })
-		}
 		discard := func() {
 			modal := tview.NewModal().SetText("Discard this unsaved transaction?").
 				AddButtons([]string{"Keep editing", "Discard"})
@@ -151,46 +125,66 @@ func (ui *terminal) entry() {
 			})
 			ui.app.SetRoot(modal, true).SetFocus(modal)
 		}
-		form.AddButton("Add posting", func() {
-			entry.Postings = append(entry.Postings, Posting{Account: draft.accounts[0]})
+		add := func() {
+			focus = 5 + 2*len(entry.Postings)
+			entry.Postings = append(entry.Postings, Posting{})
 			showForm()
-		}).AddButton("Remove last posting", func() {
+		}
+		remove := func() {
 			if len(entry.Postings) > 2 {
 				entry.Postings = entry.Postings[:len(entry.Postings)-1]
+				focus = 5 + 2*(len(entry.Postings)-1)
 				showForm()
 			}
-		}).AddButton("Preview", func() {
-			text, err := draft.Preview(entry)
+		}
+		save := func() {
+			_, err := draft.Preview(entry)
 			if err != nil {
-				ui.message(" Cannot preview ", err.Error(), showForm)
+				ui.message(" Cannot save ", err.Error(), showForm)
 				return
 			}
-			ui.preview(draft, text, showForm, func() { ui.edit(draft, draft.text, showForm) })
-		}).AddButton("Cancel", discard)
-		form.GetButton(1).SetDisabled(len(entry.Postings) <= 2)
-		form.SetCancelFunc(discard)
+			ui.save(draft, showForm)
+		}
+		form := newEntryGrid(ui.app, &entry, draft, &focus, add, remove, save, discard)
+		navigate := form.GetInputCapture()
 		form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyF4 {
 				ui.edit(draft, entry.journalText(draft.id), showForm)
 				return nil
 			}
-			return formNavigation(form, event)
+			if event.Key() == tcell.KeyF2 {
+				save()
+				return nil
+			}
+			if event.Key() == tcell.KeyEscape {
+				discard()
+				return nil
+			}
+			return navigate(event)
 		})
+		target := focus
 		ui.screen("Record transaction", form,
-			"Up/Down or Tab Move | Enter Select | F4 Ledger editor | Esc Cancel")
+			"Esc Back (confirm discard) | F2 Save | F4 Ledger editor\n Up/Down Move | Tab/Shift-Tab Next/Previous | Ctrl-N/P Suggest | Enter Accept")
+		ui.app.SetFocus(form.controls[target].primitive)
 	}
 	showForm()
 }
 
-func formNavigation(form *tview.Form, event *tcell.EventKey) *tcell.EventKey {
+func (ui *terminal) save(draft *Draft, back func()) {
+	backup, err := draft.Save()
+	if err != nil {
+		if draft.saved {
+			back = ui.menu
+		}
+		ui.message(" Save result ", err.Error(), back)
+		return
+	}
+	ui.message(" Saved ", "Transaction saved and validated.\nRecovery copy: "+backup, ui.menu)
+}
+
+func formNavigation(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() != tcell.KeyUp && event.Key() != tcell.KeyDown {
 		return event
-	}
-	index, _ := form.GetFocusedItemIndex()
-	if index >= 0 {
-		if dropdown, ok := form.GetFormItem(index).(*tview.DropDown); ok && dropdown.IsOpen() {
-			return event
-		}
 	}
 	key := tcell.KeyTab
 	if event.Key() == tcell.KeyUp {
@@ -203,23 +197,12 @@ func (ui *terminal) preview(draft *Draft, text string, back, edit func()) {
 	view := tview.NewTextView().SetWrap(false).SetText(text)
 	view.SetBorder(true).SetTitle(" Preview - NOT SAVED ")
 	buttons := tview.NewForm().
-		AddButton("Save", func() {
-			backup, err := draft.Save()
-			if err != nil {
-				next := back
-				if draft.saved {
-					next = ui.menu
-				}
-				ui.message(" Save result ", err.Error(), next)
-				return
-			}
-			ui.message(" Saved ", "Transaction saved and validated.\nRecovery copy: "+backup, ui.menu)
-		}).
+		AddButton("Save", func() { ui.save(draft, back) }).
 		AddButton("Edit ledger text (F4)", edit).
 		AddButton("Back to edit", back)
 	buttons.SetCancelFunc(back)
 	buttons.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		return formNavigation(buttons, event)
+		return formNavigation(event)
 	})
 	body := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(view, 0, 1, false).

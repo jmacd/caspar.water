@@ -18,6 +18,7 @@ type Draft struct {
 	books    *Books
 	files    map[string]fileState
 	accounts []string
+	history  completionHistory
 	id       string
 	text     string
 	saved    bool
@@ -75,11 +76,15 @@ func (b *Books) NewDraft() (*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
+	history, err := b.completionHistory()
+	if err != nil {
+		return nil, err
+	}
 	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
-	return &Draft{books: b, files: files, accounts: accounts, id: id}, nil
+	return &Draft{books: b, files: files, accounts: accounts, history: history, id: id}, nil
 }
 
 func (d *Draft) Preview(entry Entry) (string, error) {

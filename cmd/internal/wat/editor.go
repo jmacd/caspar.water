@@ -1,7 +1,6 @@
 package wat
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -138,23 +137,9 @@ func (d *Draft) PreviewText(text string) (err error) {
 	}
 	// Parse with hledger, not a Go journal parser. Assertions are validated
 	// below against the complete books, rather than this isolated transaction.
-	output, err := d.books.run(path, "print", "--output-format=json", "--ignore-assertions")
+	transactions, err := d.books.transactions(path, "--ignore-assertions")
 	if err != nil {
 		return err
-	}
-	var transactions []struct {
-		Date        string      `json:"tdate"`
-		Description string      `json:"tdescription"`
-		Tags        [][2]string `json:"ttags"`
-		Postings    []struct {
-			Type    string `json:"ptype"`
-			Amounts []struct {
-				Commodity string `json:"acommodity"`
-			} `json:"pamount"`
-		} `json:"tpostings"`
-	}
-	if err := json.Unmarshal([]byte(output), &transactions); err != nil {
-		return fmt.Errorf("decode hledger transactions: %w", err)
 	}
 	if len(transactions) != 1 {
 		return fmt.Errorf("expected exactly one transaction, got %d", len(transactions))

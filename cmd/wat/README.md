@@ -58,13 +58,35 @@ free-form text, not imported or automatically verified document links.
 
 ## Use the terminal
 
-Select a menu item with arrows and Enter, or its numbered shortcut. Forms use
-Up/Down or Tab/Shift-Tab to move between fields and buttons. Enter opens an
-account dropdown; while it is open, arrows select accounts rather than moving
-between fields. Account lists also support typing to search. Transactions accept any
-number of postings, each with a declared account and a signed USD amount:
+Select a menu item with arrows and Enter, or its numbered shortcut. In transaction
+entry, Up/Down always move vertically between inputs, staying in the account or
+amount column across posting rows, even with suggestions open. Tab/Shift-Tab
+step through fields and buttons in order: account, amount, next account, next
+amount. Moving away from a field never accepts a suggestion.
+
+Payee and description suggest case-insensitive text matches from existing
+transactions across all included journals, including earlier years. Suggestions
+refresh when you start a new transaction; no separate history database is kept.
+Account suggestions come from the declared chart: start with digits to match
+the leading CPUC account-code prefix (`13` matches `131.2`, but not a `13` later
+in an account name); start with other text to search anywhere in full account
+names, ignoring case. The code is the first number-prefixed account component;
+numbers in descendant names do not change its classification.
+
+Use **Ctrl-N/Ctrl-P** to cycle suggestions and **Enter** to accept the highlighted
+suggestion. Enter without suggestions advances to the next field. You can also
+type complete values directly. New posting accounts start blank rather than
+silently selecting the first chart account.
+
+Transactions accept any number of posting rows with account and amount columns,
+each with a declared account and a signed USD amount:
 positive is a debit, negative is a credit. Use `125.00` or `-125.00`, without a
 currency symbol or grouping separators. The signed sum must be zero.
+The live balance stays below the posting area and shows the signed amount still
+needed: entering `-100` shows `+100.00 USD (debit)` to balance; adding `+40`
+changes that to `+60.00`. Blank amounts are ignored while drafting, but invalid
+amounts or overflow show an explicit unavailable-balance message rather than an
+incorrect total. A balanced amount total alone does not mean the entry is valid.
 
 Dates must be within the configured year. Enter the actual transaction date,
 payee, optional description, reference, and source reference. Every saved entry
@@ -72,9 +94,14 @@ also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
 
-Preview shows the exact journal text. Save validates the complete proposed books
+The action bar stays visible even when posting rows scroll. **Esc** or **Back
+(Esc)** returns to the menu after confirming that unsaved work should be
+discarded. Choose Keep editing in that confirmation to retain the draft.
+
+**F2** or **Save (F2)** saves directly from the form, without a separate preview
+step. Save validates the complete proposed books
 with `hledger check --strict`, then appends the entry while preserving existing
-bytes. Cancel does not change the journals. A repeated Save of the same draft
+bytes. Going back does not change the journals. A repeated Save of the same draft
 cannot post it twice.
 
 Press **F4** from the entry form or preview to edit the pending transaction's

@@ -115,6 +115,34 @@ func TestParseCents(t *testing.T) {
 	}
 }
 
+func TestEntryBalanceStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		amounts []string
+		want    string
+	}{
+		{"empty", []string{"", " "}, "Balance: $0.00 | Enter posting amounts"},
+		{"credit first", []string{"-100", ""}, "Balance: $-100.00 | To balance: +100.00 USD (debit)"},
+		{"partial split", []string{"-100", "40", ""}, "Balance: $-60.00 | To balance: +60.00 USD (debit)"},
+		{"split balanced", []string{"-100", "40", "60"}, "Balance: $0.00 | Balanced"},
+		{"debit first", []string{"100"}, "Balance: $100.00 | To balance: -100.00 USD (credit)"},
+		{"exact cents", []string{"0.10", "0.20", "-0.30"}, "Balance: $0.00 | Balanced"},
+		{"invalid", []string{"100", "-"}, "Balance unavailable: posting 2:"},
+		{"precision", []string{"1.001"}, "Balance unavailable: posting 1:"},
+		{"overflow", []string{"92233720368547758.07", "0.01"}, "Balance unavailable: posting total exceeds"},
+		{"negative overflow", []string{"-92233720368547758.07", "-0.02"}, "Balance unavailable: posting total exceeds"},
+		{"minimum", []string{"-92233720368547758.07", "-0.01"}, "Balance unavailable: balancing amount exceeds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var entry Entry
+			for _, amount := range tc.amounts {
+				entry.Postings = append(entry.Postings, Posting{Amount: amount})
+			}
+			require.Contains(t, entry.balanceStatus(), tc.want)
+		})
+	}
+}
+
 func TestEntryValidation(t *testing.T) {
 	accounts := []string{"Expenses:Power", "Assets:Bank"}
 	for _, tc := range []struct {

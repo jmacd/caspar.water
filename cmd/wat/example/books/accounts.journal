@@ -1,24 +1,152 @@
-; Starter accounts only, not a complete or approved acquisition chart.
-; Confirm the entity, acquisition treatment, and applicable CPUC requirements.
+;; -*- Mode: Ledger -*-
+;;
+;; UNIFORM SYSTEM OF ACCOUNTS
+;; FOR CLASS B, C, AND D WATER UTILITIES
+;;
+;; California Public Utility Commission
+;; Standard Practice U-39-W
+;;
+
 commodity $
-account Assets:101-Water-Plant-in-Service
-account Assets:104-Water-Plant-Purchased-or-Sold
-account Assets:105-Construction-Work-in-Progress
-account Assets:108-Accumulated-Depreciation
-account Assets:114-Water-Plant-Acquisition-Adjustments
-account Assets:121-Non-Water-Utility-Property-and-Other-Assets
-account Assets:131.2-Cash-in-Bank
-account Assets:174-Other-Current-Assets
+
+account Asset:101-Water-Plant-in-Service
+account Asset:101.1-Water-Plant-in-Service-SDWBA
+account Asset:101.2-Water-Plant-in-Service-Grant-Funds
+account Asset:101.3-Water-Plant-in-Service-Other
+account Asset:103-Water-Plant-Held-for-Future-Use
+account Asset:104-Water-Plant-Purchased-or-Sold
+account Asset:105-Construction-Work-in-Progress-Water-Plant
+account Asset:105.1-Construction-Work-in-Progress-SDWBA
+account Asset:105.2-Construction-Work-in-Progress-Grant-Funds
+account Asset:105.3-Construction-Work-in-Progress-Other
+account Asset:108-Accumulated-Depreciation-of-Water-Plant
+account Asset:108.1-Accumulated-Amortization-of-SDWBA
+account Asset:108.2-Accumulated-Depreciation-of-Water-Plant-Grant-Funds
+account Asset:108.3-Accumulated-Depreciation-of-Water-Plant-Other
+account Asset:114-Water-Plant-Acquisition-Adjustments
+account Asset:121-Non-Water-Utility-Property-and-Other-Assets
+account Asset:122-Accumulated-Depreciation-of-Non-Water-Utility-Property
+account Asset:123-Investments-in-Affiliated-Companies
+account Asset:124-Other-Investments
+account Asset:131-Cash
+account Asset:131.1-Cash-on-Hand
+account Asset:131.2-Cash-in-Bank
+account Asset:132-Cash-Special-Deposits
+account Asset:141-Accounts-Receivable-Customers
+account Asset:142-Receivables-from-Affiliated-Companies
+account Asset:143-Accumulated-Provision-for-Uncollectible-Accounts
+account Asset:151-Materials-and-Supplies
+account Asset:174-Other-Current-Assets
+account Asset:180-Deferred-Charges
+account Asset:181-Accumulated-Deferred-Income-Tax-Assets
+
+account Equity:201-Common-Stock
+account Equity:204-Preferred-Stock
+account Equity:206-Subchapter-S-Corporation-Accumulated-Adjustments-Account
 account Equity:211-Other-Paid-in-Capital
 account Equity:215-Retained-Earnings
-account Liabilities:224-Long-Term-Debt
-account Liabilities:231-Accounts-Payable
-account Liabilities:236-Taxes-Accrued
-account Expenses:403-Depreciation
-account Expenses:408-Taxes-Other-Than-Income
-account Expenses:615-Power
-account Expenses:640-Materials
-account Expenses:650-Contract-Work
-account Expenses:682-Professional-Services
-account Expenses:684-Insurance
-account Expenses:688-Regulatory-Compliance
+account Equity:218-Proprietary-Capital
+account Equity:218.1-Proprietary-Drawings
+
+account Liability:224-Long-Term-Debt
+account Liability:230-Payables-to-Affiliated-Companies
+account Liability:231-Accounts-Payable
+account Liability:232-Short-Term-Notes-Payable
+account Liability:233-Customer-Deposits
+account Liability:236-Taxes-Accrued
+account Liability:237-Interest-Accrued
+account Liability:237.1-Interest-Accrued-on-Long-Term-Debt
+account Liability:237.2-Interest-Accrued-on-SDWBA-Loan
+account Liability:237.3-Interest-Accrued-on-Other-Liabilities
+account Liability:241-Other-Current-Liabilities
+account Liability:252-Advances-for-Construction
+account Liability:253-Other-Credits
+account Liability:255-Accumulated-Deferred-Investment-Tax-Credits
+account Liability:265-Contributions-in-Aid-of-Construction
+account Liability:265.1-Government-Grant-and-Government-Grant-Contamination-Proceeds
+account Liability:265.2-Government-Loan-Contamination-Proceeds
+account Liability:265.3-Damage-Award-Contamination-Proceeds
+account Liability:265.4-Settlement-Contamination-Proceeds
+account Liability:265.5.1-Government-Order-Contamination-Proceeds-from-Private-Funds
+account Liability:265.5.2-Government-Order-Contamination-Proceeds-from-Public-Funds
+account Liability:265.6-Insurance-Contamination-Proceeds
+account Liability:265.7-All-Other-Contributions-in-Aid-of-Construction
+account Liability:272-Accumulated-Amortization-of-Contributions-Debit
+account Liability:282-Accumulated-Deferred-Income-Taxes-Accelerated-Tax-Depreciation
+account Liability:283-Accumulated-Deferred-Income-Tax-Liabilities
+
+account Asset:301-Intangible-Plant
+account Asset:303-Land
+account Asset:304-Structures
+account Asset:307-Wells
+account Asset:311-Pumping-Equipment
+account Asset:317-Other-Water-Source-Plant
+account Asset:320-Water-Treatment-Plant
+account Asset:330-Reservoirs,-Tanks-and-Standpipes
+account Asset:331-Water-Mains
+account Asset:333-Services-and-Meter-Installations
+account Asset:334-Meters
+account Asset:335-Hydrants
+account Asset:339-Other-Equipment
+account Asset:340-Office-Furniture-and-Equipment
+account Asset:341-Transportation-Equipment
+
+account Income:400-Operating-Revenues
+
+account Expense:401-Operating-Expenses
+account Expense:403-Depreciation-Expense
+account Expense:407-SDWBA-Loan-Amortization-Expense
+account Expense:408-Taxes-Other-than-Income-Taxes
+account Expense:408.1-Property-Taxes
+account Expense:408.2-Payroll-Taxes
+account Expense:408.3-Other-Taxes-and-Licenses
+account Expense:409-State-Corporate-Income-Tax-Expense
+account Expense:410-Federal-Corporate-Income-Tax-Expense
+
+account Income:421-Non-Utility-income
+
+account Expense:426-Miscellaneous-Non-Utility-Expense
+account Expense:427-Interest-Expense
+
+account Income:460-Unmetered-Water-Revenue
+account Income:460.1-Unmetered-Units-Billed-Individually
+account Income:460.2-Unmetered-Commercial-and-Multi-Residential
+account Income:460.3-Unmetered-Large-Water-Users
+account Income:460.4-Unmetered-Safe-Drinking-Water-Bond-Surcharge
+account Income:460.5-Unmetered-Other-Revenue
+account Income:462-Unmetered-Fire-Protection-Revenue
+account Income:462.1-Unmetered-Public-Fire-Protection
+account Income:462.2-Unmetered-Private-Fire-Protection
+account Income:465-Unmetered-Irrigation-Revenue
+account Income:470-Metered-Water-Revenue
+account Income:470.1-Metered-Units-Billed-Individually
+account Income:470.2-Metered-Commercial-and-Multi-Residential
+account Income:470.3-Metered-Large-Water-Users
+account Income:470.4-Metered-Safe-Drinking-Water-Bond-Surcharge
+account Income:470.5-Metered-Other-Revenue
+account Income:480-Other-Water-Revenue
+
+account Expense:610-Purchased-Water
+account Expense:615-Power
+account Expense:618-Other-Volume-Related-Expenses
+account Expense:630-Employee-Labor
+account Expense:640-Materials
+account Expense:650-Contract-Work
+account Expense:650.1-Contract-Water-Quality-and-Testing-Work
+account Expense:650.2-Other-Contract-Work
+account Expense:660-Transportation-Expense
+account Expense:664-Other-Plant-Maintenance-Expenses
+
+account Expense:670-Office-Salaries
+account Expense:671-Management-Salaries
+account Expense:674-Employee-Pensions-and-Benefits
+account Expense:676-Uncollectible-Accounts-Expense
+account Expense:678-Office-Services-and-Rentals
+account Expense:681-Office-Supplies-and-Expenses
+account Expense:682-Professional-Services
+account Expense:684-Insurance
+account Expense:688-Regulatory-Compliance-Expense
+account Expense:689-General-Expenses
+account Expense:800-Expenses-Capitalized
+account Expense:900-Clearing-Accounts
+account Expense:900.1-Payroll-Clearing

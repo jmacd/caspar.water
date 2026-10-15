@@ -3,6 +3,7 @@ package wat
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -13,6 +14,33 @@ import (
 type Books struct {
 	Config Config
 	binary string
+}
+
+type journalTransaction struct {
+	Date        string      `json:"tdate"`
+	Description string      `json:"tdescription"`
+	Tags        [][2]string `json:"ttags"`
+	Postings    []struct {
+		Type    string `json:"ptype"`
+		Amounts []struct {
+			Commodity string `json:"acommodity"`
+		} `json:"pamount"`
+	} `json:"tpostings"`
+}
+
+func (b *Books) transactions(journal string, options ...string) ([]journalTransaction, error) {
+	output, err := b.run(journal, append([]string{"print", "--output-format=json"}, options...)...)
+	if err != nil {
+		return nil, err
+	}
+	var transactions []journalTransaction
+	if err := json.Unmarshal([]byte(output), &transactions); err != nil {
+		return nil, fmt.Errorf("decode hledger transactions: %w", err)
+	}
+	if transactions == nil {
+		return nil, fmt.Errorf("decode hledger transactions: expected a transaction array")
+	}
+	return transactions, nil
 }
 
 func Open(cfg Config) (*Books, error) {
