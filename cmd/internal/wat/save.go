@@ -23,6 +23,7 @@ type Draft struct {
 	text      string
 	saved     bool
 	statement *statementDraft
+	revision  *entryRevision
 }
 
 func (b *Books) snapshot() (map[string]fileState, error) {
@@ -70,7 +71,7 @@ func (b *Books) NewDraft() (*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := b.Check(); err != nil {
+	if err := b.checkSyntax(b.Config.Journal); err != nil {
 		return nil, err
 	}
 	accounts, err := b.Accounts()
@@ -97,7 +98,7 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if d.statement != nil {
+	if d.statement != nil || d.revision != nil {
 		if err := d.PreviewText(text); err != nil {
 			return "", err
 		}
@@ -129,6 +130,11 @@ func (d *Draft) proposed() []byte {
 
 func (d *Draft) proposedText(text string) []byte {
 	original := d.files[d.books.Config.WriteJournal].data
+	if d.revision != nil {
+		data := append([]byte{}, original[:d.revision.start]...)
+		data = append(data, text...)
+		return append(data, original[d.revision.end:]...)
+	}
 	separator := "\n"
 	if len(original) != 0 && original[len(original)-1] != '\n' {
 		separator = "\n\n"
@@ -136,7 +142,11 @@ func (d *Draft) proposedText(text string) []byte {
 	return append(append(append([]byte{}, original...), separator...), text...)
 }
 
-func (d *Draft) validate(data []byte) (err error) {
+func (d *Draft) validate(data []byte) error {
+	return d.validateBooks(data, true)
+}
+
+func (d *Draft) validateBooks(data []byte, requireDetail bool) (err error) {
 	root, err := os.MkdirTemp("", "wat-validate-")
 	if err != nil {
 		return err
@@ -187,8 +197,33 @@ func (d *Draft) validate(data []byte) (err error) {
 	if len(included) != len(staged) {
 		return fmt.Errorf("journal include set changed in validation")
 	}
-	_, err = d.books.run(journal, "check", "--strict")
-	return err
+	if err := d.books.checkSyntax(journal); err != nil {
+		return err
+	}
+	if !requireDetail {
+		return nil
+	}
+	transactions, err := d.books.transactions(journal)
+	if err != nil {
+		return err
+	}
+	var selected []journalTransaction
+	ids := 0
+	for _, tx := range transactions {
+		for _, tag := range tx.Tags {
+			if tag[0] == "id" && tag[1] == d.id {
+				ids++
+				selected = append(selected, tx)
+			}
+		}
+	}
+	if ids != 1 {
+		return fmt.Errorf("proposed books must contain exactly one entry with ID %q; found %d", d.id, ids)
+	}
+	if err := d.checkStatement(selected[0]); err != nil {
+		return err
+	}
+	return checkPostingAccounts(selected, d.accounts)
 }
 
 func writeSynced(path string, data []byte, mode os.FileMode) (err error) {
@@ -208,7 +243,7 @@ func writeSynced(path string, data []byte, mode os.FileMode) (err error) {
 
 func (d *Draft) Save() (backup string, err error) {
 	if d.saved || d.text == "" {
-		return "", fmt.Errorf("preview a new transaction before saving")
+		return "", fmt.Errorf("preview an unsaved transaction before saving")
 	}
 	target := d.books.Config.WriteJournal
 	lockPath := target + ".wat-lock"

@@ -25,6 +25,7 @@ type Entry struct {
 	BankRow         string
 	BankDescription string
 	Postings        []Posting
+	comments        []string
 }
 
 func ParseCents(text string) (int64, error) {
@@ -143,7 +144,7 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 		}
 		if !found || !singleLine(posting.Account) || strings.Contains(posting.Account, "  ") ||
 			strings.ContainsAny(posting.Account, ";[]()") {
-			return "", fmt.Errorf("select a declared regular posting account: %q", posting.Account)
+			return "", fmt.Errorf("select a declared posting account with at least three nonempty levels (category:CPUC-account:detail): %q", posting.Account)
 		}
 		cents, err := ParseCents(posting.Amount)
 		if err != nil {
@@ -182,6 +183,9 @@ func (e Entry) journalText(id string) string {
 		if tag.value != "" {
 			fmt.Fprintf(&text, "    ; %s: %s\n", tag.name, tag.value)
 		}
+	}
+	for _, comment := range e.comments {
+		fmt.Fprintf(&text, "    ; %s\n", comment)
 	}
 	for _, posting := range e.Postings {
 		fmt.Fprintf(&text, "    %s", posting.Account)

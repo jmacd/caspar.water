@@ -47,7 +47,7 @@ year: 2021
 journal: books/books.journal
 write_journal: books/2021.journal
 sources: sources
-bank_account: Asset:131.2-Cash-in-Bank
+bank_account: Asset:131.2-Cash-in-Bank:SBMC
 ```
 
 Paths are relative to the configuration file. All included journals must be
@@ -57,15 +57,77 @@ Use relative includes. `write_journal` must already exist and be included by
 `sources` names the supporting-document directory; references are currently
 free-form text, not imported or automatically verified document links.
 `bank_account` optionally identifies the ledger account for bank-statement work.
-When set, it must exactly match a declared regular account, including the root
+When set, it must exactly match a declared regular account with at least three
+nonempty colon-separated levels, including the root
 prefix (`Asset:` in the example). Existing configurations may omit it.
 This setting does not itself import or post statement transactions.
+
+## Posting account structure
+
+Postings require **at least three nonempty levels**: `category:CPUC-account:detail`.
+For example:
+
+```journal
+account Asset:131.2-Cash-in-Bank:SBMC
+account Expense:615-Power:PGE
+account Equity:218-Proprietary-Capital:Owner
+account Liability:241-Other-Current-Liabilities:Due-to-Owner
+```
+
+The two-level CPUC declarations may remain as rollup accounts, but cannot be
+selected for new or revised postings. Add appropriate detailed declarations
+before entering transactions; the application does not invent detail names.
+Dots in a CPUC number do not count as levels. Four or more levels are allowed.
+This is a depth rule, not a leaf rule: a three-level account can be posted to
+even if it has children.
+
+Account completion and the F4 cheatsheet show only eligible declared accounts.
+The structured form, raw-text validation, and Save enforce the same rule.
+`wat check` flags existing shallow postings too. They do not prevent opening
+the app: existing entries can be revised, but every posting in the revised
+entry must meet the rule before it can be saved. Other historical entries
+are left unchanged, so migration can proceed one entry at a time.
+
+When renaming the bank account, update its declarations, postings, and
+`bank_account` setting together. The `id`, `bank-row`, and `bank-description`
+tags do not encode account names and should remain unchanged. The long values
+identify a transaction, the source PDF/row, and the original bank description;
+they are not account-name checksums.
+Quit and restart `wat` after manual account/configuration renames. Open drafts
+detect external journal changes and refuse to overwrite them.
 
 ## Work through a bank statement
 
 ```sh
 ./cmd/wat/run.sh --statement ../caspar_water_bank/casparwater-2021-11.pdf
 ```
+
+For a sequence, let the shell expand the glob, or supply explicit filenames:
+
+```sh
+./cmd/wat/run.sh --statements 2022/*.pdf
+./cmd/wat/run.sh --statements 2022/01.pdf 2022/02.pdf
+```
+
+Files are processed in exactly the supplied argument order; `wat` neither
+expands globs nor sorts the list. Relative paths use the invocation directory,
+not the YAML directory. Quote individual filenames containing spaces, not
+wildcards intended for shell expansion. At least one file is required, and
+missing files or paths that are not regular PDFs are errors. The configured
+workspace year still applies; a 2022 statement requires a 2022 workspace.
+
+The terminal identifies the current file and its position in the batch. It
+loads/extracts only one statement at a time. Once all its rows are recorded,
+choose **Next statement (n)**, or **Finish statement batch (n)** on the last
+file. Quit ends the whole session without processing later files. Rerunning the
+same file list reuses cached extractions and journal-derived row status; already
+recorded statements still require Next to advance. This is a review queue, not
+a reconciliation checkpoint or an atomic batch commit.
+
+`--statements` and `--statement` are mutually exclusive. Extraction imports and
+page-selection overrides require the single-file `--statement` mode; prepare
+those PDFs individually first. `--statements 2022/*.pdf --statement-check`
+checks every supplied file in order without opening the terminal or posting.
 
 The statement queue shows pending, recorded, and possible-match rows. Enter
 opens a pending row in the existing entry form with its bank account, date,
@@ -74,6 +136,8 @@ counteraccount. Choose the account, split the counterposting when needed, and
 press F2 to save. Acknowledge the save message to advance to the next pending
 row. Esc / Back discards the current unsaved edits and returns to the queue;
 it does not mark that row recorded. The main menu can resume the statement.
+Enter on a recorded row reopens its existing entry for revision when that entry
+is in the configured working journal; it never creates another posting.
 
 Only Save writes journal postings. `bank-row` and `bank-description` metadata
 identify the original source row and description. They survive payee edits and
@@ -117,8 +181,9 @@ statement:
 
 PDF extraction uses `bankstatementparser` with streaming JSON and thinking
 disabled against **only the configured Ollama endpoint**. It can take several
-minutes on a CPU-only server and never posts automatically. This first version
-requires text-bearing transaction pages; it refuses scanned/textless pages
+minutes on a CPU-only server, including the wait for the first response. The
+overall extraction limit is 20 minutes, and extraction never posts automatically.
+This first version requires text-bearing transaction pages; it refuses scanned/textless pages
 rather than silently omitting them. After inspecting the PDF, explicitly select
 pages for a **new** extraction with `--statement-pages 1,2`. The entire original
 PDF is still retained, and excluded pages are noted in the cache.
@@ -128,6 +193,37 @@ terminal. `--statement-extraction reviewed.json` can seed a new cache from a
 previously reviewed `bankstatementparser` JSON export; the operator must ensure
 it belongs to the supplied PDF. Neither option writes journal postings. Once
 cached, omit extraction/page-selection options so row identities remain stable.
+
+## Revise working entries
+
+Choose **Review / revise journal (2)** and Enter on a working entry to reopen it
+in the structured form. Change payee, description, reference, counteraccounts,
+amounts, or split postings as appropriate, then **F2** saves the revision and
+returns to the list. Esc / Back opens a discard confirmation for the unsaved revision.
+Recorded statement rows can also be revised directly from their statement list.
+
+`write_journal` is the working section. Only transactions physically stored
+there can be revised; entries in other included journals remain read-only.
+Existing books are not migrated or changed just by opening this screen.
+This is the working-entry editing milestone: reconciliation checkpoints,
+period closing, deletion, and rollback to a checkpoint are not implemented yet.
+No account or period is automatically marked reconciled.
+
+A revision preserves the transaction's stable `id`, replaces only its original
+source range, and leaves all bytes outside that range intact. It never appends
+a duplicate transaction. Transaction-level notes and additional comment tags
+are retained. IDs must be nonempty and unique across the included books.
+Entries using features the structured form cannot preserve, such as posting
+annotations, cleared/pending status, secondary dates, transaction codes,
+prices, or balance assertions, remain read-only rather than losing information.
+F4 is still available once an entry has been opened for revision.
+
+For statement-linked entries, bank account, bank date, signed bank amount,
+`bank-row`, `bank-description`, and `source` must stay unchanged. Revisions are
+checked against the cached source row. Counteraccounts and splits remain
+editable, and future suggestions read the revised assignments from the journals.
+All revisions use the same strict whole-books validation, concurrent-change
+checks, atomic replacement, and recovery-copy mechanism as new entries.
 
 ## Use the terminal
 
@@ -140,7 +236,8 @@ amount. Moving away from a field never accepts a suggestion.
 Payee and description suggest case-insensitive text matches from existing
 transactions across all included journals, including earlier years. Suggestions
 refresh when you start a new transaction; no separate history database is kept.
-Account suggestions come from the declared chart: start with digits to match
+Account suggestions come from eligible declared accounts with at least three
+levels: start with digits to match
 the leading CPUC account-code prefix (`13` matches `131.2`, but not a `13` later
 in an account name); start with other text to search anywhere in full account
 names, ignoring case. The code is the first number-prefixed account component;
@@ -167,17 +264,20 @@ also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
 
-The action bar stays visible even when posting rows scroll. **Esc** or **Back
-(Esc)** returns to the menu after confirming that unsaved work should be
-discarded. Choose Keep editing in that confirmation to retain the draft.
+The action bar stays visible even when posting rows scroll. Its button order is
+**Save (F2)**, **Add posting**, **Remove last posting**, then **Back (Esc)**, so
+Tab from the last posting amount focuses Save in both new and revised entries.
+**Esc** or **Back (Esc)** returns to the calling list or menu after confirming that unsaved work should be
+discarded. Press **Esc again** to discard changes and leave the transaction page.
+Choose **Keep editing** (the default button) to retain the draft.
 
 **F2** or **Save (F2)** saves directly from the form, without a separate preview
 step. Save validates the complete proposed books
-with `hledger check --strict`, then appends the entry while preserving existing
-bytes. Going back does not change the journals. A repeated Save of the same draft
-cannot post it twice.
+with `hledger check --strict`, then appends a new entry or replaces the selected
+working entry while preserving bytes outside it. Going back does not change the
+journals. A repeated Save of the same draft cannot post it twice.
 
-Press **F4** from the entry form or preview to edit the pending transaction's
+Press **F4** from the entry form or preview to edit the unsaved transaction's
 Ledger text in an external editor. `wat` uses `$VISUAL`, then `$EDITOR`, then
 `vi`. Quoted executable paths and arguments are supported, for example
 `EDITOR='vim -f'`; shell expansions, pipelines, and redirections are not run.
@@ -220,7 +320,9 @@ hledger -f local/water-books/books/books.journal
 hledger-ui -f local/water-books/books/books.journal
 ```
 
-Use your editor for arbitrary existing-entry changes, then run `wat check`.
+The structured revision workflow handles supported working entries. For
+arbitrary manual journal changes, quit `wat`, use your editor, and run `wat check`
+before reopening the workspace.
 Reports are hledger's presentation, not a second Go accounting interpretation.
 No entire journal is round-tripped through a parser or reformatted.
 
@@ -241,7 +343,8 @@ External editors do not honor that lock. Changes are rechecked immediately befor
 replacement, but there is no cross-program filesystem compare-and-swap: do not
 edit the books concurrently with a save.
 
-Passing strict checks establishes syntax, declared accounts/commodities, balance
+Passing `wat check` establishes syntax, declared accounts/commodities, posting
+account depth, balance
 assertions, and balanced entries, not correct classification, completeness,
 regulatory compliance, or bank reconciliation. There is no implicit balancing
 adjustment, cleared status, or year-close operation.

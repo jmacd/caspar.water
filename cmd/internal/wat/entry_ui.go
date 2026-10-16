@@ -112,9 +112,9 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		label string
 		run   func()
 	}{
+		{"Save (F2)", save},
 		{"Add posting", add},
 		{"Remove last posting", remove},
-		{"Save (F2)", save},
 		{"Back (Esc)", discard},
 	} {
 		button := tview.NewButton(action.label).SetSelectedFunc(action.run)

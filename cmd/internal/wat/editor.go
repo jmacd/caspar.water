@@ -26,7 +26,7 @@ func editorHelp(year int, accounts []string) string {
 		"    ACCOUNT-NAME  $125.00",
 		"    ACCOUNT-NAME  $-125.00",
 		"",
-		"Copy/paste these declared account names into postings above:",
+		"Copy/paste these declared account names (at least three levels) into postings above:",
 	}
 	for _, account := range accounts {
 		lines = append(lines, "    "+account)
@@ -97,6 +97,10 @@ func (b *Books) editText(initial string) (text string, err error) {
 }
 
 func (d *Draft) PreviewText(text string) (err error) {
+	return d.previewText(text, true)
+}
+
+func (d *Draft) previewText(text string, requireDetail bool) (err error) {
 	if d.saved {
 		return fmt.Errorf("this transaction has already been saved")
 	}
@@ -177,13 +181,27 @@ func (d *Draft) PreviewText(text string) (err error) {
 	if err := d.checkStatement(tx); err != nil {
 		return err
 	}
+	if d.revision != nil && d.statement != nil {
+		sources := 0
+		for _, tag := range tx.Tags {
+			if tag[0] == "source" {
+				sources++
+				if tag[1] != d.revision.source {
+					return fmt.Errorf("keep the recorded statement's source tag unchanged")
+				}
+			}
+		}
+		if sources != 1 {
+			return fmt.Errorf("keep exactly one recorded statement source tag")
+		}
+	}
 	if !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
 	if err := d.unchanged(); err != nil {
 		return err
 	}
-	if err := d.validate(d.proposedText(text)); err != nil {
+	if err := d.validateBooks(d.proposedText(text), requireDetail); err != nil {
 		return fmt.Errorf("proposed books failed validation: %w", err)
 	}
 	d.text = text

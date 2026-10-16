@@ -60,15 +60,29 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	require.Contains(t, key(tcell.KeyF2, 0), "Transaction saved and validated")
 	saved := read(t, books.Config.WriteJournal)
 	require.Contains(t, saved, "; bank-row: "+statement.key(1))
-	require.Contains(t, saved, "Assets:Bank  $-12.34")
+	require.Contains(t, saved, "Assets:Bank:Checking  $-12.34")
 	require.Contains(t, key(tcell.KeyEnter, 0), "Statement row 3/3")
 	focused, ok = app.GetFocus().(*tview.InputField)
 	require.True(t, ok)
-	require.Equal(t, "Expenses:Power", focused.GetText(), "next statement row learns the just-saved category")
-	key(tcell.KeyEscape, 0)
-	key(tcell.KeyRight, 0)
-	require.Contains(t, key(tcell.KeyEnter, 0), "1/3 recorded")
+	require.Equal(t, "Expenses:Power:Utility", focused.GetText(), "next statement row learns the just-saved category")
+	require.Contains(t, key(tcell.KeyEscape, 0), "Press Esc again to discard")
+	require.Contains(t, key(tcell.KeyEscape, 0), "1/3 recorded")
 	require.Equal(t, saved, read(t, books.Config.WriteJournal), "deferring the next row must not post it")
+	key(tcell.KeyDown, 0)
+	require.Contains(t, key(tcell.KeyEnter, 0), "Revise working transaction")
+	focused, ok = app.GetFocus().(*tview.InputField)
+	require.True(t, ok)
+	require.Equal(t, "Expenses:Power:Utility", focused.GetText())
+	key(tcell.KeyCtrlU, 0)
+	for _, r := range "Income:Other:Misc" {
+		key(tcell.KeyRune, r)
+	}
+	require.Contains(t, key(tcell.KeyF2, 0), "Transaction saved and validated")
+	require.Contains(t, key(tcell.KeyEnter, 0), "1/3 recorded")
+	require.Equal(t, 1, strings.Count(read(t, books.Config.WriteJournal), "; bank-row: "+statement.key(1)))
+	statuses, err := books.StatementStatuses(statement)
+	require.NoError(t, err)
+	require.Equal(t, "Income:Other:Misc", statuses[2].Suggestion)
 	app.Stop()
 	select {
 	case err := <-done:
@@ -76,4 +90,44 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal did not exit")
 	}
+}
+
+func TestStatementBatchAdvanceRequiresRecordedRows(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	queue := &statementQueue{position: 1, total: 2, path: "2021-01.pdf"}
+	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement, queue: queue}
+	ui.statementList()
+	list, ok := ui.app.GetFocus().(*tview.List)
+	require.True(t, ok)
+	require.Equal(t, len(statement.Rows)+2, list.GetItemCount(), "pending rows must not offer Next")
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone), func(tview.Primitive) {})
+	require.False(t, queue.advance)
+	for index := range statement.Rows {
+		draft, entry, err := books.StatementDraft(statement, index)
+		require.NoError(t, err)
+		entry.Postings[1].Account = "Equity:Capital:Owner"
+		_, err = draft.Preview(entry)
+		require.NoError(t, err)
+		_, err = draft.Save()
+		require.NoError(t, err)
+	}
+	ui.statementList()
+	list = ui.app.GetFocus().(*tview.List)
+	label, _ := list.GetItemText(len(statement.Rows))
+	require.Equal(t, "Next statement", label)
+	require.Equal(t, len(statement.Rows), list.GetCurrentItem(), "offer advancement directly after recording the final row")
+	ui.menu()
+	ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone), func(tview.Primitive) {})
+	require.False(t, queue.advance, "Quit must end the batch, not load the next file")
+	ui.statementList()
+	ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone), func(tview.Primitive) {})
+	require.True(t, queue.advance)
+	queue.advance = false
+	queue.position = queue.total
+	ui.statementList()
+	list = ui.app.GetFocus().(*tview.List)
+	label, _ = list.GetItemText(len(statement.Rows))
+	require.Equal(t, "Finish statement batch", label)
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'n', tcell.ModNone), func(tview.Primitive) {})
+	require.True(t, queue.advance)
 }

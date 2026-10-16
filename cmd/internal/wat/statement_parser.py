@@ -41,7 +41,7 @@ def completion(**kwargs):
     chunks = []
     finished = False
     started = time.monotonic()
-    with httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0), trust_env=False) as client:
+    with httpx.Client(timeout=httpx.Timeout(1100.0, connect=10.0), trust_env=False) as client:
         with client.stream("POST", endpoint.rstrip("/") + "/api/chat", json=payload) as reply:
             reply.raise_for_status()
             for line in reply.iter_lines():

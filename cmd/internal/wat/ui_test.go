@@ -123,10 +123,13 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	key(tcell.KeyTab, 0)
 	typeText("-12.34")
 	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "Save (F2)", frame.focus)
+	frame = key(tcell.KeyTab, 0)
 	require.Equal(t, "Add posting", frame.focus)
 	frame = key(tcell.KeyEnter, 0)
 	require.Equal(t, accountX, frame.x)
 	require.Equal(t, firstY+2, frame.y)
+	key(tcell.KeyTab, 0)
 	key(tcell.KeyTab, 0)
 	key(tcell.KeyTab, 0)
 	frame = key(tcell.KeyTab, 0)
@@ -136,12 +139,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Equal(t, firstY+1, frame.y)
 	frame = key(tcell.KeyTab, 0)
 	require.Equal(t, "-12.34", frame.value)
-	for i := 0; i < 4; i++ {
-		frame = key(tcell.KeyTab, 0)
-		if frame.focus == "Save (F2)" {
-			break
-		}
-	}
+	frame = key(tcell.KeyTab, 0)
 	require.Equal(t, "Save (F2)", frame.focus)
 	require.Contains(t, frame.text, "Balance: $0.00 | Balanced")
 	require.Contains(t, frame.text, "Back (Esc)")
@@ -154,11 +152,42 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Contains(t, frame.text, "Transaction saved and validated")
 	saved := read(t, books.Config.WriteJournal)
 	require.Contains(t, saved, "2021-04-05 Electric company | Edited power")
-	require.Contains(t, saved, "Expenses:Power  $15.00")
-	require.Contains(t, saved, "Assets:Bank  $-15.00")
+	require.Contains(t, saved, "Expenses:Power:Utility  $15.00")
+	require.Contains(t, saved, "Assets:Bank:Checking  $-15.00")
 	key(tcell.KeyEnter, 0)
 	frame = key(tcell.KeyRune, '2')
 	require.Contains(t, frame.text, "Electric company")
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Revise working transaction")
+	key(tcell.KeyTab, 0)
+	key(tcell.KeyTab, 0)
+	frame = key(tcell.KeyTab, 0)
+	require.Equal(t, "Reference", frame.focus)
+	require.Equal(t, "check-7", frame.value)
+	for range "check-7" {
+		key(tcell.KeyBackspace2, 0)
+	}
+	typeText("check-8")
+	for i := 0; i < 6; i++ {
+		frame = key(tcell.KeyTab, 0)
+	}
+	require.Equal(t, "Save (F2)", frame.focus, "Save must immediately follow the final field when revising")
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Transaction saved and validated")
+	saved = read(t, books.Config.WriteJournal)
+	require.Contains(t, saved, "; reference: check-8")
+	require.Equal(t, 1, strings.Count(saved, "; id:"))
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Review / revise journal")
+	key(tcell.KeyEnter, 0)
+	key(tcell.KeyTab, 0)
+	typeText("UNSAVED")
+	frame = key(tcell.KeyEscape, 0)
+	require.Contains(t, frame.text, "Press Esc again to discard")
+	require.Equal(t, saved, read(t, books.Config.WriteJournal))
+	frame = key(tcell.KeyEscape, 0)
+	require.Contains(t, frame.text, "Review / revise journal")
+	require.Equal(t, saved, read(t, books.Config.WriteJournal), "cancelling a revision must preserve the saved entry")
 	key(tcell.KeyEscape, 0)
 	key(tcell.KeyRune, '1')
 	key(tcell.KeyTab, 0)
@@ -171,14 +200,13 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Equal(t, "Edited power", frame.value)
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Discard this unsaved transaction")
-	key(tcell.KeyRight, 0)
-	frame = key(tcell.KeyEnter, 0)
+	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Water Accounting Terminal")
 	require.Equal(t, saved, read(t, books.Config.WriteJournal))
 	key(tcell.KeyRune, '1')
 	for _, value := range []string{
 		"2021-04-06", "Electric company", "Direct save", "", "",
-		"Expenses:Power", "12.34", "Assets:Bank", "-12.34",
+		"Expenses:Power:Utility", "12.34", "Assets:Bank:Checking", "-12.34",
 	} {
 		typeText(value)
 		key(tcell.KeyTab, 0)
@@ -206,14 +234,14 @@ func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	savings := "Assets:131.3-Savings"
 	payee := "City [red] Water"
 	draft := &Draft{
-		accounts: []string{bank, savings, "Expenses:Power"},
+		accounts: []string{bank, savings, "Expenses:Power:Utility"},
 		history:  completionHistory{payees: []string{payee}, descriptions: []string{"Power bill"}},
 	}
 	entry := Entry{Postings: make([]Posting, 2)}
 	focus := 0
-	added := false
+	added, saved := false, false
 	grid := newEntryGrid(app, &entry, draft, &focus,
-		func() { added = true }, func() {}, func() {}, func() {})
+		func() { added = true }, func() {}, func() { saved = true }, func() {})
 	grid.SetRect(0, 0, 100, 24)
 	app.SetFocus(grid.controls[0].primitive)
 	draw := func() { grid.Draw(screen) }
@@ -288,9 +316,16 @@ func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	key(tcell.KeyTab, 0)
 	assertFocus(9)
 	key(tcell.KeyEnter, 0)
+	require.True(t, saved)
+	require.False(t, added)
+	key(tcell.KeyTab, 0)
+	assertFocus(10)
+	key(tcell.KeyEnter, 0)
 	require.True(t, added)
 	key(tcell.KeyTab, 0)
-	assertFocus(11) // The disabled remove button is skipped.
+	assertFocus(12) // The disabled remove button is skipped.
+	key(tcell.KeyBacktab, 0)
+	assertFocus(10)
 	key(tcell.KeyBacktab, 0)
 	assertFocus(9)
 	key(tcell.KeyUp, 0)

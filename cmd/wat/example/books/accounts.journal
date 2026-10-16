@@ -31,6 +31,7 @@ account Asset:124-Other-Investments
 account Asset:131-Cash
 account Asset:131.1-Cash-on-Hand
 account Asset:131.2-Cash-in-Bank
+account Asset:131.2-Cash-in-Bank:SBMC
 account Asset:132-Cash-Special-Deposits
 account Asset:141-Accounts-Receivable-Customers
 account Asset:142-Receivables-from-Affiliated-Companies

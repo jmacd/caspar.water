@@ -15,6 +15,7 @@ func (ui *terminal) statementList() {
 		return
 	}
 	list := tview.NewList().ShowSecondaryText(true)
+	footer := "Enter Select | i Source/notices | Esc Menu | Only Save records an entry"
 	recorded := 0
 	for index, row := range ui.statement.Rows {
 		status := statuses[index]
@@ -25,8 +26,24 @@ func (ui *terminal) statementList() {
 		} else if status.PossibleMatch {
 			label = "POSSIBLE MATCH"
 		}
+		hint := "Suggested counteraccount: " + status.Suggestion
+		if status.Recorded {
+			hint = "Enter to revise the existing entry (working journal only)"
+		}
 		list.AddItem(tview.Escape(fmt.Sprintf("%s | %s | %s | %s USD", label, row.Date, row.Description, formatCents(row.Cents))),
-			tview.Escape("Suggested counteraccount: "+status.Suggestion), 0, func() { ui.statementOpen(index) })
+			tview.Escape(hint), 0, func() { ui.statementOpen(index) })
+	}
+	if ui.queue != nil && recorded == len(statuses) {
+		label := "Next statement"
+		if ui.queue.position == ui.queue.total {
+			label = "Finish statement batch"
+		}
+		list.AddItem(label, "All rows recorded; this does not certify reconciliation", 'n', func() {
+			ui.queue.advance = true
+			ui.app.Stop()
+		})
+		list.SetCurrentItem(len(ui.statement.Rows))
+		footer = "Enter/n " + label + " | i Source/notices | Esc Menu"
 	}
 	list.AddItem("Statement notices / source", "Extraction warnings and PDF location; balance checks are not proof of reconciliation", 'i', func() {
 		message := "Source PDF: " + ui.statement.Source + "\n\n" + strings.Join(ui.statement.Warnings, "\n") +
@@ -42,7 +59,11 @@ func (ui *terminal) statementList() {
 		}
 		return event
 	})
-	ui.screen("Bank statement review", list, "Enter Review row | i Source/notices | Esc Menu | Only Save records an entry")
+	title := "Bank statement review"
+	if ui.queue != nil {
+		title = fmt.Sprintf("Statement %d/%d | %s", ui.queue.position, ui.queue.total, ui.queue.path)
+	}
+	ui.screen(title, list, footer)
 }
 
 func (ui *terminal) statementNext(previous int) {
@@ -68,7 +89,19 @@ func (ui *terminal) statementOpen(index int) {
 		return
 	}
 	if statuses[index].Recorded {
-		ui.message(" Already recorded ", "This statement row is already recorded in the journal. It will not be posted again.", ui.statementList)
+		draft, entry, err := ui.books.EditStatementDraft(ui.statement, index)
+		if err != nil {
+			ui.message(" Cannot revise recorded row ", err.Error(), ui.statementList)
+			return
+		}
+		focus := 5
+		for index, posting := range entry.Postings {
+			if posting.Account != ui.books.Config.BankAccount {
+				focus = 5 + 2*index
+				break
+			}
+		}
+		ui.entryForm(draft, entry, ui.statementList, focus)
 		return
 	}
 	open := func() {

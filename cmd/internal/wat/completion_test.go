@@ -54,20 +54,20 @@ func TestMatchingText(t *testing.T) {
 
 func TestCompletionHistory(t *testing.T) {
 	books, _ := fixture(t, `2020-06-01 Old supplier | Meter purchase
-    Assets:Bank  $-1.00
-    Expenses:Power  $1.00
+    Assets:Bank:Checking  $-1.00
+    Expenses:Power:Utility  $1.00
 
 2021-01-01 Electric company | Power bill
-    Assets:Bank  $-1.00
-    Expenses:Power  $1.00
+    Assets:Bank:Checking  $-1.00
+    Expenses:Power:Utility  $1.00
 
 2021-02-01 Electric company | Power bill
-    Assets:Bank  $-1.00
-    Expenses:Power  $1.00
+    Assets:Bank:Checking  $-1.00
+    Expenses:Power:Utility  $1.00
 
 2021-03-01 Payee only
-    Assets:Bank  $-1.00
-    Expenses:Power  $1.00
+    Assets:Bank:Checking  $-1.00
+    Expenses:Power:Utility  $1.00
 `)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)

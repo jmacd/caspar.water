@@ -37,8 +37,8 @@ func TestEditorHelperProcess(t *testing.T) {
 	if err != nil {
 		fail(err.Error())
 	}
-	if !strings.Contains(string(data), editorHelpPrefix+"    Assets:Bank\n") ||
-		!strings.Contains(string(data), editorHelpPrefix+"    Expenses:Power\n") ||
+	if !strings.Contains(string(data), editorHelpPrefix+"    Assets:Bank:Checking\n") ||
+		!strings.Contains(string(data), editorHelpPrefix+"    Expenses:Power:Utility\n") ||
 		!strings.Contains(string(data), "Use a YYYY-MM-DD date within 2021") ||
 		strings.Count(string(data), "EDITOR CHEATSHEET") != 1 {
 		fail("editor account cheatsheet is missing")
@@ -101,8 +101,8 @@ func TestEditorErrorsKeepEditedTextWithoutSaving(t *testing.T) {
 }
 
 func TestEditorCheatsheetStrippingPreservesUserText(t *testing.T) {
-	userText := "; evidence note\n2021-04-05 Payee\n    ; id: preserved\n    Assets:Bank  $1.00\n    Equity:Capital  $-1.00\n"
-	help := editorHelp(2021, []string{"Assets:Bank", "Equity:Capital"})
+	userText := "; evidence note\n2021-04-05 Payee\n    ; id: preserved\n    Assets:Bank:Checking  $1.00\n    Equity:Capital:Owner  $-1.00\n"
+	help := editorHelp(2021, []string{"Assets:Bank:Checking", "Equity:Capital:Owner"})
 	require.Equal(t, userText, stripEditorHelp(userText+help))
 	require.Equal(t, userText+"; my own closing note\n", stripEditorHelp(userText+help+"; my own closing note\n"))
 	require.Equal(t, userText, stripEditorHelp(userText+strings.TrimSuffix(help, "\n")))
@@ -128,7 +128,7 @@ func TestEditedTextUsesHledgerWithoutReformatting(t *testing.T) {
 	require.NoError(t, err)
 	text, err := draft.Preview(testEntry())
 	require.NoError(t, err)
-	text = strings.Replace(text, "Assets:Bank  $-12.34", "Assets:Bank", 1)
+	text = strings.Replace(text, "Assets:Bank:Checking  $-12.34", "Assets:Bank:Checking", 1)
 	text = "; manually written evidence note\n" + text + "    ; custom-note: preserve this\n"
 	require.NoError(t, draft.PreviewText(text))
 	require.Equal(t, text, draft.text)
@@ -140,7 +140,7 @@ func TestEditedTextUsesHledgerWithoutReformatting(t *testing.T) {
 }
 
 func TestEditedAssertionUsesCompleteBooks(t *testing.T) {
-	books, _ := fixture(t, "2021-01-01 Opening\n    Assets:Bank  $100\n    Equity:Capital  $-100\n")
+	books, _ := fixture(t, "2021-01-01 Opening\n    Assets:Bank:Checking  $100\n    Equity:Capital:Owner  $-100\n")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
 	text, err := draft.Preview(testEntry())
@@ -163,12 +163,12 @@ func TestInvalidEditedTextCannotBeSaved(t *testing.T) {
 		{"alias", func(s, _ string) string { return "alias Assets=Expenses\n" + s }},
 		{"unbalanced", func(s, _ string) string { return strings.Replace(s, "$12.34", "$12.35", 1) }},
 		{"wrong-year", func(s, _ string) string { return strings.Replace(s, "2021", "2022", 1) }},
-		{"unknown-account", func(s, _ string) string { return strings.Replace(s, "Expenses:Power", "Expenses:Typo", 1) }},
+		{"unknown-account", func(s, _ string) string { return strings.Replace(s, "Expenses:Power:Utility", "Expenses:Typo", 1) }},
 		{"wrong-id", func(s, id string) string { return strings.Replace(s, id, "different", 1) }},
 		{"missing-id", func(s, id string) string { return strings.Replace(s, "    ; id: "+id+"\n", "", 1) }},
 		{"virtual", func(s, _ string) string {
-			s = strings.Replace(s, "Expenses:Power", "[Expenses:Power]", 1)
-			return strings.Replace(s, "Assets:Bank", "[Assets:Bank]", 1)
+			s = strings.Replace(s, "Expenses:Power:Utility", "[Expenses:Power:Utility]", 1)
+			return strings.Replace(s, "Assets:Bank:Checking", "[Assets:Bank:Checking]", 1)
 		}},
 		{"commodity", func(s, _ string) string { return strings.ReplaceAll(s, "$", "EUR ") }},
 		{"control", func(s, _ string) string { return "; note \x1b\n" + s }},
@@ -191,14 +191,14 @@ func TestIncompleteFormCanSeedEditor(t *testing.T) {
 	books, _ := fixture(t, "")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
-	entry := Entry{Postings: []Posting{{Account: "Expenses:Power"}, {Account: "Assets:Bank"}}}
+	entry := Entry{Postings: []Posting{{Account: "Expenses:Power:Utility"}, {Account: "Assets:Bank:Checking"}}}
 	text := entry.journalText(draft.id)
 	require.Contains(t, text, "YYYY-MM-DD")
 	require.Contains(t, text, "; id: "+draft.id)
 	require.Error(t, draft.PreviewText(text))
 	text = strings.Replace(text, "YYYY-MM-DD ", "2021-04-05 Electric company", 1)
-	text = strings.Replace(text, "Expenses:Power\n", "Expenses:Power  $12.34\n", 1)
-	text = strings.Replace(text, "Assets:Bank\n", "Assets:Bank  $-12.34\n", 1)
+	text = strings.Replace(text, "Expenses:Power:Utility\n", "Expenses:Power:Utility  $12.34\n", 1)
+	text = strings.Replace(text, "Assets:Bank:Checking\n", "Assets:Bank:Checking  $-12.34\n", 1)
 	require.NoError(t, draft.PreviewText(text))
 	require.Empty(t, read(t, books.Config.WriteJournal))
 }

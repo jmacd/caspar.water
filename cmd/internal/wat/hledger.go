@@ -18,14 +18,32 @@ type Books struct {
 }
 
 type journalTransaction struct {
+	Code    string  `json:"tcode"`
+	Status  string  `json:"tstatus"`
+	Comment string  `json:"tcomment"`
+	Date2   *string `json:"tdate2"`
+	Source  []struct {
+		Name   string `json:"sourceName"`
+		Line   int    `json:"sourceLine"`
+		Column int    `json:"sourceColumn"`
+	} `json:"tsourcepos"`
 	Date        string      `json:"tdate"`
 	Description string      `json:"tdescription"`
 	Tags        [][2]string `json:"ttags"`
 	Postings    []struct {
-		Account string `json:"paccount"`
-		Type    string `json:"ptype"`
-		Amounts []struct {
-			Commodity string `json:"acommodity"`
+		Status    string          `json:"pstatus"`
+		Comment   string          `json:"pcomment"`
+		Date      *string         `json:"pdate"`
+		Date2     *string         `json:"pdate2"`
+		Tags      [][2]string     `json:"ptags"`
+		Assertion json.RawMessage `json:"pbalanceassertion"`
+		Original  json.RawMessage `json:"poriginal"`
+		Account   string          `json:"paccount"`
+		Type      string          `json:"ptype"`
+		Amounts   []struct {
+			Cost      json.RawMessage `json:"acost"`
+			CostBasis json.RawMessage `json:"acostbasis"`
+			Commodity string          `json:"acommodity"`
 			Quantity  struct {
 				Mantissa json.Number `json:"decimalMantissa"`
 				Places   int         `json:"decimalPlaces"`
@@ -55,7 +73,7 @@ func Open(cfg Config) (*Books, error) {
 		return nil, fmt.Errorf("wat requires hledger on PATH: %w", err)
 	}
 	books := &Books{Config: cfg, binary: binary}
-	if err := books.Check(); err != nil {
+	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
 	}
 	if _, err := books.snapshot(); err != nil {
@@ -67,7 +85,7 @@ func Open(cfg Config) (*Books, error) {
 			return nil, err
 		}
 		if !slices.Contains(accounts, cfg.BankAccount) {
-			return nil, fmt.Errorf("bank_account is not a declared account: %q", cfg.BankAccount)
+			return nil, fmt.Errorf("bank_account must name a declared account with at least three levels: %q", cfg.BankAccount)
 		}
 	}
 	return books, nil
@@ -91,11 +109,26 @@ func (b *Books) run(journal string, args ...string) (string, error) {
 }
 
 func (b *Books) Check() error {
-	_, err := b.run(b.Config.Journal, "check", "--strict")
+	if err := b.checkSyntax(b.Config.Journal); err != nil {
+		return err
+	}
+	accounts, err := b.Accounts()
+	if err != nil {
+		return err
+	}
+	transactions, err := b.transactions(b.Config.Journal)
+	if err != nil {
+		return err
+	}
+	return checkPostingAccounts(transactions, accounts)
+}
+
+func (b *Books) checkSyntax(journal string) error {
+	_, err := b.run(journal, "check", "--strict")
 	return err
 }
 
-func (b *Books) Accounts() ([]string, error) {
+func (b *Books) declaredAccounts() ([]string, error) {
 	text, err := b.run(b.Config.Journal, "accounts", "--declared", "--flat")
 	if err != nil {
 		return nil, err
@@ -104,6 +137,44 @@ func (b *Books) Accounts() ([]string, error) {
 		return nil, fmt.Errorf("no declared accounts; add account declarations to the journal")
 	}
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), nil
+}
+
+func detailedAccount(account string) bool {
+	parts := strings.Split(account, ":")
+	if len(parts) < 3 {
+		return false
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *Books) Accounts() ([]string, error) {
+	accounts, err := b.declaredAccounts()
+	if err != nil {
+		return nil, err
+	}
+	var posting []string
+	for _, account := range accounts {
+		if detailedAccount(account) {
+			posting = append(posting, account)
+		}
+	}
+	return posting, nil
+}
+
+func checkPostingAccounts(transactions []journalTransaction, accounts []string) error {
+	for _, tx := range transactions {
+		for _, posting := range tx.Postings {
+			if !slices.Contains(accounts, posting.Account) {
+				return fmt.Errorf("%s %s: posting account %q must be declared and have at least three nonempty levels (category:CPUC-account:detail); revise this entry", tx.Date, tx.Description, posting.Account)
+			}
+		}
+	}
+	return nil
 }
 
 func (b *Books) Report(name string) (string, error) {

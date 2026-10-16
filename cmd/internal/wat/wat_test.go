@@ -13,10 +13,10 @@ import (
 )
 
 const testAccounts = `commodity $
-account Assets:Bank
-account Equity:Capital
-account Expenses:Power
-account Income:Other
+account Assets:Bank:Checking
+account Equity:Capital:Owner
+account Expenses:Power:Utility
+account Income:Other:Misc
 `
 
 func fixture(t *testing.T, journal string) (*Books, string) {
@@ -51,7 +51,7 @@ func testEntry() Entry {
 	return Entry{
 		Date: "2021-04-05", Payee: "Electric company", Description: "Power bill",
 		Reference: "check-7", Source: "sources/power.pdf",
-		Postings: []Posting{{Account: "Expenses:Power", Amount: "12.34"}, {Account: "Assets:Bank", Amount: "-12.34"}},
+		Postings: []Posting{{Account: "Expenses:Power:Utility", Amount: "12.34"}, {Account: "Assets:Bank:Checking", Amount: "-12.34"}},
 	}
 }
 
@@ -70,10 +70,10 @@ func TestConfig(t *testing.T) {
 	}{
 		{"valid", base, true},
 		{"unknown", base + "typo: true\n", false},
-		{"bank account", base + "bank_account: Assets:Bank\n", true},
+		{"bank account", base + "bank_account: Assets:Bank:Checking\n", true},
 		{"blank bank account", base + "bank_account: ' '\n", false},
-		{"multiline bank account", base + "bank_account: \"Assets:Bank\\nEquity:Capital\"\n", false},
-		{"virtual bank account", base + "bank_account: '[Assets:Bank]'\n", false},
+		{"multiline bank account", base + "bank_account: \"Assets:Bank:Checking\\nEquity:Capital:Owner\"\n", false},
+		{"virtual bank account", base + "bank_account: '[Assets:Bank:Checking]'\n", false},
 		{"documents", base + "---\nname: other\n", false},
 		{"version", strings.Replace(base, "version: 1", "version: 2", 1), false},
 		{"year", strings.Replace(base, "2021", "0", 1), false},
@@ -101,15 +101,15 @@ func TestConfig(t *testing.T) {
 
 func TestBankAccountConfiguration(t *testing.T) {
 	books, _ := fixture(t, "")
-	for _, account := range []string{"", "Assets:Bank", "Asset:Bank", "Assets:Unknown"} {
+	for _, account := range []string{"", "Assets:Bank:Checking", "Asset:Bank", "Assets:Unknown"} {
 		t.Run(account, func(t *testing.T) {
 			cfg := books.Config
 			cfg.BankAccount = account
 			_, err := Open(cfg)
-			if account == "" || account == "Assets:Bank" {
+			if account == "" || account == "Assets:Bank:Checking" {
 				require.NoError(t, err)
 			} else {
-				require.ErrorContains(t, err, "bank_account is not a declared account")
+				require.ErrorContains(t, err, "bank_account must name a declared account with at least three levels")
 			}
 		})
 	}
@@ -164,7 +164,7 @@ func TestEntryBalanceStatus(t *testing.T) {
 }
 
 func TestEntryValidation(t *testing.T) {
-	accounts := []string{"Expenses:Power", "Assets:Bank"}
+	accounts := []string{"Expenses:Power:Utility", "Assets:Bank:Checking"}
 	for _, tc := range []struct {
 		name   string
 		change func(*Entry)
@@ -182,10 +182,10 @@ func TestEntryValidation(t *testing.T) {
 		{"one-leg", func(e *Entry) { e.Postings = e.Postings[:1] }},
 		{"overflow", func(e *Entry) {
 			e.Postings = []Posting{
-				{"Assets:Bank", "92233720368547758.07"},
-				{"Assets:Bank", "0.01"},
-				{"Assets:Bank", "-92233720368547758.07"},
-				{"Assets:Bank", "-0.01"},
+				{"Assets:Bank:Checking", "92233720368547758.07"},
+				{"Assets:Bank:Checking", "0.01"},
+				{"Assets:Bank:Checking", "-92233720368547758.07"},
+				{"Assets:Bank:Checking", "-0.01"},
 			}
 		}},
 	} {
@@ -197,13 +197,13 @@ func TestEntryValidation(t *testing.T) {
 		})
 	}
 	entry := testEntry()
-	entry.Postings = []Posting{{"Expenses:Power", "6"}, {"Expenses:Power", "6.34"}, {"Assets:Bank", "-12.34"}}
+	entry.Postings = []Posting{{"Expenses:Power:Utility", "6"}, {"Expenses:Power:Utility", "6.34"}, {"Assets:Bank:Checking", "-12.34"}}
 	text, err := entry.render(2021, accounts, "test-id")
 	require.NoError(t, err)
 	require.Contains(t, text, "2021-04-05 Electric company | Power bill")
 	require.Contains(t, text, "; id: test-id")
 	require.Contains(t, text, "; source: sources/power.pdf")
-	require.Contains(t, text, "Assets:Bank  $-12.34")
+	require.Contains(t, text, "Assets:Bank:Checking  $-12.34")
 }
 
 func TestSavePreservesBytesAndBackup(t *testing.T) {
@@ -263,7 +263,7 @@ func TestStaleDraftAndLock(t *testing.T) {
 }
 
 func TestAssertionFailureDoesNotChangeBooks(t *testing.T) {
-	original := "2021-12-31 Bank checkpoint\n    Assets:Bank  $0 = $0\n    Equity:Capital  $0\n"
+	original := "2021-12-31 Bank checkpoint\n    Assets:Bank:Checking  $0 = $0\n    Equity:Capital:Owner  $0\n"
 	books, _ := fixture(t, original)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
@@ -306,16 +306,16 @@ func TestUnsupportedIncludes(t *testing.T) {
 func TestReportsIncludeOpeningBalancesButExcludeFuture(t *testing.T) {
 	books, root := fixture(t, "")
 	history := `2020-12-31 Opening
-    Assets:Bank  $100
-    Equity:Capital  $-100
+    Assets:Bank:Checking  $100
+    Equity:Capital:Owner  $-100
 
 2021-04-05 Power
-    Expenses:Power  $10
-    Assets:Bank  $-10
+    Expenses:Power:Utility  $10
+    Assets:Bank:Checking  $-10
 
 2022-01-01 Future
-    Assets:Bank  $900
-    Income:Other  $-900
+    Assets:Bank:Checking  $900
+    Income:Other:Misc  $-900
 `
 	require.NoError(t, os.WriteFile(filepath.Join(root, "books/2021.journal"), []byte(history), 0600))
 	for _, name := range []string{"trial-balance", "balance-sheet"} {

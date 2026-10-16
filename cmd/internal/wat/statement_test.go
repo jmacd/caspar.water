@@ -23,7 +23,7 @@ const statementJSON = `{
 func statementFixture(t *testing.T) (*Books, *Statement, string) {
 	t.Helper()
 	books, root := fixture(t, "")
-	books.Config.BankAccount = "Assets:Bank"
+	books.Config.BankAccount = "Assets:Bank:Checking"
 	pdf, extraction := filepath.Join(root, "statement.pdf"), filepath.Join(root, "extraction.json")
 	require.NoError(t, os.WriteFile(pdf, []byte("%PDF-1.7\nsynthetic source for cache tests\n"), 0600))
 	require.NoError(t, os.WriteFile(extraction, []byte(statementJSON), 0600))
@@ -64,18 +64,18 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	books, s, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(s, 1)
 	require.NoError(t, err)
-	require.Equal(t, "Assets:Bank", entry.Postings[0].Account)
+	require.Equal(t, "Assets:Bank:Checking", entry.Postings[0].Account)
 	require.Equal(t, "-12.34", entry.Postings[0].Amount)
 	require.Equal(t, "12.34", entry.Postings[1].Amount)
 	require.Empty(t, entry.Postings[1].Account)
-	entry.Postings[1].Account = "Expenses:Power"
+	entry.Postings[1].Account = "Expenses:Power:Utility"
 	entry.Payee = "Electric company"
 	text, err := draft.Preview(entry)
 	require.NoError(t, err)
 	for _, mutated := range []string{
 		strings.ReplaceAll(text, "12.34", "13.34"),
 		strings.Replace(text, "2021-04-05", "2021-04-06", 1),
-		strings.Replace(text, "Assets:Bank", "Equity:Capital", 1),
+		strings.Replace(text, "Assets:Bank:Checking", "Equity:Capital:Owner", 1),
 		strings.Replace(text, "bank-row:", "missing-row:", 1),
 		strings.Replace(text, "bank-description:", "missing-description:", 1),
 	} {
@@ -86,7 +86,7 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	require.NoError(t, err)
 	stale, staleEntry, err := books.StatementDraft(s, 1)
 	require.NoError(t, err)
-	staleEntry.Postings[1].Account = "Expenses:Power"
+	staleEntry.Postings[1].Account = "Expenses:Power:Utility"
 	_, err = draft.Save()
 	require.NoError(t, err)
 	_, err = stale.Preview(staleEntry)
@@ -95,14 +95,14 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	status, err := books.StatementStatuses(s)
 	require.NoError(t, err)
 	require.True(t, status[1].Recorded)
-	require.Equal(t, "Expenses:Power", status[2].Suggestion, "learn using original bank description even if payee was edited")
+	require.Equal(t, "Expenses:Power:Utility", status[2].Suggestion, "learn using original bank description even if payee was edited")
 	require.Empty(t, status[0].Suggestion, "an incoming deposit must not be guessed as income")
 	_, _, err = books.StatementDraft(s, 1)
 	require.ErrorContains(t, err, "already recorded")
 	draft, entry, err = books.StatementDraft(s, 2)
 	require.NoError(t, err)
-	require.Equal(t, "Expenses:Power", entry.Postings[1].Account)
-	entry.Postings[1].Account = "Equity:Capital"
+	require.Equal(t, "Expenses:Power:Utility", entry.Postings[1].Account)
+	entry.Postings[1].Account = "Equity:Capital:Owner"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -121,8 +121,8 @@ func TestStatementSplitAndChangedRecordedRow(t *testing.T) {
 	books, s, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(s, 0)
 	require.NoError(t, err)
-	entry.Postings[1] = Posting{"Equity:Capital", "-60.00"}
-	entry.Postings = append(entry.Postings, Posting{"Expenses:Power", "-40.00"})
+	entry.Postings[1] = Posting{"Equity:Capital:Owner", "-60.00"}
+	entry.Postings = append(entry.Postings, Posting{"Expenses:Power:Utility", "-40.00"})
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -177,8 +177,8 @@ func TestBankAmountExactQuantities(t *testing.T) {
 		{`{"decimalMantissa":9223372036854775808,"decimalPlaces":2}`, 0, "exceeds supported"},
 	} {
 		var tx journalTransaction
-		require.NoError(t, json.Unmarshal([]byte(`{"tpostings":[{"paccount":"Assets:Bank","ptype":"RegularPosting","pamount":[{"acommodity":"$","aquantity":`+tc.quantity+`}]}]}`), &tx))
-		cents, err := bankAmount(tx, "Assets:Bank")
+		require.NoError(t, json.Unmarshal([]byte(`{"tpostings":[{"paccount":"Assets:Bank:Checking","ptype":"RegularPosting","pamount":[{"acommodity":"$","aquantity":`+tc.quantity+`}]}]}`), &tx))
+		cents, err := bankAmount(tx, "Assets:Bank:Checking")
 		if tc.failure != "" {
 			require.ErrorContains(t, err, tc.failure)
 		} else {
