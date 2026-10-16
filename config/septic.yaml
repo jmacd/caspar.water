@@ -16,16 +16,13 @@ spec:
   factory: monitor-report
   config:
     pond: "${env:POND_INSTANCE}"
-    title: "Septic pond status"
+    title: "Septic status"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
     checks:
       - id: septic-data-stale
-        label: "Septic station is reporting data"
+        label: "Septic station monitor"
         description: >-
-          At least one reading from the septic station's Modbus/BME280
-          collector must arrive in the trailing 24 hours; a longer gap means
-          the on-site collector, its NFS mount, or its network link has
-          stopped.
+          The septic station collector is running.
         href: "/septic/pumps.html"
         type: stale-after
         source: "oteljson:///ingest/septicstation*.json"

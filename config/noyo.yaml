@@ -16,20 +16,23 @@ spec:
   factory: monitor-report
   config:
     pond: "${env:POND_INSTANCE}"
-    title: "Noyo pond status"
+    title: "Noyo Marine Center"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
     checks:
-      - id: noyo-data-stale
-        label: "Noyo Harbor Field Station is reporting data"
+      - id: field-station-healthy
+        label: "Field Station monitors"
         description: >-
-          At least one Field Station surface-probe reading must arrive in
-          the trailing 24 hours; a longer gap means HydroVu collection has
-          stalled.
-        href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Temperature.html"
-        type: stale-after
+          Measurements within last day, batteries have charge.
+        href: "${env:SITE_BASE_URL:-/noyo-harbor/}params/Battery.html"
+        type: stale-or-below-any-column
         source: "/combined/FieldStation"
         timestamp_column: timestamp
         value_column: "AT500_Surface.Temperature.C"
+        threshold_columns:
+          - "Vulink1.Battery Level.%"
+          - "Vulink2.Battery Level.%"
+        unit: "%"
+        threshold: 20
         window: 24h
 ---
 version: v1
@@ -334,7 +337,20 @@ spec:
           columns:
             - "AT500_Surface.Depth.m"
             - "AT500_Bottom.Depth.m"
-            
+
+      # Operator-only diagnostic: radio unit (Vulink) battery levels for the
+      # two active Field Station loggers. Not linked from the public
+      # sidebar (see the `sidebar:` list below), but reachable directly at
+      # params/Battery.html -- and linked from the "field-station-healthy"
+      # monitor check's href -- for operators checking on hardware health.
+      - name: "Battery"
+        factory: "timeseries-pivot"
+        config:
+          pattern: "/combined/*"
+          columns:
+            - "Vulink1.Battery Level.%"
+            - "Vulink2.Battery Level.%"
+
 ---
 version: v1
 kind: mknod
