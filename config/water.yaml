@@ -50,23 +50,23 @@ spec:
     title: "Caspar Water status"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
     checks:
-      - id: well-depth-low
-        label: "Well depth above 40"
+      - id: well-depth-healthy
+        label: "Well depth"
         description: >-
-          At least one well-depth reading must reach 40 m or higher in the
-          trailing three hours.
+          The well has recovered recently.
         href: "/data/well-depth.html"
+        type: stale-or-all-below
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
         value_column: well_depth_value
         unit: m
         threshold: 40
         window: 3h
+        stale_window: 24h
       - id: tank-level-low
-        label: "Tank level stays above 3 m"
+        label: "Tank level"
         description: >-
-          Every tank-level measurement in the trailing three hours must remain
-          at or above 3 m.
+          The tank stays full.
         href: "/data/tank-level.html"
         type: any-observed-below
         source: "oteljson:///ingest/casparwater*.json"
@@ -76,10 +76,9 @@ spec:
         threshold: 3
         window: 3h
       - id: system-pressure-range
-        label: "System pressure stays within its safe range"
+        label: "System pressure"
         description: >-
-          The average system pressure over the trailing five minutes must
-          remain between 0.5 and 2.2 psi, inclusive.
+          System pressure indicates demand.
         href: "/data/system-pressure.html"
         type: average-range
         source: "oteljson:///ingest/casparwater*.json"
@@ -90,10 +89,9 @@ spec:
         upper_bound: 2.2
         window: 5m
       - id: chlorine-feed-response
-        label: "Chlorine feed responds while well pump runs"
+        label: "Chlorine pump"
         description: >-
-          Chlorine level must increase by at least 2.5 sensor units per pump
-          hour while the well pump is running, after refill drops are ignored.
+          Chlorine level drops while well is pumping.
         href: "/data/chlorine-level.html"
         type: rate-while
         measurement:
@@ -117,23 +115,10 @@ spec:
           operator: lt
           value: 2.5
           unit: sensor-units-per-pump-hour
-      - id: water-data-stale
-        label: "Water station is reporting data"
-        description: >-
-          At least one well-depth reading must arrive in the trailing 24
-          hours; a longer gap means ingestion has stalled upstream.
-        href: "/data/well-depth.html"
-        type: stale-after
-        source: "oteljson:///ingest/casparwater*.json"
-        timestamp_column: timestamp
-        value_column: well_depth_value
-        window: 24h
       - id: leak-score
-        label: "Leak risk"
+        label: "Leak score"
         description: >-
-          7-day trailing leak-probability score (0.0-1.0) from the overnight
-          main-pressure drawdown model; 0.5 is the calibrated leak/no-leak
-          threshold. A missing score counts as the worst band, not unknown.
+          Moving average calculated from nightly stasis.
         href: "/leak"
         type: graded-score
         source: "series:///leak/leak-analysis"
@@ -144,11 +129,9 @@ spec:
         concern_max: 0.75
         window: 3d
       - id: ph-stale-or-low
-        label: "pH stays above 6.5"
+        label: "pH"
         description: >-
-          Every pH reading must remain at or above 6.5; a 3-hour gap with no
-          reading counts as a failure too, since a stale probe can mask a
-          real low-pH event just as easily as reporting one.
+          Tank pH meter is functional.
         href: "/data/ph.html"
         type: stale-or-below
         source: "oteljson:///ingest/casparwater*.json"
