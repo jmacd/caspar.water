@@ -50,18 +50,21 @@ spec:
     title: "Caspar Water status"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
     checks:
-      - id: well-depth-low
-        label: "Well depth above 40"
+      - id: well-depth-healthy
+        label: "Well depth healthy"
         description: >-
           At least one well-depth reading must reach 40 m or higher in the
-          trailing three hours.
+          trailing three hours; a longer gap with no readings at all (24
+          hours) means ingestion has stalled upstream.
         href: "/data/well-depth.html"
+        type: stale-or-all-below
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
         value_column: well_depth_value
         unit: m
         threshold: 40
         window: 3h
+        stale_window: 24h
       - id: tank-level-low
         label: "Tank level stays above 3 m"
         description: >-
@@ -117,17 +120,6 @@ spec:
           operator: lt
           value: 2.5
           unit: sensor-units-per-pump-hour
-      - id: water-data-stale
-        label: "Water station is reporting data"
-        description: >-
-          At least one well-depth reading must arrive in the trailing 24
-          hours; a longer gap means ingestion has stalled upstream.
-        href: "/data/well-depth.html"
-        type: stale-after
-        source: "oteljson:///ingest/casparwater*.json"
-        timestamp_column: timestamp
-        value_column: well_depth_value
-        window: 24h
       - id: leak-score
         label: "Leak risk"
         description: >-

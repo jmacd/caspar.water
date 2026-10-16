@@ -8,6 +8,35 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 }
 
+/* The water section always has exactly six checks; pin it to a fixed two
+   column, three row grid instead of auto-fit so the layout is stable
+   regardless of viewport width. */
+.monitor-summary-water .monitor-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.monitor-separator {
+  border: none;
+  border-top: 1px solid var(--border, #d0d5dd);
+  margin: 1.5rem 0;
+}
+
+/* Septic and Noyo staleness checks form a single "other systems" row of two
+   columns, each column keeping its own card plus status caption stacked
+   vertically. */
+.monitor-other-systems {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 40rem) {
+  .monitor-summary-water .monitor-grid,
+  .monitor-other-systems {
+    grid-template-columns: 1fr;
+  }
+}
+
 .monitor-card {
   background: var(--bg-card, #fff);
   border: 1px solid var(--border, #d0d5dd);
