@@ -12,7 +12,7 @@ from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
 
 
 class ParserBridgeTest(unittest.TestCase):
-    def run_bridge(self, *, pages, reason="stop"):
+    def run_bridge(self, *, pages, reason="stop", dates="Beginning Balance 11/01/21 Ending Balance 11/30/21"):
         seen = []
         payload = {
             "account_id": "SYNTHETIC",
@@ -59,10 +59,11 @@ class ParserBridgeTest(unittest.TestCase):
                     NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})
                 })
                 stream = DecodedStreamObject()
-                stream.set_data(
-                    b"BT /F1 12 Tf 50 700 Td "
-                    b"(Synthetic bank statement: 2021-11-10 DEPOSIT USD 100.00. Opening 0.00 Closing 100.00.) Tj ET"
+                text = (
+                    "Synthetic statement: 2021-11-10 DEPOSIT USD 100.00. "
+                    "Opening 0.00 Closing 100.00. " + dates
                 )
+                stream.set_data(("BT /F1 12 Tf 50 700 Td (" + text + ") Tj ET").encode())
                 page[NameObject("/Contents")] = stream
                 writer.add_blank_page(width=612, height=792)
                 with pdf.open("wb") as output:
@@ -85,6 +86,7 @@ class ParserBridgeTest(unittest.TestCase):
         self.assertEqual(document["transactions"][0]["amount"], "100.00")
         self.assertEqual(document["verification"]["status"], "verified")
         self.assertEqual(document["selected_pages"], [1])
+        self.assertEqual(document["wat_statement_period"], {"start": "2021-11-01", "end": "2021-11-30"})
         self.assertIn("excluded PDF pages [2]", " ".join(document["warnings"]))
         self.assertEqual(document["wat_extraction"]["model"], "test-model")
         self.assertFalse(requests[0]["think"])
@@ -101,6 +103,21 @@ class ParserBridgeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("truncated", result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_missing_dates_are_not_inferred_from_transactions(self):
+        result, _ = self.run_bridge(pages=[1], dates="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        document = json.loads(result.stdout)
+        self.assertNotIn("wat_statement_period", document)
+        self.assertIn("Statement period unavailable", " ".join(document["warnings"]))
+
+    def test_reversed_period_is_rejected_before_inference(self):
+        result, requests = self.run_bridge(
+            pages=[1], dates="Beginning Balance 12/01/21 Ending Balance 11/30/21"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("out of order", result.stderr)
+        self.assertEqual(requests, [])
 
 
 if __name__ == "__main__":

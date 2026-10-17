@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 type JournalEntry struct {
 	ID, Date, Description string
 	ReadOnly              string
+	BankChange            int64
+	BankBalance           int64
 }
 
 type entryRevision struct {
@@ -51,6 +54,13 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	locked, err := b.lockedTransactions()
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(transactions, func(a, b journalTransaction) int {
+		return strings.Compare(a.Date, b.Date)
+	})
 	counts := make(map[string]int)
 	for _, tx := range transactions {
 		for _, tag := range tx.Tags {
@@ -60,17 +70,32 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 		}
 	}
 	var entries []JournalEntry
+	bankBalance := int64(0)
 	for _, tx := range transactions {
 		date, err := time.Parse("2006-01-02", tx.Date)
 		if err != nil {
 			return nil, fmt.Errorf("read journal date: %w", err)
 		}
+		bankChange := int64(0)
+		if b.Config.BankAccount != "" {
+			bankChange, err = bankAmount(tx, b.Config.BankAccount)
+			if err != nil {
+				return nil, fmt.Errorf("%s %s: read bank amount: %w", tx.Date, tx.Description, err)
+			}
+			bankBalance += bankChange
+		}
 		if date.Year() != b.Config.Year {
 			continue
 		}
 		id, idErr := transactionID(tx)
-		entry := JournalEntry{ID: id, Date: tx.Date, Description: tx.Description}
+		entry := JournalEntry{
+			ID: id, Date: tx.Date, Description: tx.Description,
+			BankChange: bankChange, BankBalance: bankBalance,
+		}
 		switch {
+		case locked[id] != nil:
+			entry.ReadOnly = fmt.Sprintf("Locked by finished bank reconciliation %s to %s.",
+				locked[id].Period.Start, locked[id].Period.End)
 		case b.transactionFile(tx) != b.Config.WriteJournal:
 			entry.ReadOnly = "Entry is outside the configured working journal."
 		case idErr != nil:
@@ -216,6 +241,14 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 	if count != 1 || strings.TrimSpace(id) == "" {
 		return nil, Entry{}, fmt.Errorf("expected exactly one entry with ID %q; found %d", id, count)
 	}
+	locked, err := b.lockedTransactions()
+	if err != nil {
+		return nil, Entry{}, err
+	}
+	if checkpoint := locked[id]; checkpoint != nil {
+		return nil, Entry{}, fmt.Errorf("transaction is locked by finished bank reconciliation %s to %s",
+			checkpoint.Period.Start, checkpoint.Period.End)
+	}
 	if b.transactionFile(*found) != b.Config.WriteJournal {
 		return nil, Entry{}, fmt.Errorf("only entries in the configured working journal can be revised; other included journals are read-only")
 	}
@@ -235,8 +268,7 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 		if !ok || len(hash) != 64 || strings.ContainsAny(hash, `/\`) || err != nil || index < 1 {
 			return nil, Entry{}, fmt.Errorf("recorded entry has an invalid bank-row tag")
 		}
-		source := filepath.Join(b.Config.Sources, "statements", hash, "original.pdf")
-		statement, err := b.LoadStatement(source, StatementOptions{}, nil)
+		statement, err := b.cachedStatement(hash)
 		if err != nil {
 			return nil, Entry{}, fmt.Errorf("load recorded statement evidence: %w", err)
 		}

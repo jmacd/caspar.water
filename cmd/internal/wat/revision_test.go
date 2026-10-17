@@ -96,6 +96,33 @@ func TestRevisionIncludedJournalsAreReadOnly(t *testing.T) {
 	require.Equal(t, working, read(t, books.Config.WriteJournal))
 }
 
+func TestJournalEntriesIncludeRunningBankBalance(t *testing.T) {
+	prior := Entry{
+		Date: "2020-12-31", Payee: "Opening bank balance",
+		Postings: []Posting{
+			{Account: "Assets:Bank:Checking", Amount: "100.00"},
+			{Account: "Equity:Capital:Owner", Amount: "-100.00"},
+		},
+	}.journalText("prior")
+	payment := testEntry().journalText("payment")
+	deposit := Entry{
+		Date: "2021-04-06", Payee: "Deposit",
+		Postings: []Posting{
+			{Account: "Assets:Bank:Checking", Amount: "20.00"},
+			{Account: "Equity:Capital:Owner", Amount: "-20.00"},
+		},
+	}.journalText("deposit")
+	books, _ := fixture(t, payment+"\n"+deposit+"\n"+prior)
+	books.Config.BankAccount = "Assets:Bank:Checking"
+	entries, err := books.JournalEntries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "prior-year entries contribute to balance but are not listed")
+	require.Equal(t, int64(-1234), entries[0].BankChange)
+	require.Equal(t, int64(8766), entries[0].BankBalance)
+	require.Equal(t, int64(2000), entries[1].BankChange)
+	require.Equal(t, int64(10766), entries[1].BankBalance)
+}
+
 func TestRevisionRejectsDuplicateOrMissingIDs(t *testing.T) {
 	for _, text := range []string{
 		testEntry().journalText("duplicate") + "\n" + testEntry().journalText("duplicate"),

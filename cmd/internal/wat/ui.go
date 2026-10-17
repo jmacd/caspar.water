@@ -10,11 +10,12 @@ import (
 )
 
 type terminal struct {
-	app       *tview.Application
-	books     *Books
-	statement *Statement
-	queue     *statementQueue
-	entryBack func()
+	app           *tview.Application
+	books         *Books
+	statement     *Statement
+	queue         *statementQueue
+	statementBack func()
+	entryBack     func()
 }
 
 type statementQueue struct {
@@ -94,9 +95,12 @@ func (ui *terminal) menu() {
 			}
 			ui.message(" Check books ", "The books pass hledger strict checks and account-depth checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
+		AddItem("Bank statements", "Reopen cached statements; review recorded and pending rows", '5', ui.bankStatements).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
+	footer := "Enter Select | 1-5 Shortcut | q Quit"
 	if ui.statement != nil {
-		list.AddItem("Continue bank statement", "Resume unrecorded statement transactions", '5', ui.statementList)
+		list.AddItem("Continue bank statement", "Return to the current statement review", '6', ui.statementList)
+		footer = "Enter Select | 1-6 Shortcut | q Quit"
 	}
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
@@ -105,7 +109,7 @@ func (ui *terminal) menu() {
 		}
 		return event
 	})
-	ui.screen("Menu", list, "Enter Select | 1-4 Shortcut | q Quit")
+	ui.screen("Menu", list, footer)
 }
 
 func (ui *terminal) reports() {

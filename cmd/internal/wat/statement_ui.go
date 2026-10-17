@@ -8,14 +8,93 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (ui *terminal) statementList() {
-	statuses, err := ui.books.StatementStatuses(ui.statement)
+func (ui *terminal) bankStatements() {
+	statements, err := ui.books.CachedStatements()
 	if err != nil {
-		ui.message(" Statement review failed ", err.Error(), ui.menu)
+		ui.message(" Cannot list bank statements ", err.Error(), ui.menu)
+		return
+	}
+	if len(statements) == 0 {
+		ui.message(" Bank statements ", "No cached statements in this workspace.\nImport a PDF with --statement <file.pdf>, then reopen it here without supplying the PDF again.", ui.menu)
 		return
 	}
 	list := tview.NewList().ShowSecondaryText(true)
-	footer := "Enter Select | i Source/notices | Esc Menu | Only Save records an entry"
+	list.SetBorder(true).SetTitle(" Bank statements - recorded does not mean reconciled ")
+	for _, statement := range statements {
+		statuses, err := ui.books.StatementStatuses(statement)
+		if err != nil {
+			ui.message(" Cannot review bank statement ", statement.Source+"\n\n"+err.Error(), ui.menu)
+			return
+		}
+		recorded := 0
+		for _, status := range statuses {
+			if status.Recorded {
+				recorded++
+			}
+		}
+		checkpoint, err := ui.books.loadCheckpoint(statement)
+		if err != nil {
+			ui.message(" Cannot review bank statement ", statement.Source+"\n\n"+err.Error(), ui.menu)
+			return
+		}
+		period := "Statement dates unavailable"
+		if statement.Period != nil {
+			period = statement.Period.Start + " to " + statement.Period.End
+		}
+		state := fmt.Sprintf("%d recorded, %d pending", recorded, len(statuses)-recorded)
+		hint := statement.Source
+		if checkpoint != nil {
+			state = "RECONCILED"
+			hint = "Finished " + checkpoint.FinishedAt + " | read-only | " + statement.Source
+		}
+		label := fmt.Sprintf("%s | %s | %s", period, state, statement.Hash[:12])
+		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+			current, err := ui.books.cachedStatement(statement.Hash)
+			if err != nil {
+				ui.message(" Cannot open bank statement ", err.Error(), ui.bankStatements)
+				return
+			}
+			previous, queue, back := ui.statement, ui.queue, ui.statementBack
+			ui.statement, ui.queue = current, nil
+			ui.statementBack = func() {
+				ui.statement, ui.queue, ui.statementBack = previous, queue, back
+				ui.bankStatements()
+			}
+			ui.statementList()
+		})
+	}
+	list.AddItem("Back to menu", "Saved entries and statement caches are unchanged", 'q', ui.menu)
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			ui.menu()
+			return nil
+		}
+		return event
+	})
+	ui.screen("Bank statements", list, "Enter Open statement | Esc Menu")
+}
+
+func (ui *terminal) statementList() {
+	back := ui.menu
+	backLabel := "Back to menu"
+	destination := "Menu"
+	if ui.statementBack != nil {
+		back = ui.statementBack
+		backLabel = "Back to statements"
+		destination = "Statements"
+	}
+	statuses, err := ui.books.StatementStatuses(ui.statement)
+	if err != nil {
+		ui.message(" Statement review failed ", err.Error(), back)
+		return
+	}
+	checkpoint, err := ui.books.loadCheckpoint(ui.statement)
+	if err != nil {
+		ui.message(" Statement review failed ", err.Error(), back)
+		return
+	}
+	list := tview.NewList().ShowSecondaryText(true)
+	footer := "Enter Select | i Source/notices | Esc " + destination + " | Only Save records an entry"
 	recorded := 0
 	for index, row := range ui.statement.Rows {
 		status := statuses[index]
@@ -30,15 +109,30 @@ func (ui *terminal) statementList() {
 		if status.Recorded {
 			hint = "Enter to revise the existing entry (working journal only)"
 		}
+		if checkpoint != nil {
+			label = "RECONCILED"
+			hint = "Finished reconciliation; transaction is read-only"
+		}
 		list.AddItem(tview.Escape(fmt.Sprintf("%s | %s | %s | %s USD", label, row.Date, row.Description, formatCents(row.Cents))),
 			tview.Escape(hint), 0, func() { ui.statementOpen(index) })
 	}
-	if ui.queue != nil && recorded == len(statuses) {
+	if checkpoint == nil && recorded == len(statuses) {
+		if _, err := ui.books.Reconciliation(ui.statement); err != nil {
+			list.AddItem("Reconciliation blocked", err.Error(), 0, func() {
+				ui.message(" Cannot begin reconciliation ", err.Error(), ui.statementList)
+			})
+		} else {
+			list.AddItem("Reconcile statement", "Compare the complete bank register; Finish locks cleared transactions", 'r', ui.reconciliation)
+			footer = "Enter/r Reconcile | i Source/notices | Esc " + destination
+		}
+		list.SetCurrentItem(len(ui.statement.Rows))
+	}
+	if ui.queue != nil && checkpoint != nil {
 		label := "Next statement"
 		if ui.queue.position == ui.queue.total {
-			label = "Finish statement batch"
+			label = "Exit statement batch"
 		}
-		list.AddItem(label, "All rows recorded; this does not certify reconciliation", 'n', func() {
+		list.AddItem(label, "This statement is reconciled and read-only", 'n', func() {
 			ui.queue.advance = true
 			ui.app.Stop()
 		})
@@ -46,20 +140,31 @@ func (ui *terminal) statementList() {
 		footer = "Enter/n " + label + " | i Source/notices | Esc Menu"
 	}
 	list.AddItem("Statement notices / source", "Extraction warnings and PDF location; balance checks are not proof of reconciliation", 'i', func() {
-		message := "Source PDF: " + ui.statement.Source + "\n\n" + strings.Join(ui.statement.Warnings, "\n") +
+		period := "Statement dates unavailable"
+		if ui.statement.Period != nil {
+			period = ui.statement.Period.Start + " to " + ui.statement.Period.End
+		}
+		message := "Statement period: " + period + "\nSource PDF: " + ui.statement.Source + "\n\n" + strings.Join(ui.statement.Warnings, "\n") +
 			"\n\nCompare extracted rows with the PDF. Matching opening/closing balances alone does not establish completeness or reconciliation."
 		ui.message(" Statement source ", message, ui.statementList)
 	})
-	list.AddItem("Back to menu", "Saved rows remain recorded; pending rows can be resumed", 'q', ui.menu)
-	list.SetBorder(true).SetTitle(fmt.Sprintf(" Bank statement | %d/%d recorded | %d notices (i) ", recorded, len(statuses), len(ui.statement.Warnings)))
+	list.AddItem(backLabel, "Saved rows remain recorded; pending rows can be resumed", 'q', back)
+	state := fmt.Sprintf("%d/%d recorded", recorded, len(statuses))
+	if checkpoint != nil {
+		state = "RECONCILED - read-only"
+	}
+	list.SetBorder(true).SetTitle(fmt.Sprintf(" Bank statement | %s | %d notices (i) ", state, len(ui.statement.Warnings)))
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			ui.menu()
+			back()
 			return nil
 		}
 		return event
 	})
 	title := "Bank statement review"
+	if ui.statement.Period != nil {
+		title += " | " + ui.statement.Period.Start + " to " + ui.statement.Period.End
+	}
 	if ui.queue != nil {
 		title = fmt.Sprintf("Statement %d/%d | %s", ui.queue.position, ui.queue.total, ui.queue.path)
 	}
@@ -83,6 +188,17 @@ func (ui *terminal) statementNext(previous int) {
 }
 
 func (ui *terminal) statementOpen(index int) {
+	checkpoint, err := ui.books.loadCheckpoint(ui.statement)
+	if err != nil {
+		ui.message(" Cannot open statement row ", err.Error(), ui.statementList)
+		return
+	}
+	if checkpoint != nil {
+		ui.message(" Reconciled transaction ", fmt.Sprintf(
+			"This transaction is read-only because statement %s to %s was finished at %s.",
+			checkpoint.Period.Start, checkpoint.Period.End, checkpoint.FinishedAt), ui.statementList)
+		return
+	}
 	statuses, err := ui.books.StatementStatuses(ui.statement)
 	if err != nil {
 		ui.message(" Statement review failed ", err.Error(), ui.statementList)

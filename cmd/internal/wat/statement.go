@@ -23,8 +23,16 @@ var statementParser string
 
 type Statement struct {
 	Hash, Source string
+	Period       *StatementPeriod
+	OpeningCents int64
+	ClosingCents int64
 	Rows         []StatementRow
 	Warnings     []string
+}
+
+type StatementPeriod struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 type StatementRow struct {
@@ -83,32 +91,13 @@ func (b *Books) LoadStatement(path string, options StatementOptions, progress io
 		}
 	}
 	dir := filepath.Join(root, hash)
-	if info, err := os.Lstat(dir); err == nil {
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("statement cache is not a regular directory")
-		}
-		for _, name := range []string{"original.pdf", "extracted.json"} {
-			info, err := os.Lstat(filepath.Join(dir, name))
-			if err != nil || !info.Mode().IsRegular() {
-				return nil, fmt.Errorf("statement cache is incomplete or contains nonregular files: %s", dir)
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	cached, err := os.ReadFile(filepath.Join(dir, "extracted.json"))
-	if err == nil {
+	if _, err := os.Lstat(dir); err == nil {
 		if options.Extraction != "" || len(options.Pages) != 0 {
 			return nil, fmt.Errorf("statement already cached; omit --statement-extraction and --statement-pages to reuse its stable row identities")
 		}
-		original, err := os.ReadFile(filepath.Join(dir, "original.pdf"))
-		if err != nil || sha256.Sum256(original) != sum {
-			return nil, fmt.Errorf("cached statement PDF is missing or does not match its fingerprint")
-		}
-		return b.decodeStatement(cached, hash, dir)
-	}
-	if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read cached statement: %w", err)
+		return b.cachedStatement(hash)
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
 	var data []byte
 	if options.Extraction != "" {
@@ -184,8 +173,114 @@ func (b *Books) LoadStatement(path string, options StatementOptions, progress io
 	return statement, nil
 }
 
+func (b *Books) statementCacheRoot() (string, error) {
+	root := filepath.Join(b.Config.Sources, "statements")
+	relative, err := filepath.Rel(b.Config.root, root)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", fmt.Errorf("statement source directory must be inside the workspace")
+	}
+	current := b.Config.root
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("statement source path is not a regular directory: %s", current)
+		}
+	}
+	return root, nil
+}
+
+func (b *Books) cachedStatement(hash string) (*Statement, error) {
+	if b.Config.BankAccount == "" {
+		return nil, fmt.Errorf("set bank_account in the workspace YAML before opening a statement")
+	}
+	fingerprint, err := hex.DecodeString(hash)
+	if err != nil || len(fingerprint) != sha256.Size || hash != strings.ToLower(hash) {
+		return nil, fmt.Errorf("invalid statement cache fingerprint")
+	}
+	root, err := b.statementCacheRoot()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, hash)
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("statement cache is not a regular directory: %s", dir)
+	}
+	for _, name := range []string{"original.pdf", "extracted.json"} {
+		info, err := os.Lstat(filepath.Join(dir, name))
+		if err != nil || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("statement cache is incomplete or contains nonregular files: %s", dir)
+		}
+	}
+	pdf, err := os.ReadFile(filepath.Join(dir, "original.pdf"))
+	if err != nil {
+		return nil, fmt.Errorf("read cached statement PDF: %w", err)
+	}
+	sum := sha256.Sum256(pdf)
+	if hex.EncodeToString(sum[:]) != hash {
+		return nil, fmt.Errorf("cached statement PDF does not match its fingerprint: %s", dir)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "extracted.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read cached statement: %w", err)
+	}
+	return b.decodeStatement(data, hash, dir)
+}
+
+func (s *Statement) sortDate() string {
+	if s.Period != nil {
+		return s.Period.Start
+	}
+	first := ""
+	for _, row := range s.Rows {
+		if first == "" || row.Date < first {
+			first = row.Date
+		}
+	}
+	return first
+}
+
+func (b *Books) CachedStatements() ([]*Statement, error) {
+	root, err := b.statementCacheRoot()
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("list cached statements: %w", err)
+	}
+	var statements []*Statement
+	for _, dir := range dirs {
+		hash := dir.Name()
+		fingerprint, err := hex.DecodeString(hash)
+		if err != nil || len(fingerprint) != sha256.Size || hash != strings.ToLower(hash) {
+			continue
+		}
+		statement, err := b.cachedStatement(hash)
+		if err != nil {
+			return nil, fmt.Errorf("cached statement %s: %w", hash, err)
+		}
+		statements = append(statements, statement)
+	}
+	slices.SortStableFunc(statements, func(a, b *Statement) int {
+		return strings.Compare(a.sortDate(), b.sortDate())
+	})
+	return statements, nil
+}
+
 func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, error) {
 	var raw struct {
+		Period       *StatementPeriod `json:"wat_statement_period"`
 		Transactions []struct {
 			Date        string `json:"booking_date"`
 			Description string `json:"description"`
@@ -204,6 +299,13 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 	if raw.Verification == nil || len(raw.Transactions) == 0 {
 		return nil, fmt.Errorf("statement must contain transactions and opening/closing balances")
 	}
+	if raw.Period != nil {
+		start, startErr := time.Parse("2006-01-02", raw.Period.Start)
+		end, endErr := time.Parse("2006-01-02", raw.Period.End)
+		if startErr != nil || endErr != nil || end.Before(start) {
+			return nil, fmt.Errorf("statement period requires valid YYYY-MM-DD start/end dates in order")
+		}
+	}
 	opening, err := ParseCents(raw.Verification.Opening)
 	if err != nil {
 		return nil, fmt.Errorf("statement opening balance: %w", err)
@@ -216,13 +318,19 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 	if err != nil {
 		return nil, err
 	}
-	result := &Statement{Hash: hash, Source: filepath.ToSlash(source), Warnings: raw.Warnings}
+	result := &Statement{
+		Hash: hash, Source: filepath.ToSlash(source), Period: raw.Period,
+		OpeningCents: opening, ClosingCents: closing, Warnings: raw.Warnings,
+	}
 	total := big.NewInt(opening)
 	for i, tx := range raw.Transactions {
 		date, dateErr := time.Parse("2006-01-02", tx.Date)
 		cents, amountErr := ParseCents(tx.Amount)
 		if dateErr != nil || date.Year() != b.Config.Year {
 			return nil, fmt.Errorf("statement row %d must have a valid date within %d", i+1, b.Config.Year)
+		}
+		if raw.Period != nil && (tx.Date < raw.Period.Start || tx.Date > raw.Period.End) {
+			return nil, fmt.Errorf("statement row %d is outside its statement period", i+1)
 		}
 		if amountErr != nil || cents == 0 || tx.Currency != "USD" {
 			return nil, fmt.Errorf("statement row %d requires a nonzero exact USD amount", i+1)

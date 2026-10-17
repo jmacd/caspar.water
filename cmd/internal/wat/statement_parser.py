@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import time
 
@@ -27,6 +28,21 @@ if sparse:
         f"PDF pages {sparse} lack a usable text layer. Inspect them before explicitly "
         "selecting transaction pages with --statement-pages. This version does not OCR scans."
     )
+
+period = None
+layout = "\n".join(reader.pages[p - 1].extract_text(extraction_mode="layout") or "" for p in pages)
+date_pattern = r"(\d{1,2}/\d{1,2}/(?:\d{4}|\d{2}))(?=\s|$)"
+beginning = set(re.findall(r"Beginning\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
+ending = set(re.findall(r"Ending\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
+if len(beginning) == 1 and len(ending) == 1:
+    def iso_date(text):
+        date_format = "%m/%d/%Y" if len(text.rsplit("/", 1)[1]) == 4 else "%m/%d/%y"
+        return datetime.strptime(text, date_format).date().isoformat()
+
+    start, end = iso_date(next(iter(beginning))), iso_date(next(iter(ending)))
+    if end < start:
+        raise ValueError("PDF beginning/ending balance dates are out of order")
+    period = {"start": start, "end": end}
 
 
 def completion(**kwargs):
@@ -80,6 +96,12 @@ with TemporaryDirectory(prefix="wat-statement-") as temporary:
         ),
     )
     document = json.loads(result.to_json())
+    if period is not None:
+        document["wat_statement_period"] = period
+    else:
+        document["warnings"].append(
+            "Statement period unavailable: no unambiguous dated Beginning Balance and Ending Balance labels found in selected PDF pages."
+        )
     document["selected_pages"] = pages
     document["wat_extraction"] = {
         "parser_version": version("bankstatementparser"),

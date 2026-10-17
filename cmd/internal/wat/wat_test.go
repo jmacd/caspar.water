@@ -323,6 +323,11 @@ func TestReportsIncludeOpeningBalancesButExcludeFuture(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, report, "$90")
 		require.NotContains(t, report, "$990")
+		if name == "balance-sheet" {
+			require.Contains(t, report, "Equity:Capital:Owner")
+			require.Contains(t, report, "$100")
+			require.Contains(t, report, "$-10")
+		}
 	}
 	report, err := books.Report("income-statement")
 	require.NoError(t, err)

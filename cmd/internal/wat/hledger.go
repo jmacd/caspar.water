@@ -87,6 +87,9 @@ func Open(cfg Config) (*Books, error) {
 		if !slices.Contains(accounts, cfg.BankAccount) {
 			return nil, fmt.Errorf("bank_account must name a declared account with at least three levels: %q", cfg.BankAccount)
 		}
+		if err := books.verifyReconciliations(); err != nil {
+			return nil, fmt.Errorf("verify reconciliations: %w", err)
+		}
 	}
 	return books, nil
 }
@@ -181,7 +184,7 @@ func (b *Books) Report(name string) (string, error) {
 	commands := map[string][]string{
 		"journal":          {"print"},
 		"trial-balance":    {"balance", "--flat", "--no-elide"},
-		"balance-sheet":    {"balancesheet"},
+		"balance-sheet":    {"balancesheetequity"},
 		"income-statement": {"incomestatement"},
 	}
 	args, ok := commands[name]

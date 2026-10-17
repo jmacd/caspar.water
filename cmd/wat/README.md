@@ -1,8 +1,8 @@
 # Water Accounting Terminal
 
-`wat` is a local terminal workbench for ordinary hledger journals. The first
-increment supports transaction entry, journal review, strict validation, and
-reports. It does not calculate bills, reconcile bank statements, or close years.
+`wat` is a local terminal workbench for ordinary hledger journals. It supports
+transaction entry, journal review, strict validation, bank-statement
+reconciliation checkpoints, and reports. It does not calculate bills or close years.
 There is no database, server, browser, or Watertown dependency.
 
 ## Start a workspace
@@ -102,6 +102,21 @@ detect external journal changes and refuse to overwrite them.
 ./cmd/wat/run.sh --statement ../caspar_water_bank/casparwater-2021-11.pdf
 ```
 
+To reopen an imported statement later, run `./cmd/wat/run.sh` without flags and
+choose **Bank statements (5)**. Select a cached statement to review its pending
+rows or revise its recorded entries. The list shows the actual statement period,
+journal-derived recorded/pending counts, and **RECONCILED** for finished statements.
+Statement dates come from `wat_statement_period` metadata in the cached
+extraction, never from the first/last transactions. New PDF extractions capture
+unambiguous dated Beginning Balance and Ending Balance labels. If unavailable,
+the list explicitly says **Statement dates unavailable**. Known periods are
+ordered by start date; caches without dates use their earliest activity only
+for ordering, not as a displayed statement period.
+It uses the retained PDF and extraction:
+the original input path, Python, Ollama, and another `--statement` run are not
+needed. Esc returns to the statement browser, then the main menu. Reopening does
+not post entries or mark anything reconciled.
+
 For a sequence, let the shell expand the glob, or supply explicit filenames:
 
 ```sh
@@ -117,12 +132,12 @@ missing files or paths that are not regular PDFs are errors. The configured
 workspace year still applies; a 2022 statement requires a 2022 workspace.
 
 The terminal identifies the current file and its position in the batch. It
-loads/extracts only one statement at a time. Once all its rows are recorded,
-choose **Next statement (n)**, or **Finish statement batch (n)** on the last
-file. Quit ends the whole session without processing later files. Rerunning the
-same file list reuses cached extractions and journal-derived row status; already
-recorded statements still require Next to advance. This is a review queue, not
-a reconciliation checkpoint or an atomic batch commit.
+loads/extracts only one statement at a time. Record all rows, reconcile and
+Finish the statement, then choose **Next statement (n)**, or
+**Exit statement batch (n)** on the last file. Quit ends the whole session
+without processing later files. Rerunning the same file list reuses cached
+extractions, journal-derived row status, saved reconciliation work, and finished
+checkpoints. The batch itself is not an atomic commit.
 
 `--statements` and `--statement` are mutually exclusive. Extraction imports and
 page-selection overrides require the single-file `--statement` mode; prepare
@@ -135,7 +150,9 @@ description and opposite signed amounts filled in. Focus starts on the
 counteraccount. Choose the account, split the counterposting when needed, and
 press F2 to save. Acknowledge the save message to advance to the next pending
 row. Esc / Back discards the current unsaved edits and returns to the queue;
-it does not mark that row recorded. The main menu can resume the statement.
+it does not mark that row recorded. The main menu can resume the current statement
+with **Continue bank statement (6)** or open any cached statement with
+**Bank statements (5)**. Browsing another cache does not advance a command-line batch.
 Enter on a recorded row reopens its existing entry for revision when that entry
 is in the configured working journal; it never creates another posting.
 
@@ -156,10 +173,68 @@ not ask an LLM to invent account assignments. A deposit is not assumed to be inc
 
 The source PDF and extracted JSON are kept privately under
 `sources/statements/<PDF-SHA256>/`. Do not reorder or edit cached rows after
-posting. Extraction notices are available with **i** in the statement queue.
+posting. Older caches can be given a `wat_statement_period` object with
+`"start"` and `"end"` in `YYYY-MM-DD` format after checking the PDF's own
+beginning/ending balance dates; adding this metadata does not change row
+identities or journal postings. Every transaction must fall within the period.
+Extraction notices and the statement period are available with **i** in the statement queue.
 Matching opening/closing balances is an arithmetic check, not evidence that all
 rows were extracted correctly or that the books are reconciled. Compare with
 the original PDF before recording.
+
+## Reconcile and finish a statement
+
+After every row is recorded, choose **Reconcile statement (r)**. The reconciliation
+uses every posting to the configured `bank_account` through the statement closing
+date, not only transactions imported from that PDF. It shows:
+
+- statement and book opening balances;
+- statement and book period credit/deposit and debit/payment totals;
+- statement and book closing balances;
+- outstanding deposits and payments shown separately; and
+- the remaining unexplained difference.
+
+Reconciliation cannot begin with an unexplained opening balance. For the first
+statement, the book opening must equal the statement opening. For each later
+statement, it must equal the prior finished checkpoint's book closing, while the
+new statement opening must equal the prior statement closing. A mismatch appears
+as **Reconciliation blocked** on the statement page and must be corrected in the
+journal first; it cannot be classified as a current-period outstanding item.
+
+Unmatched bank entries start as **UNEXPLAINED**. The reconciliation page is
+diagnostic and does not edit or enter transactions. Return to
+**Review / revise journal**, or quit and use a text editor, to correct the books;
+restart `wat` after external edits. Use **o** on the reconciliation page only when
+an existing entry is a genuine check or deposit still outstanding at the
+statement date. An outstanding deposit increases the statement balance for
+comparison; an outstanding payment decreases it. These are displayed separately
+and net into **Adjusted statement**. The selection is saved in
+`reconciliation-work.json`, so leaving the page or restarting `wat` does not lose
+the work. Marking an item outstanding does not edit the journal, clear it, or
+create a balancing transaction.
+
+**Finish reconciliation** is allowed only when every statement row is recorded
+and the unexplained difference is exactly zero. `wat` recalculates under its
+journal and reconciliation locks, then writes a private
+`reconciliation.json` checkpoint beside the cached PDF. The checkpoint records
+the statement facts, cleared transaction IDs and semantic digests, outstanding
+items, balances, and finish time. The statement then appears as
+**RECONCILED — read-only**. Its cleared transactions cannot be revised from the
+statement page, journal browser, structured form, or F4 path; the whole
+transaction, including counterpostings, is protected.
+
+Finished statements must be processed in chronological order, and each later
+opening balance must equal the prior reconciled closing balance. Outstanding
+items remain unlocked because they have not cleared. A later statement may carry
+them forward as outstanding; automatic matching of an old outstanding check to
+a later bank row is not implemented yet.
+
+On startup, `wat` verifies that each finished checkpoint still matches its
+cached statement and that every locked journal transaction still exists
+unchanged. Direct text edits cannot be physically prevented, but a deletion or
+change is reported and the books refuse to open until the inconsistency is
+resolved. There is intentionally no ordinary Edit or Reconcile action after
+Finish. An explicit reopen/rollback workflow is not implemented.
 
 For a new PDF, install the optional Python parser in a separate environment
 (Python 3.13 is supported by the pinned hybrid dependencies):
@@ -202,12 +277,19 @@ amounts, or split postings as appropriate, then **F2** saves the revision and
 returns to the list. Esc / Back opens a discard confirmation for the unsaved revision.
 Recorded statement rows can also be revised directly from their statement list.
 
+The journal browser is a chronological one-row table. When `bank_account` is
+configured, **Bank change** and the running **Bank balance** are right-aligned;
+balances include earlier-year activity even though the page lists only the
+configured year. Up/Down selects a row, Enter revises it, and Esc or `q` returns
+to the menu. These key instructions appear once in the footer rather than on
+every transaction.
+
 `write_journal` is the working section. Only transactions physically stored
 there can be revised; entries in other included journals remain read-only.
 Existing books are not migrated or changed just by opening this screen.
-This is the working-entry editing milestone: reconciliation checkpoints,
-period closing, deletion, and rollback to a checkpoint are not implemented yet.
-No account or period is automatically marked reconciled.
+Deletion, period closing, and reopening or rolling back a finished reconciliation
+are not implemented. A transaction becomes reconciled only through the explicit
+Finish action described above.
 
 A revision preserves the transaction's stable `id`, replaces only its original
 source range, and leaves all bytes outside that range intact. It never appends
@@ -244,9 +326,13 @@ names, ignoring case. The code is the first number-prefixed account component;
 numbers in descendant names do not change its classification.
 
 Use **Ctrl-N/Ctrl-P** to cycle suggestions and **Enter** to accept the highlighted
-suggestion. Enter without suggestions advances to the next field. You can also
-type complete values directly. New posting accounts start blank rather than
-silently selecting the first chart account.
+suggestion. On an account field with no filtered suggestions—including an
+existing full account in the revision form—Enter opens the complete declared
+account list without clearing the current value. Up/Down moves within that
+explicit chooser and Enter accepts; Tab leaves the field. On other fields,
+Enter without suggestions advances. You can also type complete values directly.
+New posting accounts start blank rather than silently selecting the first chart
+account.
 
 Transactions accept any number of posting rows with account and amount columns,
 each with a declared account and a signed USD amount:
@@ -313,7 +399,10 @@ go run ./cmd/wat --config local/water-books/wat.yaml report income-statement
 
 Journal and income reports show the selected year's activity. Trial balance and
 balance sheet include earlier balances through the selected year-end and exclude
-later activity. The journals remain usable directly:
+later activity. The balance sheet uses hledger's `balancesheetequity`, showing
+assets, liabilities, and equity. Its Net line reflects unclosed income/expense
+balances; displaying the report does not post a closing entry to equity.
+The journals remain usable directly:
 
 ```sh
 hledger -f local/water-books/books/books.journal
@@ -346,5 +435,6 @@ edit the books concurrently with a save.
 Passing `wat check` establishes syntax, declared accounts/commodities, posting
 account depth, balance
 assertions, and balanced entries, not correct classification, completeness,
-regulatory compliance, or bank reconciliation. There is no implicit balancing
-adjustment, cleared status, or year-close operation.
+regulatory compliance, or a new bank reconciliation. Existing reconciliation
+checkpoint integrity is verified when the books open. There is no implicit
+balancing adjustment or year-close operation.

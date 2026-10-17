@@ -11,6 +11,7 @@ import (
 )
 
 const statementJSON = `{
+ "wat_statement_period":{"start":"2021-04-01","end":"2021-05-31"},
  "transactions":[
   {"booking_date":"2021-04-01","description":"OPENING DEPOSIT","currency":"USD","amount":"100.00"},
   {"booking_date":"2021-04-05","description":"POWER CO","currency":"USD","amount":"-12.34"},
@@ -35,6 +36,7 @@ func statementFixture(t *testing.T) (*Books, *Statement, string) {
 func TestStatementCacheAndValidation(t *testing.T) {
 	books, s, pdf := statementFixture(t)
 	require.Len(t, s.Rows, 3)
+	require.Equal(t, &StatementPeriod{Start: "2021-04-01", End: "2021-05-31"}, s.Period)
 	require.Equal(t, int64(-1234), s.Rows[1].Cents)
 	again, err := books.LoadStatement(pdf, StatementOptions{}, nil)
 	require.NoError(t, err)
@@ -58,6 +60,106 @@ func TestStatementCacheAndValidation(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(books.Config.root, s.Source), []byte("%PDF-changed"), 0600))
 	_, err = books.LoadStatement(pdf, StatementOptions{}, nil)
 	require.ErrorContains(t, err, "fingerprint")
+}
+
+func TestStatementPeriodValidation(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
+	for _, test := range []struct{ old, replacement, message string }{
+		{`"start":"2021-04-01"`, `"start":"2021-04-31"`, "valid YYYY-MM-DD"},
+		{`"end":"2021-05-31"`, `"end":"2021-05-32"`, "valid YYYY-MM-DD"},
+		{`"start":"2021-04-01"`, `"start":"2021-06-01"`, "in order"},
+		{`"start":"2021-04-01"`, `"start":"2021-04-02"`, "row 1 is outside"},
+		{`"end":"2021-05-31"`, `"end":"2021-05-04"`, "row 3 is outside"},
+	} {
+		t.Run(test.replacement, func(t *testing.T) {
+			_, err := books.decodeStatement([]byte(strings.Replace(statementJSON, test.old, test.replacement, 1)), statement.Hash, dir)
+			require.ErrorContains(t, err, test.message)
+		})
+	}
+	legacy := strings.Replace(statementJSON, ` "wat_statement_period":{"start":"2021-04-01","end":"2021-05-31"},`, "", 1)
+	decoded, err := books.decodeStatement([]byte(legacy), statement.Hash, dir)
+	require.NoError(t, err)
+	require.Nil(t, decoded.Period, "do not infer statement dates from transactions")
+	require.Equal(t, statement.Rows, decoded.Rows)
+	for index := range statement.Rows {
+		require.Equal(t, statement.key(index), decoded.key(index), "period metadata must not change row identity")
+	}
+}
+
+func TestCachedStatementsResumeWithoutInputFiles(t *testing.T) {
+	books, first, pdf := statementFixture(t)
+	root := books.Config.root
+	laterPDF := filepath.Join(root, "later.pdf")
+	laterExtraction := filepath.Join(root, "later.json")
+	require.NoError(t, os.WriteFile(laterPDF, []byte("%PDF-1.7\nlater synthetic statement\n"), 0600))
+	laterJSON := strings.ReplaceAll(strings.ReplaceAll(statementJSON, "2021-04-", "2021-11-"), "2021-05-", "2021-12-")
+	require.NoError(t, os.WriteFile(laterExtraction, []byte(laterJSON), 0600))
+	later, err := books.LoadStatement(laterPDF, StatementOptions{Extraction: laterExtraction}, nil)
+	require.NoError(t, err)
+	for _, path := range []string{pdf, filepath.Join(root, "extraction.json"), laterPDF, laterExtraction} {
+		require.NoError(t, os.Remove(path))
+	}
+	books.Config.Statement = StatementConfig{Python: "missing-python", OllamaURL: "http://invalid.test", Model: "unused"}
+	cacheRoot := filepath.Join(books.Config.Sources, "statements")
+	require.NoError(t, os.Mkdir(filepath.Join(cacheRoot, ".extract-unfinished"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(cacheRoot, "notes.txt"), []byte("not a statement"), 0600))
+	statements, err := books.CachedStatements()
+	require.NoError(t, err)
+	require.Equal(t, []*Statement{first, later}, statements, "sort by extracted activity dates, not PDF fingerprints")
+	require.Empty(t, read(t, books.Config.WriteJournal), "browsing must not post anything")
+}
+
+func TestCachedStatementsEmptyWorkspace(t *testing.T) {
+	books, _ := fixture(t, "")
+	statements, err := books.CachedStatements()
+	require.NoError(t, err)
+	require.Empty(t, statements)
+	_, err = os.Lstat(books.Config.Sources)
+	require.True(t, os.IsNotExist(err), "browsing must not create cache directories")
+	require.NoError(t, os.MkdirAll(filepath.Join(books.Config.Sources, "statements"), 0700))
+	statements, err = books.CachedStatements()
+	require.NoError(t, err)
+	require.Empty(t, statements)
+}
+
+func TestCachedStatementsRejectInvalidCache(t *testing.T) {
+	for _, test := range []struct {
+		name, message string
+		change        func(*testing.T, *Books, string)
+	}{
+		{"changed PDF", "fingerprint", func(t *testing.T, _ *Books, dir string) {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "original.pdf"), []byte("%PDF-changed"), 0600))
+		}},
+		{"missing extraction", "cache is incomplete", func(t *testing.T, _ *Books, dir string) {
+			require.NoError(t, os.Remove(filepath.Join(dir, "extracted.json")))
+		}},
+		{"invalid extraction", "decode statement", func(t *testing.T, _ *Books, dir string) {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "extracted.json"), []byte("{"), 0600))
+		}},
+		{"linked PDF", "nonregular files", func(t *testing.T, _ *Books, dir string) {
+			path := filepath.Join(dir, "original.pdf")
+			require.NoError(t, os.Rename(path, path+".saved"))
+			require.NoError(t, os.Symlink(path+".saved", path))
+		}},
+		{"linked cache directory", "not a regular directory", func(t *testing.T, _ *Books, dir string) {
+			require.NoError(t, os.Rename(dir, dir+".saved"))
+			require.NoError(t, os.Symlink(dir+".saved", dir))
+		}},
+		{"linked source directory", "not a regular directory", func(t *testing.T, books *Books, _ string) {
+			require.NoError(t, os.Rename(books.Config.Sources, books.Config.Sources+".saved"))
+			require.NoError(t, os.Symlink(books.Config.Sources+".saved", books.Config.Sources))
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			books, statement, _ := statementFixture(t)
+			dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
+			test.change(t, books, dir)
+			_, err := books.CachedStatements()
+			require.ErrorContains(t, err, test.message)
+			require.Empty(t, read(t, books.Config.WriteJournal))
+		})
+	}
 }
 
 func TestStatementRecordingLearningAndProvenance(t *testing.T) {

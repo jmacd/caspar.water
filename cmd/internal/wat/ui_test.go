@@ -33,6 +33,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 				r, _, _, _ := screen.GetContent(x, y)
 				text.WriteRune(r)
 			}
+
 			text.WriteByte('\n')
 		}
 		frames <- terminalFrame{text: text.String()}
@@ -224,6 +225,29 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	}
 }
 
+func TestJournalBrowserUsesRightAlignedBankColumns(t *testing.T) {
+	books, _ := fixture(t, testEntry().journalText("entry"))
+	books.Config.BankAccount = "Assets:Bank:Checking"
+	ui := &terminal{app: tview.NewApplication(), books: books}
+	ui.journalEntries()
+	table, ok := ui.app.GetFocus().(*tview.Table)
+	require.True(t, ok)
+	require.Equal(t, 5, table.GetColumnCount())
+	require.Equal(t, "Bank change", table.GetCell(0, 3).Text)
+	require.Equal(t, tview.AlignRight, table.GetCell(0, 3).Align)
+	require.Equal(t, "Bank balance", table.GetCell(0, 4).Text)
+	require.Equal(t, tview.AlignRight, table.GetCell(0, 4).Align)
+	require.Equal(t, "-12.34", table.GetCell(1, 3).Text)
+	require.Equal(t, tview.AlignRight, table.GetCell(1, 3).Align)
+	require.Equal(t, "-12.34", table.GetCell(1, 4).Text)
+	require.Equal(t, tview.AlignRight, table.GetCell(1, 4).Align)
+	for row := 0; row < table.GetRowCount(); row++ {
+		for column := 0; column < table.GetColumnCount(); column++ {
+			require.NotContains(t, table.GetCell(row, column).Text, "Enter to revise")
+		}
+	}
+}
+
 func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	app := tview.NewApplication()
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -330,6 +354,24 @@ func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	assertFocus(9)
 	key(tcell.KeyUp, 0)
 	assertFocus(7)
+
+	entry.Postings[0].Account = bank
+	focus = 5
+	grid = newEntryGrid(app, &entry, draft, &focus,
+		func() {}, func() {}, func() {}, func() {})
+	grid.SetRect(0, 0, 100, 24)
+	app.SetFocus(grid.controls[5].primitive)
+	draw()
+	key(tcell.KeyEnter, 0)
+	assertFocus(5)
+	require.Equal(t, bank, entry.Postings[0].Account, "opening the chooser must not clear the current account")
+	key(tcell.KeyDown, 0)
+	assertFocus(5)
+	key(tcell.KeyEnter, 0)
+	require.Equal(t, savings, entry.Postings[0].Account)
+	assertFocus(5)
+	key(tcell.KeyTab, 0)
+	assertFocus(6)
 
 	entry.Postings = make([]Posting, 30)
 	grid = newEntryGrid(app, &entry, draft, &focus,

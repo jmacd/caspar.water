@@ -11,6 +11,7 @@ type entryControl struct {
 	primitive tview.Primitive
 	row, col  int
 	input     bool
+	browsing  *bool
 }
 
 type entryGrid struct {
@@ -53,9 +54,9 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		rows[i] = 1
 	}
 	inputs.SetRows(rows...)
-	register := func(primitive tview.Primitive, box *tview.Box, row, col int, input bool) {
+	register := func(primitive tview.Primitive, box *tview.Box, row, col int, input bool, browsing *bool) {
 		index := len(grid.controls)
-		grid.controls = append(grid.controls, entryControl{primitive, row, col, input})
+		grid.controls = append(grid.controls, entryControl{primitive, row, col, input, browsing})
 		box.SetFocusFunc(func() {
 			*focus = index
 			if field, ok := primitive.(*tview.InputField); ok {
@@ -82,7 +83,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		case 2:
 			completeInput(field, func(query string) []string { return matchingText(draft.history.descriptions, query) })
 		}
-		register(field, field.Box, row, 0, true)
+		register(field, field.Box, row, 0, true, nil)
 		inputs.AddItem(field, row, 0, 1, 3, 0, 0, row == 0)
 	}
 	inputs.AddItem(tview.NewTextView().SetText("#"), 6, 0, 1, 1, 0, 0, false)
@@ -94,7 +95,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		account := tview.NewInputField().SetText(posting.Account).
 			SetPlaceholder("Account code or name").
 			SetChangedFunc(func(text string) { posting.Account = text })
-		completeInput(account, func(query string) []string { return matchingAccounts(draft.accounts, query) })
+		browsing := completeAccountInput(account, draft.accounts)
 		amount := tview.NewInputField().SetText(posting.Amount).
 			SetPlaceholder("0.00 or -0.00").
 			SetChangedFunc(func(text string) {
@@ -104,8 +105,8 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		inputs.AddItem(tview.NewTextView().SetText(fmt.Sprint(i+1)), row, 0, 1, 1, 0, 0, false)
 		inputs.AddItem(account, row, 1, 1, 1, 0, 0, false)
 		inputs.AddItem(amount, row, 2, 1, 1, 0, 0, false)
-		register(account, account.Box, row, 0, true)
-		register(amount, amount.Box, row, 1, true)
+		register(account, account.Box, row, 0, true, browsing)
+		register(amount, amount.Box, row, 1, true, nil)
 	}
 	buttons := tview.NewFlex()
 	for _, action := range []struct {
@@ -120,7 +121,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		button := tview.NewButton(action.label).SetSelectedFunc(action.run)
 		button.SetDisabled(action.label == "Remove last posting" && len(entry.Postings) <= 2)
 		buttons.AddItem(button, 0, 1, false)
-		register(button, button.Box, 8+len(entry.Postings), 0, false)
+		register(button, button.Box, 8+len(entry.Postings), 0, false, nil)
 	}
 	grid.AddItem(inputs, 0, 1, true).
 		AddItem(grid.balance, 2, 0, false).
@@ -147,11 +148,20 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 	grid.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyTab:
+			if current := grid.controls[*focus]; current.browsing != nil {
+				*current.browsing = false
+			}
 			step(1)
 		case tcell.KeyBacktab:
+			if current := grid.controls[*focus]; current.browsing != nil {
+				*current.browsing = false
+			}
 			step(-1)
 		case tcell.KeyUp, tcell.KeyDown:
 			current := grid.controls[*focus]
+			if current.browsing != nil && *current.browsing {
+				return event
+			}
 			target := -1
 			for index, candidate := range grid.controls {
 				if !candidate.input ||

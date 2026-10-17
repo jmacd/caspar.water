@@ -3,6 +3,7 @@ package wat
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -102,4 +103,49 @@ func completeInput(input *tview.InputField, match func(string) []string) {
 		}
 		return event
 	})
+}
+
+func completeAccountInput(input *tview.InputField, accounts []string) *bool {
+	browsing := false
+	var matches []string
+	input.SetAutocompleteFunc(func(query string) []string {
+		if browsing {
+			matches = append(matches[:0], accounts...)
+			if index := slices.Index(matches, query); index > 0 {
+				matches[0], matches[index] = matches[index], matches[0]
+			}
+		} else {
+			matches = matchingAccounts(accounts, query)
+		}
+		entries := make([]string, len(matches))
+		for i, text := range matches {
+			entries[i] = tview.Escape(text)
+		}
+		return entries
+	}).SetAutocompletedFunc(func(_ string, index, source int) bool {
+		if source == tview.AutocompletedNavigate {
+			return false
+		}
+		if index >= 0 && index < len(matches) {
+			input.SetText(matches[index])
+		}
+		browsing = false
+		return true
+	})
+	input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlN:
+			return tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
+		case tcell.KeyCtrlP:
+			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
+		case tcell.KeyEnter:
+			if !browsing && len(matchingAccounts(accounts, input.GetText())) == 0 {
+				browsing = true
+				input.Autocomplete()
+				return nil
+			}
+		}
+		return event
+	})
+	return &browsing
 }
