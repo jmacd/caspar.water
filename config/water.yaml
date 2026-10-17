@@ -54,7 +54,7 @@ spec:
         label: "Well depth"
         description: >-
           The well has recovered recently.
-        href: "/data/well-depth.html"
+        href: "/data/well-depth.html?range=24h"
         type: stale-or-all-below
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
@@ -67,7 +67,7 @@ spec:
         label: "Tank level"
         description: >-
           The tank stays full.
-        href: "/data/tank-level.html"
+        href: "/data/tank-level.html?range=24h"
         type: any-observed-below
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
@@ -79,7 +79,7 @@ spec:
         label: "System pressure"
         description: >-
           System pressure indicates demand.
-        href: "/data/system-pressure.html"
+        href: "/data/system-pressure.html?range=7d"
         type: average-range
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
@@ -92,7 +92,7 @@ spec:
         label: "Chlorine pump"
         description: >-
           Chlorine level drops while well is pumping.
-        href: "/data/chlorine-level.html"
+        href: "/data/chlorine-level.html?range=7d"
         type: rate-while
         measurement:
           source: "oteljson:///ingest/casparwater*.json"
@@ -132,7 +132,7 @@ spec:
         label: "pH"
         description: >-
           Tank pH meter is functional.
-        href: "/data/ph.html"
+        href: "/data/ph.html?range=7d"
         type: stale-or-below
         source: "oteljson:///ingest/casparwater*.json"
         timestamp_column: timestamp
