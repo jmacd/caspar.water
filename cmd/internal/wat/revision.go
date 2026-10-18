@@ -14,8 +14,10 @@ import (
 type JournalEntry struct {
 	ID, Date, Description string
 	ReadOnly              string
+	BankAccount           string
 	BankChange            int64
 	BankBalance           int64
+	BankValues            bool
 }
 
 type entryRevision struct {
@@ -70,34 +72,48 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 		}
 	}
 	var entries []JournalEntry
-	bankBalance := int64(0)
+	bankBalances := make(map[string]int64)
 	for _, tx := range transactions {
 		date, err := time.Parse("2006-01-02", tx.Date)
 		if err != nil {
 			return nil, fmt.Errorf("read journal date: %w", err)
 		}
-		bankChange := int64(0)
-		if b.Config.BankAccount != "" {
-			bankChange, err = bankAmount(tx, b.Config.BankAccount)
+		bankAccount := ""
+		bankChange, bankBalance := int64(0), int64(0)
+		bankValues := false
+		for _, bank := range b.Config.BankAccounts {
+			amount, err := bankAmount(tx, bank.Account)
 			if err != nil {
 				return nil, fmt.Errorf("%s %s: read bank amount: %w", tx.Date, tx.Description, err)
 			}
-			bankBalance += bankChange
+			bankBalances[bank.Account] += amount
+			if amount == 0 {
+				continue
+			}
+			if bankAccount != "" {
+				bankAccount = "multiple"
+				bankValues = false
+				continue
+			}
+			bankAccount = bank.Account
+			bankChange = amount
+			bankBalance = bankBalances[bank.Account]
+			bankValues = true
 		}
-		if date.Year() != b.Config.Year {
+		if date.Year() != b.Config.ReportYear {
 			continue
 		}
 		id, idErr := transactionID(tx)
 		entry := JournalEntry{
 			ID: id, Date: tx.Date, Description: tx.Description,
-			BankChange: bankChange, BankBalance: bankBalance,
+			BankAccount: bankAccount, BankChange: bankChange, BankBalance: bankBalance, BankValues: bankValues,
 		}
 		switch {
 		case locked[id] != nil:
 			entry.ReadOnly = fmt.Sprintf("Locked by finished bank reconciliation %s to %s.",
 				locked[id].Period.Start, locked[id].Period.End)
-		case b.transactionFile(tx) != b.Config.WriteJournal:
-			entry.ReadOnly = "Entry is outside the configured working journal."
+		case !b.Config.writableJournal(b.transactionFile(tx)):
+			entry.ReadOnly = "Entry is outside the configured writable journals."
 		case idErr != nil:
 			entry.ReadOnly = idErr.Error()
 		case counts[id] != 1:
@@ -176,7 +192,7 @@ func editableEntry(tx journalTransaction) (Entry, error) {
 	for index, posting := range tx.Postings {
 		if posting.Type != "RegularPosting" || posting.Status != "Unmarked" ||
 			posting.Comment != "" || posting.Date != nil || posting.Date2 != nil ||
-			len(posting.Tags) != 0 || presentJSON(posting.Assertion) || presentJSON(posting.Original) ||
+			!generatedAccountTags(posting.Tags) || presentJSON(posting.Assertion) || presentJSON(posting.Original) ||
 			len(posting.Amounts) != 1 || presentJSON(posting.Amounts[0].Cost) || presentJSON(posting.Amounts[0].CostBasis) {
 			return unsupported()
 		}
@@ -189,6 +205,15 @@ func editableEntry(tx journalTransaction) (Entry, error) {
 		entry.Postings = append(entry.Postings, Posting{Account: posting.Account, Amount: formatCents(cents)})
 	}
 	return entry, nil
+}
+
+func generatedAccountTags(tags [][2]string) bool {
+	for _, tag := range tags {
+		if tag[0] != "type" {
+			return false
+		}
+	}
+	return true
 }
 
 func entryOffsets(tx journalTransaction, data []byte) (int, int, error) {
@@ -220,10 +245,6 @@ func entryOffsets(tx journalTransaction, data []byte) (int, int, error) {
 }
 
 func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
-	draft, err := b.NewDraft()
-	if err != nil {
-		return nil, Entry{}, err
-	}
 	transactions, err := b.transactions(b.Config.Journal)
 	if err != nil {
 		return nil, Entry{}, err
@@ -249,14 +270,19 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 		return nil, Entry{}, fmt.Errorf("transaction is locked by finished bank reconciliation %s to %s",
 			checkpoint.Period.Start, checkpoint.Period.End)
 	}
-	if b.transactionFile(*found) != b.Config.WriteJournal {
-		return nil, Entry{}, fmt.Errorf("only entries in the configured working journal can be revised; other included journals are read-only")
+	target := b.transactionFile(*found)
+	if !b.Config.writableJournal(target) {
+		return nil, Entry{}, fmt.Errorf("only entries in configured manual or bank journals can be revised; other included journals are read-only")
+	}
+	draft, err := b.newDraft(target)
+	if err != nil {
+		return nil, Entry{}, err
 	}
 	entry, err := editableEntry(*found)
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	start, end, err := entryOffsets(*found, draft.files[b.Config.WriteJournal].data)
+	start, end, err := entryOffsets(*found, draft.files[draft.target].data)
 	if err != nil {
 		return nil, Entry{}, err
 	}
@@ -275,7 +301,7 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 		if statement.Hash != hash || index > len(statement.Rows) {
 			return nil, Entry{}, fmt.Errorf("recorded entry does not identify a cached statement row")
 		}
-		draft.statement = &statementDraft{statement, index - 1, b.Config.BankAccount}
+		draft.statement = &statementDraft{statement, index - 1, statement.BankAccount}
 		if err := draft.checkStatement(*found); err != nil {
 			return nil, Entry{}, err
 		}
@@ -292,10 +318,10 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	if _, err := entry.render(b.Config.Year, declared, id); err != nil {
+	if _, err := entry.render(b.Config.ReportYear, declared, id); err != nil {
 		return nil, Entry{}, fmt.Errorf("entry cannot be represented by the structured form: %w", err)
 	}
-	if err := draft.previewText(string(draft.files[b.Config.WriteJournal].data[start:end]), false); err != nil {
+	if err := draft.previewText(string(draft.files[draft.target].data[start:end]), false); err != nil {
 		return nil, Entry{}, fmt.Errorf("verify original transaction source range: %w", err)
 	}
 	draft.text = ""

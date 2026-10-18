@@ -114,9 +114,8 @@ func (e Entry) balanceStatus() string {
 }
 
 func (e Entry) render(year int, accounts []string, id string) (string, error) {
-	date, err := time.Parse("2006-01-02", e.Date)
-	if err != nil || date.Year() != year {
-		return "", fmt.Errorf("date must be YYYY-MM-DD within %d", year)
+	if _, err := time.Parse("2006-01-02", e.Date); err != nil {
+		return "", fmt.Errorf("date must be a valid YYYY-MM-DD date")
 	}
 	for _, value := range []string{e.Payee, e.Description, e.Reference, e.Source, e.BankRow, e.BankDescription} {
 		if !singleLine(value) {
@@ -144,7 +143,7 @@ func (e Entry) render(year int, accounts []string, id string) (string, error) {
 		}
 		if !found || !singleLine(posting.Account) || strings.Contains(posting.Account, "  ") ||
 			strings.ContainsAny(posting.Account, ";[]()") {
-			return "", fmt.Errorf("select a declared posting account with at least three nonempty levels (category:CPUC-account:detail): %q", posting.Account)
+			return "", fmt.Errorf("select a declared Category:CPUC-number:LocalName posting account: %q", posting.Account)
 		}
 		cents, err := ParseCents(posting.Amount)
 		if err != nil {

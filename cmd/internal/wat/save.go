@@ -15,15 +15,17 @@ type fileState struct {
 }
 
 type Draft struct {
-	books     *Books
-	files     map[string]fileState
-	accounts  []string
-	history   completionHistory
-	id        string
-	text      string
-	saved     bool
-	statement *statementDraft
-	revision  *entryRevision
+	books         *Books
+	files         map[string]fileState
+	accounts      []string
+	accountSearch map[string]string
+	history       completionHistory
+	id            string
+	text          string
+	saved         bool
+	statement     *statementDraft
+	revision      *entryRevision
+	target        string
 }
 
 func (b *Books) snapshot() (map[string]fileState, error) {
@@ -60,13 +62,25 @@ func (b *Books) snapshot() (map[string]fileState, error) {
 		}
 		files[path] = fileState{data: data, mode: info.Mode().Perm()}
 	}
-	if _, ok := files[b.Config.WriteJournal]; !ok {
-		return nil, fmt.Errorf("write_journal must exist and be included in journal")
+	for _, target := range b.Config.writableJournals() {
+		if _, ok := files[target]; !ok {
+			return nil, fmt.Errorf("writable journal must exist and be included in journal: %s", target)
+		}
+	}
+	if _, ok := files[b.Config.AccountChart]; !ok {
+		return nil, fmt.Errorf("account_chart must exist and be included in journal: %s", b.Config.AccountChart)
 	}
 	return files, nil
 }
 
 func (b *Books) NewDraft() (*Draft, error) {
+	return b.newDraft(b.Config.ManualJournal)
+}
+
+func (b *Books) newDraft(target string) (*Draft, error) {
+	if !b.Config.writableJournal(target) {
+		return nil, fmt.Errorf("draft target is not a configured writable journal: %s", target)
+	}
 	files, err := b.snapshot()
 	if err != nil {
 		return nil, err
@@ -74,9 +88,15 @@ func (b *Books) NewDraft() (*Draft, error) {
 	if err := b.checkSyntax(b.Config.Journal); err != nil {
 		return nil, err
 	}
-	accounts, err := b.Accounts()
+	postingAccounts, err := b.PostingAccounts()
 	if err != nil {
 		return nil, err
+	}
+	accounts := make([]string, 0, len(postingAccounts))
+	accountSearch := make(map[string]string, len(postingAccounts))
+	for _, account := range postingAccounts {
+		accounts = append(accounts, account.Name)
+		accountSearch[account.Name] = account.FormalCategory + " " + account.Number + " " + strings.ReplaceAll(account.FormalName, "-", " ")
 	}
 	history, err := b.completionHistory()
 	if err != nil {
@@ -86,7 +106,10 @@ func (b *Books) NewDraft() (*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Draft{books: b, files: files, accounts: accounts, history: history, id: id}, nil
+	return &Draft{
+		books: b, files: files, accounts: accounts, accountSearch: accountSearch,
+		history: history, id: id, target: target,
+	}, nil
 }
 
 func (d *Draft) Preview(entry Entry) (string, error) {
@@ -94,7 +117,7 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 	if d.saved {
 		return "", fmt.Errorf("this transaction has already been saved")
 	}
-	text, err := entry.render(d.books.Config.Year, d.accounts, d.id)
+	text, err := entry.render(d.books.Config.ReportYear, d.accounts, d.id)
 	if err != nil {
 		return "", err
 	}
@@ -129,7 +152,7 @@ func (d *Draft) proposed() []byte {
 }
 
 func (d *Draft) proposedText(text string) []byte {
-	original := d.files[d.books.Config.WriteJournal].data
+	original := d.files[d.target].data
 	if d.revision != nil {
 		data := append([]byte{}, original[:d.revision.start]...)
 		data = append(data, text...)
@@ -170,7 +193,7 @@ func (d *Draft) validateBooks(data []byte, requireDetail bool) (err error) {
 			return err
 		}
 		content := state.data
-		if path == d.books.Config.WriteJournal {
+		if path == d.target {
 			content = data
 		}
 		if err := os.WriteFile(target, content, 0600); err != nil {
@@ -245,7 +268,7 @@ func (d *Draft) Save() (backup string, err error) {
 	if d.saved || d.text == "" {
 		return "", fmt.Errorf("preview an unsaved transaction before saving")
 	}
-	target := d.books.Config.WriteJournal
+	target := d.target
 	lockPath := target + ".wat-lock"
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {

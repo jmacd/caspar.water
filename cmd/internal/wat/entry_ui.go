@@ -95,7 +95,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		account := tview.NewInputField().SetText(posting.Account).
 			SetPlaceholder("Account code or name").
 			SetChangedFunc(func(text string) { posting.Account = text })
-		browsing := completeAccountInput(account, draft.accounts)
+		browsing := completeAccountInput(account, draft.accounts, draft.accountSearch)
 		amount := tview.NewInputField().SetText(posting.Amount).
 			SetPlaceholder("0.00 or -0.00").
 			SetChangedFunc(func(text string) {

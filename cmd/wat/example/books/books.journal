@@ -1,2 +1,4 @@
 include accounts.journal
-include 2021.journal
+include local-accounts.journal
+include manual.journal
+include bank-sbmc-0000.journal

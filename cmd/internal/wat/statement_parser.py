@@ -1,40 +1,78 @@
 import json
+import os
 import re
 import sys
-import time
 
-import httpx
-from bankstatementparser.hybrid import LLMExtractor, smart_ingest
-from pypdf import PdfReader, PdfWriter
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from urllib.parse import urlparse
-from importlib.metadata import version
+from bankstatementparser.hybrid import (
+    IngestResult,
+    LLMExtractor,
+    VerificationStatus,
+    extract_text_pages,
+    ollama_direct_completion,
+    verify_transactions,
+)
 from datetime import datetime, timezone
+from importlib.metadata import version
+from urllib.parse import quote, urlparse
 
 
-path, endpoint, model, selected = sys.argv[1:]
+path, endpoint, api_version, model = sys.argv[1:]
 url = urlparse(endpoint)
-if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment:
-    raise ValueError("statement.ollama_url must be an HTTP(S) Ollama base URL")
-model = model.removeprefix("ollama/")
-reader = PdfReader(path)
-pages = json.loads(selected) or list(range(1, len(reader.pages) + 1))
-if len(set(pages)) != len(pages) or any(p < 1 or p > len(reader.pages) for p in pages):
-    raise ValueError("--statement-pages must contain unique, valid 1-based page numbers")
-sparse = [p for p in pages if len((reader.pages[p - 1].extract_text() or "").strip()) < 50]
-if sparse:
-    raise ValueError(
-        f"PDF pages {sparse} lack a usable text layer. Inspect them before explicitly "
-        "selecting transaction pages with --statement-pages. This version does not OCR scans."
-    )
+if (
+    url.scheme not in ("http", "https")
+    or not url.hostname
+    or url.username
+    or url.password
+    or url.query
+    or url.fragment
+):
+    raise ValueError("statement.api_base must be an HTTP(S) API base URL")
+provider, separator, provider_model = model.partition("/")
+if not separator or not provider_model or provider not in ("ollama", "azure"):
+    raise ValueError("statement.model must use an ollama/ or azure/ provider prefix")
+if provider == "azure":
+    if (
+        url.scheme != "https"
+        or not url.hostname.endswith(".openai.azure.com")
+        or url.path not in ("", "/")
+    ):
+        raise ValueError("Azure statement.api_base must be an https://*.openai.azure.com base URL")
+    if not api_version:
+        raise ValueError("statement.api_version is required for Azure")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", provider_model):
+        raise ValueError("Azure statement.model deployment contains unsupported characters")
+    azure_token = os.environ.get("AZURE_AD_TOKEN", "")
+    if not azure_token:
+        raise ValueError("AZURE_AD_TOKEN is required for Azure statement extraction")
 
+
+def completion(**kwargs):
+    if provider == "ollama":
+        kwargs["timeout"] = 1100
+        return ollama_direct_completion(**kwargs)
+    import httpx
+
+    response = httpx.post(
+        endpoint.rstrip("/")
+        + "/openai/deployments/"
+        + quote(provider_model, safe="")
+        + "/chat/completions",
+        params={"api-version": api_version},
+        headers={"Authorization": "Bearer " + azure_token},
+        json={"messages": kwargs["messages"]},
+        timeout=300,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+layout = "\n".join(extract_text_pages(path))
 period = None
-layout = "\n".join(reader.pages[p - 1].extract_text(extraction_mode="layout") or "" for p in pages)
 date_pattern = r"(\d{1,2}/\d{1,2}/(?:\d{4}|\d{2}))(?=\s|$)"
 beginning = set(re.findall(r"Beginning\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
 ending = set(re.findall(r"Ending\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
 if len(beginning) == 1 and len(ending) == 1:
+
     def iso_date(text):
         date_format = "%m/%d/%Y" if len(text.rsplit("/", 1)[1]) == 4 else "%m/%d/%y"
         return datetime.strptime(text, date_format).date().isoformat()
@@ -44,73 +82,41 @@ if len(beginning) == 1 and len(ending) == 1:
         raise ValueError("PDF beginning/ending balance dates are out of order")
     period = {"start": start, "end": end}
 
-
-def completion(**kwargs):
-    payload = {
-        "model": model,
-        "messages": kwargs["messages"],
-        "stream": True,
-        "format": "json",
-        "think": False,
-        "options": {"temperature": 0.0, "num_ctx": 16384, "num_predict": 8192},
-    }
-    chunks = []
-    finished = False
-    started = time.monotonic()
-    with httpx.Client(timeout=httpx.Timeout(1100.0, connect=10.0), trust_env=False) as client:
-        with client.stream("POST", endpoint.rstrip("/") + "/api/chat", json=payload) as reply:
-            reply.raise_for_status()
-            for line in reply.iter_lines():
-                if not line:
-                    continue
-                data = json.loads(line)
-                if data.get("error"):
-                    raise RuntimeError(data["error"])
-                if time.monotonic() - started > 1100:
-                    raise TimeoutError("statement extraction exceeded its time limit")
-                text = data.get("message", {}).get("content", "")
-                if text:
-                    chunks.append(text)
-                    if len(chunks) == 1 or len(chunks) % 250 == 0:
-                        print(f"Ollama: {len(chunks)} response chunks received", file=sys.stderr, flush=True)
-                if data.get("done"):
-                    if data.get("done_reason") == "length":
-                        raise RuntimeError("Ollama response was truncated; extract fewer transaction pages")
-                    finished = True
-    if not finished:
-        raise RuntimeError("Ollama stream ended without a completion marker")
-    return {"choices": [{"message": {"content": "".join(chunks)}}]}
-
-
-with TemporaryDirectory(prefix="wat-statement-") as temporary:
-    extracted_pdf = Path(temporary) / "selected.pdf"
-    writer = PdfWriter()
-    for page in pages:
-        writer.add_page(reader.pages[page - 1])
-    with extracted_pdf.open("wb") as output:
-        writer.write(output)
-    result = smart_ingest(
-        extracted_pdf,
-        extractor=LLMExtractor(
-            model="ollama/" + model, api_base=endpoint, completion_fn=completion
-        ),
+extractor = LLMExtractor(
+    model=model,
+    api_base=endpoint,
+    completion_fn=completion,
+)
+text_result = extractor.extract(layout)
+verification = verify_transactions(
+    text_result.transactions,
+    opening_balance=text_result.opening_balance,
+    closing_balance=text_result.closing_balance,
+)
+if verification.status != VerificationStatus.VERIFIED:
+    raise ValueError(
+        f"bank statement text extraction did not balance-verify: {verification.message}"
     )
-    document = json.loads(result.to_json())
-    if period is not None:
-        document["wat_statement_period"] = period
-    else:
-        document["warnings"].append(
-            "Statement period unavailable: no unambiguous dated Beginning Balance and Ending Balance labels found in selected PDF pages."
-        )
-    document["selected_pages"] = pages
-    document["wat_extraction"] = {
-        "parser_version": version("bankstatementparser"),
-        "ollama_url": endpoint,
-        "model": model,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "thinking": False,
-    }
-    excluded = [p for p in range(1, len(reader.pages) + 1) if p not in pages]
-    if excluded:
-        document["warnings"].append(f"Operator explicitly excluded PDF pages {excluded}")
-    print(json.dumps(document))
+result = IngestResult(
+    source_method="llm",
+    source_format="pdf",
+    transactions=tuple(text_result.transactions),
+    verification=verification,
+)
+document = json.loads(result.to_json())
+if period is not None:
+    document["wat_statement_period"] = period
+else:
+    document["warnings"].append(
+        "Statement period unavailable: no unambiguous dated Beginning Balance and Ending Balance labels found in the PDF."
+    )
+document["wat_extraction"] = {
+    "parser_version": version("bankstatementparser"),
+    "provider": provider,
+    "api_base": endpoint,
+    "api_version": api_version or None,
+    "model": model,
+    "created_at": datetime.now(timezone.utc).isoformat(),
+    "source_method": result.source_method,
+}
+print(json.dumps(document))

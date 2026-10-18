@@ -9,10 +9,10 @@ import (
 )
 
 func TestMatchingAccounts(t *testing.T) {
-	bank := "Assets:131.2-Cash-in-Bank:Checking-2021"
-	land := "Assets:121-Nonutility-Property:Land-131"
-	plant := "Assets:101-Water-Plant:307-Wells"
-	accounts := []string{bank, land, plant, "Assets:Well-307", "Expenses:Tax-131"}
+	bank := "Bank:131.2:Checking-2021"
+	land := "Asset:121:Land-131"
+	plant := "Asset:101:307-Wells"
+	accounts := []string{bank, land, plant, "Asset:307:Well", "Expense:408:Tax"}
 	for _, test := range []struct {
 		query string
 		want  []string
@@ -24,13 +24,13 @@ func TestMatchingAccounts(t *testing.T) {
 		{"101", []string{plant}},
 		{"2", nil},
 		{"2021", nil},
-		{"307", nil},
+		{"307", []string{"Asset:307:Well"}},
 		{"131-Cash", nil},
 		{"131.3", nil},
-		{"cash", []string{bank}},
-		{"PROPERTY", []string{land}},
+		{"cash", nil},
+		{"PROPERTY", nil},
 		{"checking-2021", []string{bank}},
-		{"well", []string{plant, "Assets:Well-307"}},
+		{"well", []string{plant, "Asset:307:Well"}},
 		{"missing", nil},
 		{"", nil},
 		{"  ", nil},
@@ -41,6 +41,12 @@ func TestMatchingAccounts(t *testing.T) {
 		})
 	}
 	require.Equal(t, []string{"131.2 Cash"}, matchingAccounts([]string{"131.2 Cash"}, "13"))
+	designations := map[string]string{
+		bank: "Asset 131.2 Cash in Bank",
+		land: "Asset 121 Nonutility Property",
+	}
+	require.Equal(t, []string{bank}, matchingAccountsWithDesignations(accounts, designations, "cash"))
+	require.Equal(t, []string{land}, matchingAccountsWithDesignations(accounts, designations, "property"))
 }
 
 func TestMatchingText(t *testing.T) {
@@ -54,20 +60,20 @@ func TestMatchingText(t *testing.T) {
 
 func TestCompletionHistory(t *testing.T) {
 	books, _ := fixture(t, `2020-06-01 Old supplier | Meter purchase
-    Assets:Bank:Checking  $-1.00
-    Expenses:Power:Utility  $1.00
+    Bank:131.2:Checking  $-1.00
+    Expense:615:Utility  $1.00
 
 2021-01-01 Electric company | Power bill
-    Assets:Bank:Checking  $-1.00
-    Expenses:Power:Utility  $1.00
+    Bank:131.2:Checking  $-1.00
+    Expense:615:Utility  $1.00
 
 2021-02-01 Electric company | Power bill
-    Assets:Bank:Checking  $-1.00
-    Expenses:Power:Utility  $1.00
+    Bank:131.2:Checking  $-1.00
+    Expense:615:Utility  $1.00
 
 2021-03-01 Payee only
-    Assets:Bank:Checking  $-1.00
-    Expenses:Power:Utility  $1.00
+    Bank:131.2:Checking  $-1.00
+    Expense:615:Utility  $1.00
 `)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)

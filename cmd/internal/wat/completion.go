@@ -59,7 +59,7 @@ func matchingText(values []string, query string) []string {
 	return matches
 }
 
-var accountCodePattern = regexp.MustCompile(`(?:^|:)([0-9]+(?:\.[0-9]+)*)(?:-|\s|$)`)
+var accountCodePattern = regexp.MustCompile(`(?:^|:)([0-9]+(?:\.[0-9]+)*)(?::|-|\s|$)`)
 
 func matchingAccounts(accounts []string, query string) []string {
 	query = strings.TrimSpace(query)
@@ -105,7 +105,29 @@ func completeInput(input *tview.InputField, match func(string) []string) {
 	})
 }
 
-func completeAccountInput(input *tview.InputField, accounts []string) *bool {
+func matchingAccountsWithDesignations(accounts []string, designations map[string]string, query string) []string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+	if query[0] >= '0' && query[0] <= '9' {
+		return matchingAccounts(accounts, query)
+	}
+	folded := strings.ToLower(query)
+	var matches []string
+	for _, account := range accounts {
+		if account == query {
+			return nil
+		}
+		if strings.Contains(strings.ToLower(account), folded) ||
+			strings.Contains(strings.ToLower(designations[account]), folded) {
+			matches = append(matches, account)
+		}
+	}
+	return matches
+}
+
+func completeAccountInput(input *tview.InputField, accounts []string, designations map[string]string) *bool {
 	browsing := false
 	var matches []string
 	input.SetAutocompleteFunc(func(query string) []string {
@@ -115,7 +137,7 @@ func completeAccountInput(input *tview.InputField, accounts []string) *bool {
 				matches[0], matches[index] = matches[index], matches[0]
 			}
 		} else {
-			matches = matchingAccounts(accounts, query)
+			matches = matchingAccountsWithDesignations(accounts, designations, query)
 		}
 		entries := make([]string, len(matches))
 		for i, text := range matches {
@@ -139,7 +161,7 @@ func completeAccountInput(input *tview.InputField, accounts []string) *bool {
 		case tcell.KeyCtrlP:
 			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 		case tcell.KeyEnter:
-			if !browsing && len(matchingAccounts(accounts, input.GetText())) == 0 {
+			if !browsing && len(matchingAccountsWithDesignations(accounts, designations, input.GetText())) == 0 {
 				browsing = true
 				input.Autocomplete()
 				return nil

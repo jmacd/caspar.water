@@ -1,0 +1,4 @@
+;; Instance-specific posting accounts. CPUC designations remain in accounts.journal.
+
+account Bank  ; type: A
+account Bank:131.2:SBMC:0000

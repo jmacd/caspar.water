@@ -1,5 +1,6 @@
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -12,13 +13,20 @@ from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
 
 
 class ParserBridgeTest(unittest.TestCase):
-    def run_bridge(self, *, pages, reason="stop", dates="Beginning Balance 11/01/21 Ending Balance 11/30/21"):
+    def run_bridge(
+        self,
+        *,
+        dates="Beginning Balance 11/01/21 Ending Balance 11/30/21",
+        closing_balance="100.00",
+        provider="ollama",
+        azure_token="synthetic-token",
+    ):
         seen = []
         payload = {
             "account_id": "SYNTHETIC",
             "currency": "USD",
             "opening_balance": "0.00",
-            "closing_balance": "100.00",
+            "closing_balance": closing_balance,
             "transactions": [{
                 "booking_date": "2021-11-10",
                 "description": "DEPOSIT",
@@ -31,13 +39,11 @@ class ParserBridgeTest(unittest.TestCase):
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 seen.append(request)
                 self.send_response(200)
-                self.send_header("Content-Type", "application/x-ndjson")
+                self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                for data in [
-                    {"message": {"content": json.dumps(payload)}, "done": False},
-                    {"done": True, "done_reason": reason},
-                ]:
-                    self.wfile.write((json.dumps(data) + "\n").encode())
+                self.wfile.write(json.dumps({
+                    "message": {"content": json.dumps(payload)},
+                }).encode())
 
             def log_message(self, *_):
                 pass
@@ -68,44 +74,90 @@ class ParserBridgeTest(unittest.TestCase):
                 writer.add_blank_page(width=612, height=792)
                 with pdf.open("wb") as output:
                     writer.write(output)
+                endpoint = f"http://127.0.0.1:{server.server_port}"
+                api_version = ""
+                model = "ollama/test-model"
+                env = os.environ.copy()
+                if provider == "azure":
+                    endpoint = "https://synthetic.openai.azure.com/"
+                    api_version = "2025-04-01-preview"
+                    model = "azure/test-deployment"
+                    env["AZURE_AD_TOKEN"] = azure_token
+                    seen_path = Path(temporary) / "seen.json"
+                    env["WAT_TEST_SEEN"] = str(seen_path)
+                    fake = Path(temporary) / "httpx.py"
+                    fake.write_text(
+                        "import json, os\n"
+                        f"_payload = {payload!r}\n"
+                        "class Response:\n"
+                        "    def raise_for_status(self): pass\n"
+                        "    def json(self):\n"
+                        "        return {'choices': [{'message': {'content': json.dumps(_payload)}}]}\n"
+                        "def post(url, **kwargs):\n"
+                        "    visible = {key: value for key, value in kwargs.items() if key != 'json'}\n"
+                        "    visible['url'] = url\n"
+                        "    visible['message_count'] = len(kwargs['json']['messages'])\n"
+                        "    with open(os.environ['WAT_TEST_SEEN'], 'w') as output:\n"
+                        "        json.dump(visible, output)\n"
+                        "    return Response()\n"
+                    )
+                    env["PYTHONPATH"] = temporary
                 result = subprocess.run(
                     [sys.executable, "-c", Path(__file__).with_name("statement_parser.py").read_text(),
-                     str(pdf), f"http://127.0.0.1:{server.server_port}", "test-model", json.dumps(pages)],
-                    text=True, capture_output=True, timeout=30,
+                     str(pdf), endpoint, api_version, model],
+                    text=True, capture_output=True, timeout=30, env=env,
                 )
+                if provider == "azure" and seen_path.exists():
+                    seen.append(json.loads(seen_path.read_text()))
                 return result, seen
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
 
-    def test_selected_pages_streaming_and_provenance(self):
-        result, requests = self.run_bridge(pages=[1])
+    def test_complete_pdf_text_and_provenance(self):
+        result, requests = self.run_bridge()
         self.assertEqual(result.returncode, 0, result.stderr)
         document = json.loads(result.stdout)
         self.assertEqual(document["transactions"][0]["amount"], "100.00")
         self.assertEqual(document["verification"]["status"], "verified")
-        self.assertEqual(document["selected_pages"], [1])
         self.assertEqual(document["wat_statement_period"], {"start": "2021-11-01", "end": "2021-11-30"})
-        self.assertIn("excluded PDF pages [2]", " ".join(document["warnings"]))
-        self.assertEqual(document["wat_extraction"]["model"], "test-model")
-        self.assertFalse(requests[0]["think"])
-        self.assertEqual(requests[0]["format"], "json")
+        self.assertEqual(document["wat_extraction"]["provider"], "ollama")
+        self.assertEqual(document["wat_extraction"]["model"], "ollama/test-model")
+        self.assertEqual(document["wat_extraction"]["source_method"], "llm")
+        self.assertFalse(requests[0]["stream"])
+        self.assertNotIn("images", requests[0]["messages"][1])
 
-    def test_blank_pages_require_explicit_selection(self):
-        result, requests = self.run_bridge(pages=None)
+    def test_azure_uses_entra_token_with_direct_chat_completion(self):
+        result, requests = self.run_bridge(provider="azure")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        document = json.loads(result.stdout)
+        self.assertEqual(document["wat_extraction"]["provider"], "azure")
+        self.assertEqual(document["wat_extraction"]["model"], "azure/test-deployment")
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0]["url"],
+            "https://synthetic.openai.azure.com/openai/deployments/test-deployment/chat/completions",
+        )
+        self.assertEqual(requests[0]["params"], {"api-version": "2025-04-01-preview"})
+        self.assertEqual(requests[0]["headers"]["Authorization"], "Bearer synthetic-token")
+        self.assertEqual(requests[0]["message_count"], 2)
+
+    def test_azure_requires_entra_token(self):
+        result, requests = self.run_bridge(provider="azure", azure_token="")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("lack a usable text layer", result.stderr)
+        self.assertIn("AZURE_AD_TOKEN is required", result.stderr)
         self.assertEqual(requests, [])
 
-    def test_truncated_output_is_not_accepted(self):
-        result, _ = self.run_bridge(pages=[1], reason="length")
+    def test_balance_discrepancy_is_rejected(self):
+        result, requests = self.run_bridge(closing_balance="101.00")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("truncated", result.stderr)
+        self.assertIn("did not balance-verify", result.stderr)
         self.assertEqual(result.stdout, "")
+        self.assertEqual(len(requests), 1)
 
     def test_missing_dates_are_not_inferred_from_transactions(self):
-        result, _ = self.run_bridge(pages=[1], dates="")
+        result, _ = self.run_bridge(dates="")
         self.assertEqual(result.returncode, 0, result.stderr)
         document = json.loads(result.stdout)
         self.assertNotIn("wat_statement_period", document)
@@ -113,7 +165,7 @@ class ParserBridgeTest(unittest.TestCase):
 
     def test_reversed_period_is_rejected_before_inference(self):
         result, requests = self.run_bridge(
-            pages=[1], dates="Beginning Balance 12/01/21 Ending Balance 11/30/21"
+            dates="Beginning Balance 12/01/21 Ending Balance 11/30/21"
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("out of order", result.stderr)

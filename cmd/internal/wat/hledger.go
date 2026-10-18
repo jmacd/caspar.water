@@ -15,6 +15,7 @@ import (
 type Books struct {
 	Config Config
 	binary string
+	chart  accountChart
 }
 
 type journalTransaction struct {
@@ -72,24 +73,28 @@ func Open(cfg Config) (*Books, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wat requires hledger on PATH: %w", err)
 	}
-	books := &Books{Config: cfg, binary: binary}
+	chart, err := loadAccountChart(cfg.AccountChart)
+	if err != nil {
+		return nil, err
+	}
+	books := &Books{Config: cfg, binary: binary, chart: chart}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
 	}
 	if _, err := books.snapshot(); err != nil {
 		return nil, err
 	}
-	if cfg.BankAccount != "" {
-		accounts, err := books.Accounts()
-		if err != nil {
-			return nil, err
+	accounts, err := books.Accounts()
+	if err != nil {
+		return nil, err
+	}
+	for _, bank := range cfg.BankAccounts {
+		if !slices.Contains(accounts, bank.Account) {
+			return nil, fmt.Errorf("configured bank account must be a declared local posting account: %q", bank.Account)
 		}
-		if !slices.Contains(accounts, cfg.BankAccount) {
-			return nil, fmt.Errorf("bank_account must name a declared account with at least three levels: %q", cfg.BankAccount)
-		}
-		if err := books.verifyReconciliations(); err != nil {
-			return nil, fmt.Errorf("verify reconciliations: %w", err)
-		}
+	}
+	if err := books.verifyReconciliations(); err != nil {
+		return nil, fmt.Errorf("verify reconciliations: %w", err)
 	}
 	return books, nil
 }
@@ -142,29 +147,14 @@ func (b *Books) declaredAccounts() ([]string, error) {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), nil
 }
 
-func detailedAccount(account string) bool {
-	parts := strings.Split(account, ":")
-	if len(parts) < 3 {
-		return false
-	}
-	for _, part := range parts {
-		if strings.TrimSpace(part) == "" {
-			return false
-		}
-	}
-	return true
-}
-
 func (b *Books) Accounts() ([]string, error) {
-	accounts, err := b.declaredAccounts()
+	accounts, err := b.PostingAccounts()
 	if err != nil {
 		return nil, err
 	}
-	var posting []string
+	posting := make([]string, 0, len(accounts))
 	for _, account := range accounts {
-		if detailedAccount(account) {
-			posting = append(posting, account)
-		}
+		posting = append(posting, account.Name)
 	}
 	return posting, nil
 }
@@ -173,7 +163,7 @@ func checkPostingAccounts(transactions []journalTransaction, accounts []string) 
 	for _, tx := range transactions {
 		for _, posting := range tx.Postings {
 			if !slices.Contains(accounts, posting.Account) {
-				return fmt.Errorf("%s %s: posting account %q must be declared and have at least three nonempty levels (category:CPUC-account:detail); revise this entry", tx.Date, tx.Description, posting.Account)
+				return fmt.Errorf("%s %s: posting account %q must be a declared Category:CPUC-number:LocalName account; revise this entry", tx.Date, tx.Description, posting.Account)
 			}
 		}
 	}
@@ -194,15 +184,15 @@ func (b *Books) Report(name string) (string, error) {
 	// Balance reports include prior years; journal and income reports describe
 	// activity in the selected year.
 	if name == "journal" || name == "income-statement" {
-		args = append(args, "--begin", fmt.Sprintf("%04d-01-01", b.Config.Year))
+		args = append(args, "--begin", fmt.Sprintf("%04d-01-01", b.Config.ReportYear))
 	}
-	args = append(args, "--end", fmt.Sprintf("%04d-01-01", b.Config.Year+1))
+	args = append(args, "--end", fmt.Sprintf("%04d-01-01", b.Config.ReportYear+1))
 	text, err := b.run(b.Config.Journal, append(args, "--strict")...)
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(text) == "" {
-		return "No transactions for " + strconv.Itoa(b.Config.Year) + ".\n", nil
+		return "No transactions for " + strconv.Itoa(b.Config.ReportYear) + ".\n", nil
 	}
 	return text, nil
 }

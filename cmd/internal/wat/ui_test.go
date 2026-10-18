@@ -79,7 +79,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Equal(t, "Date (YYYY-MM-DD)", frame.focus)
 	frame = key(tcell.KeyF2, 0)
 	require.Contains(t, frame.text, "date must be")
-	require.Equal(t, "; original text\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, "; original text\n", read(t, books.Config.ManualJournal))
 	key(tcell.KeyEnter, 0)
 	frame = key(tcell.KeyBacktab, 0)
 	require.Equal(t, "Back (Esc)", frame.focus)
@@ -144,17 +144,17 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Equal(t, "Save (F2)", frame.focus)
 	require.Contains(t, frame.text, "Balance: $0.00 | Balanced")
 	require.Contains(t, frame.text, "Back (Esc)")
-	require.Equal(t, "; original text\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, "; original text\n", read(t, books.Config.ManualJournal))
 	frame = key(tcell.KeyF4, 0)
 	require.Contains(t, frame.text, "Edited power")
 	require.Contains(t, frame.text, "$-15.00")
-	require.Equal(t, "; original text\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, "; original text\n", read(t, books.Config.ManualJournal))
 	frame = key(tcell.KeyEnter, 0)
 	require.Contains(t, frame.text, "Transaction saved and validated")
-	saved := read(t, books.Config.WriteJournal)
+	saved := read(t, books.Config.ManualJournal)
 	require.Contains(t, saved, "2021-04-05 Electric company | Edited power")
-	require.Contains(t, saved, "Expenses:Power:Utility  $15.00")
-	require.Contains(t, saved, "Assets:Bank:Checking  $-15.00")
+	require.Contains(t, saved, "Expense:615:Utility  $15.00")
+	require.Contains(t, saved, "Bank:131.2:Checking  $-15.00")
 	key(tcell.KeyEnter, 0)
 	frame = key(tcell.KeyRune, '2')
 	require.Contains(t, frame.text, "Electric company")
@@ -175,7 +175,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Equal(t, "Save (F2)", frame.focus, "Save must immediately follow the final field when revising")
 	frame = key(tcell.KeyEnter, 0)
 	require.Contains(t, frame.text, "Transaction saved and validated")
-	saved = read(t, books.Config.WriteJournal)
+	saved = read(t, books.Config.ManualJournal)
 	require.Contains(t, saved, "; reference: check-8")
 	require.Equal(t, 1, strings.Count(saved, "; id:"))
 	frame = key(tcell.KeyEnter, 0)
@@ -185,10 +185,10 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	typeText("UNSAVED")
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Press Esc again to discard")
-	require.Equal(t, saved, read(t, books.Config.WriteJournal))
+	require.Equal(t, saved, read(t, books.Config.ManualJournal))
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Review / revise journal")
-	require.Equal(t, saved, read(t, books.Config.WriteJournal), "cancelling a revision must preserve the saved entry")
+	require.Equal(t, saved, read(t, books.Config.ManualJournal), "cancelling a revision must preserve the saved entry")
 	key(tcell.KeyEscape, 0)
 	key(tcell.KeyRune, '1')
 	key(tcell.KeyTab, 0)
@@ -203,18 +203,18 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Contains(t, frame.text, "Discard this unsaved transaction")
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Water Accounting Terminal")
-	require.Equal(t, saved, read(t, books.Config.WriteJournal))
+	require.Equal(t, saved, read(t, books.Config.ManualJournal))
 	key(tcell.KeyRune, '1')
 	for _, value := range []string{
 		"2021-04-06", "Electric company", "Direct save", "", "",
-		"Expenses:Power:Utility", "12.34", "Assets:Bank:Checking", "-12.34",
+		"Expense:615:Utility", "12.34", "Bank:131.2:Checking", "-12.34",
 	} {
 		typeText(value)
 		key(tcell.KeyTab, 0)
 	}
 	frame = key(tcell.KeyF2, 0)
 	require.Contains(t, frame.text, "Transaction saved and validated")
-	require.Contains(t, read(t, books.Config.WriteJournal), "2021-04-06 Electric company | Direct save")
+	require.Contains(t, read(t, books.Config.ManualJournal), "2021-04-06 Electric company | Direct save")
 	key(tcell.KeyEnter, 0)
 	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone))
 	select {
@@ -227,7 +227,6 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 
 func TestJournalBrowserUsesRightAlignedBankColumns(t *testing.T) {
 	books, _ := fixture(t, testEntry().journalText("entry"))
-	books.Config.BankAccount = "Assets:Bank:Checking"
 	ui := &terminal{app: tview.NewApplication(), books: books}
 	ui.journalEntries()
 	table, ok := ui.app.GetFocus().(*tview.Table)
@@ -254,11 +253,11 @@ func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	require.NoError(t, screen.Init())
 	t.Cleanup(screen.Fini)
 	screen.SetSize(100, 24)
-	bank := "Assets:131.2-Cash-in-Bank"
-	savings := "Assets:131.3-Savings"
+	bank := "Bank:131.2:Checking"
+	savings := "Asset:131.3:Savings"
 	payee := "City [red] Water"
 	draft := &Draft{
-		accounts: []string{bank, savings, "Expenses:Power:Utility"},
+		accounts: []string{bank, savings, "Expense:615:Utility"},
 		history:  completionHistory{payees: []string{payee}, descriptions: []string{"Power bill"}},
 	}
 	entry := Entry{Postings: make([]Posting, 2)}

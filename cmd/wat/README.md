@@ -3,28 +3,61 @@
 `wat` is a local terminal workbench for ordinary hledger journals. It supports
 transaction entry, journal review, strict validation, bank-statement
 reconciliation checkpoints, and reports. It does not calculate bills or close years.
-There is no database, server, browser, or Watertown dependency.
+The application itself uses ordinary local files and has no database, server, or
+browser. The development runner stores those files transactionally in a local
+Watertown Pond.
 
 ## Start a workspace
 
 For a persistent test workspace, run:
 
 ```sh
-./cmd/wat/run.sh
+./cmd/wat/run.sh --azure-cli
 ./cmd/wat/run.sh check
 ./cmd/wat/run.sh report journal
 ```
 
-The script copies the example into git-ignored `local/wat-test` on first use,
-including its test configuration, and creates a source-document directory.
-Later runs preserve your test entries and configuration. It works regardless of
-the current working directory and forwards arguments to `wat`.
+The script creates git-ignored `local/wat-test` and `local/wat-inbox`
+directories on first use, builds a Linux accounting image, and initializes the
+persistent Pond at `local/wat-pond`. The first Pond run imports the complete
+existing `local/wat-test` workspace, so work from the earlier direct runner is
+preserved. Later runs stage `/accounting/`, open `wat` interactively, and commit
+all saved changes together only after a clean exit.
 
-Install `hledger` on PATH. The adapter requires `--no-conf`, `files`, strict
-checking, JSON transaction output, and the standard report commands; development
-uses hledger 1.52.4.
-It ignores hledger configuration files so personal report options cannot change
-validation or saved entries.
+Place statement PDFs in `local/wat-inbox`, set `WAT_STATEMENT_INBOX`, or select
+another host directory explicitly:
+
+```sh
+./cmd/wat/run.sh --inbox ../caspar_water_bank
+WAT_STATEMENT_INBOX=../caspar_water_bank ./cmd/wat/run.sh
+```
+
+The host inbox is mounted read-only. `wat` hashes regular PDFs, copies unseen
+content into `/accounting/sources/statements/<sha256>/original.pdf`, and lists
+the Pond-owned copy as pending. Identical content is imported once regardless
+of filename. Symlinked and nonregular `.pdf` entries are rejected. No extraction
+runs during startup. Choose **Bank statements** and select one
+**READY TO EXTRACT** statement. `wat` extracts only that statement, applies
+the complete original PDF through `bankstatementparser`, and opens the result
+for review. A failed extraction returns to the statement list and leaves the
+PDF pending; the inbox remains untouched.
+
+The runner requires Docker (or set `WAT_CONTAINER_RUNTIME=podman`) and uses a
+privileged development container because nested bubblewrap namespaces require
+it. Its image supplies hledger, Go, Rust, Python 3.13, and the pinned statement
+parser; these tools do not need to be installed on the host. The image build
+checks that Debian's hledger package is from the required 1.52 series.
+For Azure statement extraction, `--azure-cli` requires an authenticated `az`
+CLI session with the Cognitive Services OpenAI User role. The runner obtains a
+short-lived Entra token and passes it through the container and sandbox
+environment. The token is not written to YAML, Pond, extraction results, or
+command arguments. Restart the runner to obtain a new token if the session
+remains open past token expiry. Non-Azure workflows omit `--azure-cli`.
+The sandbox wrapper sets `WAT_STATEMENT_PYTHON=/usr/local/bin/python3.13`, so
+a workspace migrated from the old direct runner may retain its host virtualenv
+path in YAML without making that path meaningful inside the sandbox. Direct
+invocations continue to use `statement.python` unless the same explicit
+environment override is supplied.
 
 Copy the example into a private workspace; do not enter real books in the example:
 
@@ -35,61 +68,96 @@ mkdir -p local/water-books/sources
 go run ./cmd/wat --config local/water-books/wat.yaml
 ```
 
-The starter chart is deliberately incomplete. It is not an approved acquisition
-entry or a determination of entity structure. Review and extend the account
-declarations against CPUC U-39-W and the acquisition evidence before entry.
-No opening balances, purchase price, or financial activity are fabricated.
+`books/accounts.journal` is the configured CPUC U-39-W master account chart.
+It maps each CPUC number to its formal category and designation. It is reference
+data, not the instance's literal posting-account namespace. Keep local account
+declarations in `books/local-accounts.journal`; do not add vendors, banks, owners,
+or other instance names to the master chart. No opening balances, purchase
+price, or financial activity are fabricated.
 
 ```yaml
-version: 1
+version: 2
 name: Caspar Water
-year: 2021
+report_year: 2021
 journal: books/books.journal
-write_journal: books/2021.journal
+account_chart: books/accounts.journal
+manual_journal: books/manual.journal
 sources: sources
-bank_account: Asset:131.2-Cash-in-Bank:SBMC
+bank_accounts:
+  - account: Bank:131.2:SBMC:0000
+    journal: books/bank-sbmc-0000.journal
 ```
 
 Paths are relative to the configuration file. All included journals must be
 regular `.journal` or `.ledger` files within that directory, without symlinks.
-Use relative includes. `write_journal` must already exist and be included by
-`journal`. Unknown configuration keys and additional YAML documents are errors.
+Use relative includes. `manual_journal` and every `bank_accounts[].journal` must
+already exist and be included by the master `journal`; each writable journal
+must be distinct. `account_chart` must also be an included regular journal file,
+so validation and draft concurrency checks cover it. Unknown configuration keys
+and additional YAML documents are errors.
 `sources` names the supporting-document directory; references are currently
 free-form text, not imported or automatically verified document links.
-`bank_account` optionally identifies the ledger account for bank-statement work.
-When set, it must exactly match a declared regular account with at least three
-nonempty colon-separated levels, including the root
-prefix (`Asset:` in the example). Existing configurations may omit it.
-This setting does not itself import or post statement transactions.
 
-## Posting account structure
+`manual_journal` receives ordinary transaction entry. Each configured bank
+account has a separate all-years journal for entries derived from its statements.
+An account must exactly match a declared `Bank:CPUC-number:LocalName` posting
+account whose CPUC number is classified as an Asset by `account_chart`. Its final
+component is the unique
+statement identifier suffix: an extracted identifier ending in `0000` binds to
+the example account. A missing or ambiguous match is an error; `wat` never
+guesses a journal. The bound account is stored in the private extraction cache.
 
-Postings require **at least three nonempty levels**: `category:CPUC-account:detail`.
-For example:
+`report_year` controls the current report and journal-browser view only. It does
+not constrain transaction dates, statement dates, or journal files. A statement
+may cross a calendar-year boundary.
+
+## CPUC chart and local posting accounts
+
+The master chart uses the formal CPUC declarations:
 
 ```journal
-account Asset:131.2-Cash-in-Bank:SBMC
-account Expense:615-Power:PGE
-account Equity:218-Proprietary-Capital:Owner
-account Liability:241-Other-Current-Liabilities:Due-to-Owner
+account Asset:131.2-Cash-in-Bank
+account Expense:650.1-Contract-Water-Quality-and-Testing-Work
 ```
 
-The two-level CPUC declarations may remain as rollup accounts, but cannot be
-selected for new or revised postings. Add appropriate detailed declarations
-before entering transactions; the application does not invent detail names.
-Dots in a CPUC number do not count as levels. Four or more levels are allowed.
-This is a depth rule, not a leaf rule: a three-level account can be posted to
-even if it has children.
+Local posting accounts use the shorter
+`Category:CPUC-number:LocalName[:MoreNames...]` form:
 
-Account completion and the F4 cheatsheet show only eligible declared accounts.
-The structured form, raw-text validation, and Save enforce the same rule.
-`wat check` flags existing shallow postings too. They do not prevent opening
-the app: existing entries can be revised, but every posting in the revised
-entry must meet the rule before it can be saved. Other historical entries
-are left unchanged, so migration can proceed one entry at a time.
+```journal
+account Bank  ; type: A
+account Bank:131.2:SBMC:0000
+account Expense:650.1:Feiner-Fixings
+account Equity:218:Owner
+account Liability:241:Due-to-Owner
+```
 
-When renaming the bank account, update its declarations, postings, and
-`bank_account` setting together. The `id`, `bank-row`, and `bank-description`
+The ordinary categories are exactly `Asset`, `Equity`, `Liability`, `Expense`,
+and `Income`. `Bank` is the special Asset category used for accounts that have
+statements. It needs the hledger `type: A` declaration shown above so standard
+balance-sheet reports classify it as an asset.
+
+`wat` resolves the number in each local account through `account_chart`.
+`Expense:650.1:Feiner-Fixings`, for example, maps to formal CPUC designation
+`Expense:650.1-Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
+category mismatches, and `Bank` accounts whose number is not an Asset are errors.
+The long formal name is therefore not repeated in every posting while remaining
+available whenever needed:
+
+```sh
+go run ./cmd/wat --config local/water-books/wat.yaml accounts
+```
+
+Account completion and the F4 cheatsheet show only declared local accounts.
+Completion can match either the local name or formal CPUC designation while
+inserting only the short local account. The structured form, raw-text
+validation, Save, and `wat check` enforce the same mapping. Existing invalid
+postings do not prevent opening the app for migration, but every posting in a
+revised entry must use a valid local account before it can be saved.
+
+Before importing statements, a bank-account rename must update its declarations,
+postings, and `bank_accounts[].account` setting together. Cached statements are
+durably bound to the configured account; rebinding them after a rename is not
+implemented. The `id`, `bank-row`, and `bank-description`
 tags do not encode account names and should remain unchanged. The long values
 identify a transaction, the source PDF/row, and the original bank description;
 they are not account-name checksums.
@@ -98,13 +166,17 @@ detect external journal changes and refuse to overwrite them.
 
 ## Work through a bank statement
 
-```sh
-./cmd/wat/run.sh --statement ../caspar_water_bank/casparwater-2021-11.pdf
-```
+For the Pond workflow, place PDFs in the configured inbox and run
+`./cmd/wat/run.sh`. Choose **Bank statements (5)** to see both pending inbox PDFs
+and previously extracted statements. Selecting **READY TO EXTRACT** opens the
+statement immediately; no extraction questions or command-line statement flags
+are required. While extraction is running, the screen animates and shows the
+configured model and elapsed time.
 
 To reopen an imported statement later, run `./cmd/wat/run.sh` without flags and
 choose **Bank statements (5)**. Select a cached statement to review its pending
-rows or revise its recorded entries. The list shows the actual statement period,
+rows or revise its recorded entries. The list shows the bound bank account,
+actual statement period,
 journal-derived recorded/pending counts, and **RECONCILED** for finished statements.
 Statement dates come from `wat_statement_period` metadata in the cached
 extraction, never from the first/last transactions. New PDF extractions capture
@@ -113,8 +185,8 @@ the list explicitly says **Statement dates unavailable**. Known periods are
 ordered by start date; caches without dates use their earliest activity only
 for ordering, not as a displayed statement period.
 It uses the retained PDF and extraction:
-the original input path, Python, Ollama, and another `--statement` run are not
-needed. Esc returns to the statement browser, then the main menu. Reopening does
+the original input path, Python process, model service, and another `--statement`
+run are not needed. Esc returns to the statement browser, then the main menu. Reopening does
 not post entries or mark anything reconciled.
 
 For a sequence, let the shell expand the glob, or supply explicit filenames:
@@ -128,8 +200,8 @@ Files are processed in exactly the supplied argument order; `wat` neither
 expands globs nor sorts the list. Relative paths use the invocation directory,
 not the YAML directory. Quote individual filenames containing spaces, not
 wildcards intended for shell expansion. At least one file is required, and
-missing files or paths that are not regular PDFs are errors. The configured
-workspace year still applies; a 2022 statement requires a 2022 workspace.
+missing files or paths that are not regular PDFs are errors. Statements from
+different years use the same workspace and account journal.
 
 The terminal identifies the current file and its position in the batch. It
 loads/extracts only one statement at a time. Record all rows, reconcile and
@@ -139,10 +211,10 @@ without processing later files. Rerunning the same file list reuses cached
 extractions, journal-derived row status, saved reconciliation work, and finished
 checkpoints. The batch itself is not an atomic commit.
 
-`--statements` and `--statement` are mutually exclusive. Extraction imports and
-page-selection overrides require the single-file `--statement` mode; prepare
-those PDFs individually first. `--statements 2022/*.pdf --statement-check`
-checks every supplied file in order without opening the terminal or posting.
+`--statements` and `--statement` are mutually exclusive. A reviewed extraction
+seed requires the single-file `--statement` mode. `--statements 2022/*.pdf
+--statement-check` checks every supplied file in order without opening the
+terminal or posting.
 
 The statement queue shows pending, recorded, and possible-match rows. Enter
 opens a pending row in the existing entry form with its bank account, date,
@@ -153,15 +225,15 @@ row. Esc / Back discards the current unsaved edits and returns to the queue;
 it does not mark that row recorded. The main menu can resume the current statement
 with **Continue bank statement (6)** or open any cached statement with
 **Bank statements (5)**. Browsing another cache does not advance a command-line batch.
-Enter on a recorded row reopens its existing entry for revision when that entry
-is in the configured working journal; it never creates another posting.
+Enter on a recorded row reopens its existing entry for revision from that bank
+account's journal; it never creates another posting.
 
 Only Save writes journal postings. `bank-row` and `bank-description` metadata
 identify the original source row and description. They survive payee edits and
 must remain intact in F4. The original bank account, date and signed amount
 are checked even for ledger-text edits; counterpostings remain editable.
 Recorded status is read from the journals, not a second bookkeeping database.
-The same PDF resumes its stable cached row order without calling Ollama again.
+The same PDF resumes its stable cached row order without extracting again.
 Overlapping statements or manually recorded entries with the same bank date
 and amount are flagged for explicit review, not automatically posted or skipped.
 
@@ -185,8 +257,9 @@ the original PDF before recording.
 ## Reconcile and finish a statement
 
 After every row is recorded, choose **Reconcile statement (r)**. The reconciliation
-uses every posting to the configured `bank_account` through the statement closing
-date, not only transactions imported from that PDF. It shows:
+uses every posting to the statement's bound bank account through the statement
+closing date, including manual entries and not only transactions imported from
+that PDF. It shows:
 
 - statement and book opening balances;
 - statement and book period credit/deposit and debit/payment totals;
@@ -223,8 +296,10 @@ items, balances, and finish time. The statement then appears as
 statement page, journal browser, structured form, or F4 path; the whole
 transaction, including counterpostings, is protected.
 
-Finished statements must be processed in chronological order, and each later
-opening balance must equal the prior reconciled closing balance. Outstanding
+Finished statements must be processed in chronological order independently for
+each bank account, and each later opening balance must equal that account's prior
+reconciled closing balance. An unfinished statement for one account does not
+block another account. Outstanding
 items remain unlocked because they have not cleared. A later statement may carry
 them forward as outstanding; automatic matching of an old outstanding check to
 a later bank row is not implemented yet.
@@ -250,24 +325,39 @@ to that YAML file, while bare executable names are looked up on PATH:
 ```yaml
 statement:
   python: ../wat-python/bin/python
-  ollama_url: http://watershop:11434
-  model: qwen3:30b-a3b
+  api_base: https://example.openai.azure.com/
+  api_version: 2025-04-01-preview
+  model: azure/example-deployment
 ```
 
-PDF extraction uses `bankstatementparser` with streaming JSON and thinking
-disabled against **only the configured Ollama endpoint**. It can take several
-minutes on a CPU-only server, including the wait for the first response. The
-overall extraction limit is 20 minutes, and extraction never posts automatically.
-This first version requires text-bearing transaction pages; it refuses scanned/textless pages
-rather than silently omitting them. After inspecting the PDF, explicitly select
-pages for a **new** extraction with `--statement-pages 1,2`. The entire original
-PDF is still retained, and excluded pages are noted in the cache.
+For a local Ollama model, use a provider-prefixed model and omit `api_version`:
 
-`--statement-check` extracts/validates and prints queue counts without opening a
-terminal. `--statement-extraction reviewed.json` can seed a new cache from a
-previously reviewed `bankstatementparser` JSON export; the operator must ensure
-it belongs to the supplied PDF. Neither option writes journal postings. Once
-cached, omit extraction/page-selection options so row identities remain stable.
+```yaml
+statement:
+  python: ../wat-python/bin/python
+  api_base: http://watershop:11434
+  model: ollama/qwen3:30b-a3b
+```
+
+Existing Ollama workspaces may retain `ollama_url` and a bare model name as a
+migration alias. New configurations use `api_base`; specifying both endpoint
+fields is an error.
+
+PDF extraction uses `bankstatementparser` with the configured text model.
+Azure uses a short-lived `AZURE_AD_TOKEN`; Ollama uses its direct local HTTP
+bridge. The overall extraction limit is 20 minutes, and extraction never posts
+automatically.
+`wat` asks `bankstatementparser` to parse all embedded text available in the
+complete PDF. The extracted opening balance, transactions, and closing balance
+must balance-verify. Missing text or a discrepancy is reported as an extraction
+failure; `wat` does not select pages or switch to an image model.
+
+For scripted diagnostics, `--statement-check` extracts/validates and prints
+queue counts without opening a terminal. `--statement-extraction reviewed.json`
+can seed a new cache from a previously reviewed `bankstatementparser` JSON
+export; the operator must ensure it belongs to the supplied PDF. Neither option
+writes journal postings. Once cached, omit extraction-seed options so row
+identities remain stable.
 
 ## Revise working entries
 
@@ -277,15 +367,19 @@ amounts, or split postings as appropriate, then **F2** saves the revision and
 returns to the list. Esc / Back opens a discard confirmation for the unsaved revision.
 Recorded statement rows can also be revised directly from their statement list.
 
-The journal browser is a chronological one-row table. When `bank_account` is
-configured, **Bank change** and the running **Bank balance** are right-aligned;
-balances include earlier-year activity even though the page lists only the
-configured year. Up/Down selects a row, Enter revises it, and Esc or `q` returns
+The journal browser is a chronological one-row table. When bank accounts are
+configured, **Bank change** and the running **Bank balance** are right-aligned
+and computed independently for each account. With multiple accounts, the table
+also identifies the affected bank account. Balances include earlier-year
+activity even though the page lists only `report_year`. Up/Down selects a row,
+Enter revises it, and Esc or `q` returns
 to the menu. These key instructions appear once in the footer rather than on
 every transaction.
 
-`write_journal` is the working section. Only transactions physically stored
-there can be revised; entries in other included journals remain read-only.
+`manual_journal` and the configured bank journals are writable sections.
+Transactions are revised in the same source journal: ordinary entries stay in
+the manual journal, and statement-derived entries stay in their bank journal.
+Entries in other included journals remain read-only.
 Existing books are not migrated or changed just by opening this screen.
 Deletion, period closing, and reopening or rolling back a finished reconciliation
 are not implemented. A transaction becomes reconciled only through the explicit
@@ -318,12 +412,10 @@ amount. Moving away from a field never accepts a suggestion.
 Payee and description suggest case-insensitive text matches from existing
 transactions across all included journals, including earlier years. Suggestions
 refresh when you start a new transaction; no separate history database is kept.
-Account suggestions come from eligible declared accounts with at least three
-levels: start with digits to match
-the leading CPUC account-code prefix (`13` matches `131.2`, but not a `13` later
-in an account name); start with other text to search anywhere in full account
-names, ignoring case. The code is the first number-prefixed account component;
-numbers in descendant names do not change its classification.
+Account suggestions come from declared local accounts that resolve through the
+configured CPUC chart. Start with digits to match the CPUC-number prefix (`13`
+matches `131.2`, but not a `13` later in a local name); start with other text to
+search the local account and its formal CPUC designation, ignoring case.
 
 Use **Ctrl-N/Ctrl-P** to cycle suggestions and **Enter** to accept the highlighted
 suggestion. On an account field with no filtered suggestions—including an
@@ -344,8 +436,9 @@ changes that to `+60.00`. Blank amounts are ignored while drafting, but invalid
 amounts or overflow show an explicit unavailable-balance message rather than an
 incorrect total. A balanced amount total alone does not mean the entry is valid.
 
-Dates must be within the configured year. Enter the actual transaction date,
-payee, optional description, reference, and source reference. Every saved entry
+Enter the actual transaction date in `YYYY-MM-DD` form; dates are not limited to
+`report_year`. Enter the payee, optional description, reference, and source
+reference. Every saved entry
 also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
@@ -378,11 +471,11 @@ are temporary and removed before preview or save, even if the editor exits
 unsuccessfully. Write your own comments without that reserved prefix to retain
 them. Edit the transaction above the cheatsheet, not within it.
 
-Keep the generated `id` tag unchanged. Only one transaction, dated in the
-configured year, with regular `$` postings is accepted; journal directives are
-not allowed. hledger parses the edited text and validates it against the complete
-books. Closing the editor returns to an exact-text preview, not an automatic
-save. Invalid edits can be reopened without losing their text.
+Keep the generated `id` tag unchanged. Only one transaction with a valid date
+and regular `$` postings is accepted; journal directives are not allowed.
+hledger parses the edited text and validates it against the complete books.
+Closing the editor returns to an exact-text preview, not an automatic save.
+Invalid edits can be reopened without losing their text.
 
 After editing text, use F4 again to revise it or Save to post it. Returning to
 the structured form requires explicit confirmation to discard the text edits;
@@ -424,7 +517,7 @@ to your backup policy. Local recovery copies are not off-device backups.
 
 A draft snapshots every included journal. Changes to their contents, permissions,
 or include set cause Save to fail: cancel and reopen the transaction. Cooperative
-`wat` writers use an exclusive `<write_journal>.wat-lock` file during save.
+`wat` writers use an exclusive `<target-journal>.wat-lock` file during save.
 After a crash, inspect the journal and ensure no other writer is active before
 removing a stale lock.
 

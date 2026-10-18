@@ -88,12 +88,13 @@ func transactionDigest(tx journalTransaction) (string, error) {
 func statementDigest(statement *Statement) (string, error) {
 	data, err := json.Marshal(struct {
 		Hash         string
+		BankAccount  string
 		Period       *StatementPeriod
 		OpeningCents int64
 		ClosingCents int64
 		Rows         []StatementRow
 	}{
-		statement.Hash, statement.Period, statement.OpeningCents, statement.ClosingCents, statement.Rows,
+		statement.Hash, statement.BankAccount, statement.Period, statement.OpeningCents, statement.ClosingCents, statement.Rows,
 	})
 	if err != nil {
 		return "", err
@@ -142,7 +143,7 @@ func (b *Books) loadCheckpoint(statement *Statement) (*ReconciliationCheckpoint,
 		return nil, fmt.Errorf("read reconciliation checkpoint: %w", err)
 	}
 	if checkpoint.Version != reconciliationVersion || checkpoint.StatementHash != statement.Hash ||
-		checkpoint.BankAccount != b.Config.BankAccount || statement.Period == nil ||
+		checkpoint.BankAccount != statement.BankAccount || statement.Period == nil ||
 		checkpoint.Period != *statement.Period || checkpoint.OpeningCents != statement.OpeningCents ||
 		checkpoint.ClosingCents != statement.ClosingCents {
 		return nil, fmt.Errorf("reconciliation checkpoint no longer matches its statement evidence")
@@ -260,9 +261,6 @@ func (b *Books) lockedTransactions() (map[string]*ReconciliationCheckpoint, erro
 }
 
 func (b *Books) verifyReconciliations() error {
-	if b.Config.BankAccount == "" {
-		return nil
-	}
 	_, err := b.lockedTransactions()
 	return err
 }
@@ -359,7 +357,7 @@ func (b *Books) Reconciliation(statement *Statement) (*Reconciliation, error) {
 		return nil, err
 	}
 	for _, earlier := range statements {
-		if earlier.Hash == statement.Hash || earlier.Period == nil {
+		if earlier.Hash == statement.Hash || earlier.BankAccount != statement.BankAccount || earlier.Period == nil {
 			continue
 		}
 		if earlier.Period.Start <= statement.Period.End && earlier.Period.End >= statement.Period.Start {
@@ -382,7 +380,8 @@ func (b *Books) Reconciliation(statement *Statement) (*Reconciliation, error) {
 	}
 	var previous *ReconciliationCheckpoint
 	for _, item := range checkpoints {
-		if item.Period.End < statement.Period.Start && (previous == nil || item.Period.End > previous.Period.End) {
+		if item.BankAccount == statement.BankAccount && item.Period.End < statement.Period.Start &&
+			(previous == nil || item.Period.End > previous.Period.End) {
 			previous = item
 		}
 	}
@@ -439,7 +438,7 @@ func (b *Books) Reconciliation(statement *Statement) (*Reconciliation, error) {
 		if tx.Date > statement.Period.End {
 			continue
 		}
-		amount, err := bankAmount(tx, b.Config.BankAccount)
+		amount, err := bankAmount(tx, statement.BankAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -546,7 +545,11 @@ func (b *Books) FinishReconciliation(statement *Statement) (err error) {
 			err = errors.Join(err, removeErr)
 		}
 	}()
-	journalLockPath := b.Config.WriteJournal + ".wat-lock"
+	bank, ok := b.Config.bankAccount(statement.BankAccount)
+	if !ok {
+		return fmt.Errorf("statement bank account is no longer configured: %s", statement.BankAccount)
+	}
+	journalLockPath := bank.Journal + ".wat-lock"
 	journalLock, err := os.OpenFile(journalLockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("acquire journal lock before Finish: %w", err)
@@ -584,7 +587,7 @@ func (b *Books) FinishReconciliation(statement *Statement) (err error) {
 		}
 	}
 	checkpoint := ReconciliationCheckpoint{
-		Version: reconciliationVersion, StatementHash: statement.Hash, BankAccount: b.Config.BankAccount,
+		Version: reconciliationVersion, StatementHash: statement.Hash, BankAccount: statement.BankAccount,
 		Period: *statement.Period, OpeningCents: statement.OpeningCents, ClosingCents: statement.ClosingCents,
 		BookClosing: reconciliation.BookClosing, FinishedAt: time.Now().UTC().Format(time.RFC3339),
 	}

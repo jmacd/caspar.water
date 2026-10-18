@@ -66,7 +66,7 @@ func runTerminal(books *Books, statement *Statement, queue *statementQueue) erro
 func (ui *terminal) screen(title string, body tview.Primitive, footer string) {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetText(tview.Escape(fmt.Sprintf(" %s | %d | %s\n %s",
-		ui.books.Config.Name, ui.books.Config.Year, title, ui.books.Config.Journal)))
+		ui.books.Config.Name, ui.books.Config.ReportYear, title, ui.books.Config.Journal)))
 	hint := tview.NewTextView().SetText(" " + footer)
 	frame := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 3, 0, false).
@@ -88,14 +88,14 @@ func (ui *terminal) menu() {
 	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
 		AddItem("Review / revise journal", "Browse entries; revise entries in the working journal", '2', ui.journalEntries).
 		AddItem("Reports", "Trial balance, balance sheet, income statement", '3', ui.reports).
-		AddItem("Check books", "Run hledger strict validation and account-depth checks", '4', func() {
+		AddItem("Check books", "Run hledger strict validation and CPUC account-mapping checks", '4', func() {
 			if err := ui.books.Check(); err != nil {
 				ui.message(" Check failed ", err.Error(), ui.menu)
 				return
 			}
-			ui.message(" Check books ", "The books pass hledger strict checks and account-depth checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
+			ui.message(" Check books ", "The books pass hledger strict checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
-		AddItem("Bank statements", "Reopen cached statements; review recorded and pending rows", '5', ui.bankStatements).
+		AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '5', ui.bankStatements).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
 	footer := "Enter Select | 1-5 Shortcut | q Quit"
 	if ui.statement != nil {

@@ -37,9 +37,9 @@ func TestEditorHelperProcess(t *testing.T) {
 	if err != nil {
 		fail(err.Error())
 	}
-	if !strings.Contains(string(data), editorHelpPrefix+"    Assets:Bank:Checking\n") ||
-		!strings.Contains(string(data), editorHelpPrefix+"    Expenses:Power:Utility\n") ||
-		!strings.Contains(string(data), "Use a YYYY-MM-DD date within 2021") ||
+	if !strings.Contains(string(data), editorHelpPrefix+"    Bank:131.2:Checking\n") ||
+		!strings.Contains(string(data), editorHelpPrefix+"    Expense:615:Utility\n") ||
+		!strings.Contains(string(data), "Use a valid YYYY-MM-DD date") ||
 		strings.Count(string(data), "EDITOR CHEATSHEET") != 1 {
 		fail("editor account cheatsheet is missing")
 	}
@@ -68,12 +68,12 @@ func TestExternalEditor(t *testing.T) {
 	require.Contains(t, text, "Edited power")
 	require.Contains(t, text, "$-15.00")
 	require.NotContains(t, text, editorHelpPrefix)
-	require.Equal(t, "; original\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, "; original\n", read(t, books.Config.ManualJournal))
 	require.NoError(t, draft.PreviewText(text))
 	_, err = draft.Save()
 	require.NoError(t, err)
-	require.Contains(t, read(t, books.Config.WriteJournal), text)
-	require.NotContains(t, read(t, books.Config.WriteJournal), editorHelpPrefix)
+	require.Contains(t, read(t, books.Config.ManualJournal), text)
+	require.NotContains(t, read(t, books.Config.ManualJournal), editorHelpPrefix)
 }
 
 func TestEditorErrorsKeepEditedTextWithoutSaving(t *testing.T) {
@@ -89,7 +89,7 @@ func TestEditorErrorsKeepEditedTextWithoutSaving(t *testing.T) {
 	require.ErrorContains(t, err, "editor exited unsuccessfully")
 	require.Contains(t, text, "Edited power")
 	require.NotContains(t, text, editorHelpPrefix)
-	require.Empty(t, read(t, books.Config.WriteJournal))
+	require.Empty(t, read(t, books.Config.ManualJournal))
 	t.Setenv("EDITOR", "unterminated 'quote")
 	text, err = books.editText(initial)
 	require.ErrorContains(t, err, "invalid editor command")
@@ -101,8 +101,8 @@ func TestEditorErrorsKeepEditedTextWithoutSaving(t *testing.T) {
 }
 
 func TestEditorCheatsheetStrippingPreservesUserText(t *testing.T) {
-	userText := "; evidence note\n2021-04-05 Payee\n    ; id: preserved\n    Assets:Bank:Checking  $1.00\n    Equity:Capital:Owner  $-1.00\n"
-	help := editorHelp(2021, []string{"Assets:Bank:Checking", "Equity:Capital:Owner"})
+	userText := "; evidence note\n2021-04-05 Payee\n    ; id: preserved\n    Bank:131.2:Checking  $1.00\n    Equity:218:Owner  $-1.00\n"
+	help := editorHelp(2021, []string{"Bank:131.2:Checking", "Equity:218:Owner"})
 	require.Equal(t, userText, stripEditorHelp(userText+help))
 	require.Equal(t, userText+"; my own closing note\n", stripEditorHelp(userText+help+"; my own closing note\n"))
 	require.Equal(t, userText, stripEditorHelp(userText+strings.TrimSuffix(help, "\n")))
@@ -128,19 +128,19 @@ func TestEditedTextUsesHledgerWithoutReformatting(t *testing.T) {
 	require.NoError(t, err)
 	text, err := draft.Preview(testEntry())
 	require.NoError(t, err)
-	text = strings.Replace(text, "Assets:Bank:Checking  $-12.34", "Assets:Bank:Checking", 1)
+	text = strings.Replace(text, "Bank:131.2:Checking  $-12.34", "Bank:131.2:Checking", 1)
 	text = "; manually written evidence note\n" + text + "    ; custom-note: preserve this\n"
 	require.NoError(t, draft.PreviewText(text))
 	require.Equal(t, text, draft.text)
-	require.Equal(t, "; existing\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, "; existing\n", read(t, books.Config.ManualJournal))
 	_, err = draft.Save()
 	require.NoError(t, err)
-	require.True(t, strings.HasSuffix(read(t, books.Config.WriteJournal), text))
+	require.True(t, strings.HasSuffix(read(t, books.Config.ManualJournal), text))
 	require.ErrorContains(t, draft.PreviewText(text), "already been saved")
 }
 
 func TestEditedAssertionUsesCompleteBooks(t *testing.T) {
-	books, _ := fixture(t, "2021-01-01 Opening\n    Assets:Bank:Checking  $100\n    Equity:Capital:Owner  $-100\n")
+	books, _ := fixture(t, "2021-01-01 Opening\n    Bank:131.2:Checking  $100\n    Equity:218:Owner  $-100\n")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
 	text, err := draft.Preview(testEntry())
@@ -162,13 +162,12 @@ func TestInvalidEditedTextCannotBeSaved(t *testing.T) {
 		{"directive", func(s, _ string) string { return "include accounts.journal\n" + s }},
 		{"alias", func(s, _ string) string { return "alias Assets=Expenses\n" + s }},
 		{"unbalanced", func(s, _ string) string { return strings.Replace(s, "$12.34", "$12.35", 1) }},
-		{"wrong-year", func(s, _ string) string { return strings.Replace(s, "2021", "2022", 1) }},
-		{"unknown-account", func(s, _ string) string { return strings.Replace(s, "Expenses:Power:Utility", "Expenses:Typo", 1) }},
+		{"unknown-account", func(s, _ string) string { return strings.Replace(s, "Expense:615:Utility", "Expenses:Typo", 1) }},
 		{"wrong-id", func(s, id string) string { return strings.Replace(s, id, "different", 1) }},
 		{"missing-id", func(s, id string) string { return strings.Replace(s, "    ; id: "+id+"\n", "", 1) }},
 		{"virtual", func(s, _ string) string {
-			s = strings.Replace(s, "Expenses:Power:Utility", "[Expenses:Power:Utility]", 1)
-			return strings.Replace(s, "Assets:Bank:Checking", "[Assets:Bank:Checking]", 1)
+			s = strings.Replace(s, "Expense:615:Utility", "[Expense:615:Utility]", 1)
+			return strings.Replace(s, "Bank:131.2:Checking", "[Bank:131.2:Checking]", 1)
 		}},
 		{"commodity", func(s, _ string) string { return strings.ReplaceAll(s, "$", "EUR ") }},
 		{"control", func(s, _ string) string { return "; note \x1b\n" + s }},
@@ -182,7 +181,7 @@ func TestInvalidEditedTextCannotBeSaved(t *testing.T) {
 			require.Error(t, draft.PreviewText(tc.change(text, draft.id)))
 			_, err = draft.Save()
 			require.ErrorContains(t, err, "preview")
-			require.Empty(t, read(t, books.Config.WriteJournal))
+			require.Empty(t, read(t, books.Config.ManualJournal))
 		})
 	}
 }
@@ -191,14 +190,14 @@ func TestIncompleteFormCanSeedEditor(t *testing.T) {
 	books, _ := fixture(t, "")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
-	entry := Entry{Postings: []Posting{{Account: "Expenses:Power:Utility"}, {Account: "Assets:Bank:Checking"}}}
+	entry := Entry{Postings: []Posting{{Account: "Expense:615:Utility"}, {Account: "Bank:131.2:Checking"}}}
 	text := entry.journalText(draft.id)
 	require.Contains(t, text, "YYYY-MM-DD")
 	require.Contains(t, text, "; id: "+draft.id)
 	require.Error(t, draft.PreviewText(text))
 	text = strings.Replace(text, "YYYY-MM-DD ", "2021-04-05 Electric company", 1)
-	text = strings.Replace(text, "Expenses:Power:Utility\n", "Expenses:Power:Utility  $12.34\n", 1)
-	text = strings.Replace(text, "Assets:Bank:Checking\n", "Assets:Bank:Checking  $-12.34\n", 1)
+	text = strings.Replace(text, "Expense:615:Utility\n", "Expense:615:Utility  $12.34\n", 1)
+	text = strings.Replace(text, "Bank:131.2:Checking\n", "Bank:131.2:Checking  $-12.34\n", 1)
 	require.NoError(t, draft.PreviewText(text))
-	require.Empty(t, read(t, books.Config.WriteJournal))
+	require.Empty(t, read(t, books.Config.ManualJournal))
 }

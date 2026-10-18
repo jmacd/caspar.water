@@ -14,7 +14,7 @@ func recordStatement(t *testing.T, books *Books, statement *Statement) {
 	for index := range statement.Rows {
 		draft, entry, err := books.StatementDraft(statement, index)
 		require.NoError(t, err)
-		entry.Postings[1].Account = "Equity:Capital:Owner"
+		entry.Postings[1].Account = "Equity:218:Owner"
 		_, err = draft.Preview(entry)
 		require.NoError(t, err)
 		_, err = draft.Save()
@@ -29,8 +29,8 @@ func saveBankEntry(t *testing.T, books *Books, date, description, amount string)
 	entry := Entry{
 		Date: date, Payee: description,
 		Postings: []Posting{
-			{Account: "Equity:Capital:Owner", Amount: amount},
-			{Account: "Assets:Bank:Checking", Amount: "-" + amount},
+			{Account: "Equity:218:Owner", Amount: amount},
+			{Account: "Bank:131.2:Checking", Amount: "-" + amount},
 		},
 	}
 	_, err = draft.Preview(entry)
@@ -81,8 +81,9 @@ func TestFinishReconciliationLocksTransactions(t *testing.T) {
 	require.ErrorContains(t, err, "locked by finished bank reconciliation")
 	require.NoError(t, books.verifyReconciliations())
 
-	journal := read(t, books.Config.WriteJournal)
-	require.NoError(t, os.WriteFile(books.Config.WriteJournal,
+	journalPath := bankJournal(t, books, statement.BankAccount)
+	journal := read(t, journalPath)
+	require.NoError(t, os.WriteFile(journalPath,
 		[]byte(strings.Replace(journal, "OPENING DEPOSIT", "Changed deposit", 1)), 0600))
 	require.ErrorContains(t, books.verifyReconciliations(), "changed after Finish")
 	_, err = Open(books.Config)
@@ -157,6 +158,27 @@ func TestReconciliationRequiresRecordedRowsAndEarlierStatements(t *testing.T) {
 	require.ErrorContains(t, err, "finish the earlier statement")
 }
 
+func TestReconciliationOrderingIsIndependentPerBankAccount(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
+	root := books.Config.root
+	earlierPDF := filepath.Join(root, "earlier-savings.pdf")
+	earlierJSON := filepath.Join(root, "earlier-savings.json")
+	earlierData := strings.NewReplacer(
+		"2021-04-", "2021-02-",
+		"2021-05-", "2021-03-",
+		`"account_id":"Checking"`, `"account_id":"Savings"`,
+	).Replace(statementJSON)
+	require.NoError(t, os.WriteFile(earlierPDF, []byte("%PDF-1.7\nearlier savings\n"), 0600))
+	require.NoError(t, os.WriteFile(earlierJSON, []byte(earlierData), 0600))
+	earlier, err := books.LoadStatement(earlierPDF, StatementOptions{Extraction: earlierJSON}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "Bank:131.2:Savings", earlier.BankAccount)
+
+	_, err = books.Reconciliation(statement)
+	require.NoError(t, err, "an unfinished statement for another account must not block reconciliation")
+}
+
 func TestReconciliationRejectsChangedStatementEvidence(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	recordStatement(t, books, statement)
@@ -189,7 +211,7 @@ func TestReconciliationRejectsIncompleteCheckpoint(t *testing.T) {
 func TestFinishReconciliationHonorsWriterLock(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	recordStatement(t, books, statement)
-	lock := books.Config.WriteJournal + ".wat-lock"
+	lock := bankJournal(t, books, statement.BankAccount) + ".wat-lock"
 	require.NoError(t, os.WriteFile(lock, []byte("busy"), 0600))
 	require.ErrorContains(t, books.FinishReconciliation(statement), "acquire journal lock")
 	require.NoFileExists(t, books.reconciliationPath(statement.Hash, "reconciliation.json"))

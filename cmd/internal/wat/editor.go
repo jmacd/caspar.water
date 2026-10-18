@@ -19,14 +19,14 @@ func editorHelp(year int, accounts []string) string {
 	lines := []string{
 		"EDITOR CHEATSHEET - temporary, removed before preview and save.",
 		"Edit the transaction ABOVE this cheatsheet; keep its id tag unchanged.",
-		fmt.Sprintf("Use a YYYY-MM-DD date within %d. Reference/source tags are optional.", year),
+		"Use a valid YYYY-MM-DD date. Reference/source tags are optional.",
 		"Posting syntax: indent the account, then at least two spaces, then $amount.",
 		"Positive amounts are debits; negative amounts are credits. The sum must be zero.",
 		"Example posting (replace the account and amount):",
 		"    ACCOUNT-NAME  $125.00",
 		"    ACCOUNT-NAME  $-125.00",
 		"",
-		"Copy/paste these declared account names (at least three levels) into postings above:",
+		"Copy/paste these declared Category:CPUC-number:LocalName accounts into postings above:",
 	}
 	for _, account := range accounts {
 		lines = append(lines, "    "+account)
@@ -75,7 +75,7 @@ func (b *Books) editText(initial string) (text string, err error) {
 	if !strings.HasSuffix(editorText, "\n") {
 		editorText += "\n"
 	}
-	editorText += editorHelp(b.Config.Year, accounts)
+	editorText += editorHelp(b.Config.ReportYear, accounts)
 	if err := os.WriteFile(path, []byte(editorText), 0600); err != nil {
 		return text, err
 	}
@@ -149,9 +149,8 @@ func (d *Draft) previewText(text string, requireDetail bool) (err error) {
 		return fmt.Errorf("expected exactly one transaction, got %d", len(transactions))
 	}
 	tx := transactions[0]
-	date, err := time.Parse("2006-01-02", tx.Date)
-	if err != nil || date.Year() != d.books.Config.Year {
-		return fmt.Errorf("transaction must be dated within %d", d.books.Config.Year)
+	if _, err := time.Parse("2006-01-02", tx.Date); err != nil {
+		return fmt.Errorf("transaction must have a valid YYYY-MM-DD date")
 	}
 	if strings.TrimSpace(tx.Description) == "" || len(tx.Postings) < 2 {
 		return fmt.Errorf("a payee/description and at least two postings are required")

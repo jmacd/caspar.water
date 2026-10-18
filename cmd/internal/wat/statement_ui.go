@@ -1,8 +1,10 @@
 package wat
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -14,12 +16,24 @@ func (ui *terminal) bankStatements() {
 		ui.message(" Cannot list bank statements ", err.Error(), ui.menu)
 		return
 	}
-	if len(statements) == 0 {
-		ui.message(" Bank statements ", "No cached statements in this workspace.\nImport a PDF with --statement <file.pdf>, then reopen it here without supplying the PDF again.", ui.menu)
+	pending, err := ui.books.PendingStatements()
+	if err != nil {
+		ui.message(" Cannot list pending bank statements ", err.Error(), ui.menu)
+		return
+	}
+	if len(statements) == 0 && len(pending) == 0 {
+		ui.message(" Bank statements ", "No bank statements are available. Add PDF files to the configured statement inbox, then start wat again.", ui.menu)
 		return
 	}
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Bank statements - recorded does not mean reconciled ")
+	for _, statement := range pending {
+		label := fmt.Sprintf("READY TO EXTRACT | %s | %s", statement.Name, statement.Hash[:12])
+		hint := "Enter to extract this complete PDF"
+		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+			ui.extractPendingStatement(statement)
+		})
+	}
 	for _, statement := range statements {
 		statuses, err := ui.books.StatementStatuses(statement)
 		if err != nil {
@@ -47,20 +61,14 @@ func (ui *terminal) bankStatements() {
 			state = "RECONCILED"
 			hint = "Finished " + checkpoint.FinishedAt + " | read-only | " + statement.Source
 		}
-		label := fmt.Sprintf("%s | %s | %s", period, state, statement.Hash[:12])
+		label := fmt.Sprintf("%s | %s | %s | %s", statement.BankAccount, period, state, statement.Hash[:12])
 		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
 			current, err := ui.books.cachedStatement(statement.Hash)
 			if err != nil {
 				ui.message(" Cannot open bank statement ", err.Error(), ui.bankStatements)
 				return
 			}
-			previous, queue, back := ui.statement, ui.queue, ui.statementBack
-			ui.statement, ui.queue = current, nil
-			ui.statementBack = func() {
-				ui.statement, ui.queue, ui.statementBack = previous, queue, back
-				ui.bankStatements()
-			}
-			ui.statementList()
+			ui.openStatementFromBrowser(current)
 		})
 	}
 	list.AddItem("Back to menu", "Saved entries and statement caches are unchanged", 'q', ui.menu)
@@ -71,7 +79,76 @@ func (ui *terminal) bankStatements() {
 		}
 		return event
 	})
-	ui.screen("Bank statements", list, "Enter Open statement | Esc Menu")
+	ui.screen("Bank statements", list, "Enter Open / extract one statement | Esc Menu")
+}
+
+func (ui *terminal) openStatementFromBrowser(statement *Statement) {
+	previous, queue, back := ui.statement, ui.queue, ui.statementBack
+	ui.statement, ui.queue = statement, nil
+	ui.statementBack = func() {
+		ui.statement, ui.queue, ui.statementBack = previous, queue, back
+		ui.bankStatements()
+	}
+	ui.statementList()
+}
+
+func (ui *terminal) extractPendingStatement(pending *PendingStatement) {
+	frames := []string{"|", "/", "-", "\\"}
+	started := time.Now()
+	status := tview.NewTextView().SetText(statementExtractionStatus(
+		pending.Name, ui.books.Config.Statement.Model, frames[0], 0,
+	))
+	ui.screen("Statement extraction", status, "Extraction in progress")
+	var progress bytes.Buffer
+	result := make(chan statementExtractionResult, 1)
+	go func() {
+		statement, err := ui.books.ExtractPendingStatement(pending.Hash, StatementOptions{}, &progress)
+		result <- statementExtractionResult{statement: statement, err: err}
+	}()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	go func() {
+		defer ticker.Stop()
+		frame := 0
+		for {
+			select {
+			case outcome := <-result:
+				ui.app.QueueUpdateDraw(func() {
+					if outcome.err != nil {
+						detail := strings.TrimSpace(progress.String())
+						if detail != "" {
+							detail += "\n\n"
+						}
+						detail += outcome.err.Error()
+						ui.message(" Statement extraction failed ", detail, ui.bankStatements)
+						return
+					}
+					ui.openStatementFromBrowser(outcome.statement)
+				})
+				return
+			case now := <-ticker.C:
+				frame = (frame + 1) % len(frames)
+				text := statementExtractionStatus(
+					pending.Name, ui.books.Config.Statement.Model, frames[frame], now.Sub(started),
+				)
+				ui.app.QueueUpdateDraw(func() {
+					status.SetText(text)
+				})
+			}
+		}
+	}()
+}
+
+type statementExtractionResult struct {
+	statement *Statement
+	err       error
+}
+
+func statementExtractionStatus(name, model, frame string, elapsed time.Duration) string {
+	totalSeconds := int(elapsed / time.Second)
+	return fmt.Sprintf(
+		"Extracting %s\n\n[%s] Reading embedded PDF text and waiting for model %s\n    Elapsed %02d:%02d\n\nNo journal entries will be written.",
+		name, frame, model, totalSeconds/60, totalSeconds%60,
+	)
 }
 
 func (ui *terminal) statementList() {
@@ -212,7 +289,7 @@ func (ui *terminal) statementOpen(index int) {
 		}
 		focus := 5
 		for index, posting := range entry.Postings {
-			if posting.Account != ui.books.Config.BankAccount {
+			if posting.Account != ui.statement.BankAccount {
 				focus = 5 + 2*index
 				break
 			}

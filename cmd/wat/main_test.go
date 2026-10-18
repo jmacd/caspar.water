@@ -27,11 +27,13 @@ func TestStatementFlagAndCache(t *testing.T) {
 	root := t.TempDir()
 	config := filepath.Join(root, "wat.yaml")
 	for name, text := range map[string]string{
-		"wat.yaml":      "version: 1\nname: Test\nyear: 2021\njournal: books.journal\nwrite_journal: 2021.journal\nsources: sources\nbank_account: Assets:Bank:Checking\n",
-		"books.journal": "commodity $\naccount Assets:Bank:Checking\naccount Equity:Capital:Owner\ninclude 2021.journal\n",
+		"wat.yaml":      "version: 2\nname: Test\nreport_year: 2021\njournal: books.journal\naccount_chart: chart.journal\nmanual_journal: 2021.journal\nsources: sources\nbank_accounts:\n  - account: Bank:131.2:Checking\n    journal: bank.journal\n",
+		"books.journal": "include chart.journal\naccount Bank ; type: A\naccount Bank:131.2:Checking\naccount Equity:218:Owner\ninclude 2021.journal\ninclude bank.journal\n",
+		"chart.journal": "commodity $\naccount Asset:131.2-Cash-in-Bank\naccount Equity:218-Proprietary-Capital\n",
 		"2021.journal":  "",
+		"bank.journal":  "",
 		"statement.pdf": "%PDF-1.7\nsynthetic\n",
-		"extract.json":  `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
+		"extract.json":  `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD","account_id":"Checking"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
 	}
@@ -47,6 +49,29 @@ func TestStatementFlagAndCache(t *testing.T) {
 		require.NoError(t, cmd.Execute())
 		require.Contains(t, output.String(), "0 recorded, 1 pending")
 	}
+	accounts := command()
+	var accountsOutput bytes.Buffer
+	accounts.SetOut(&accountsOutput)
+	accounts.SetArgs([]string{"--config", config, "accounts"})
+	require.NoError(t, accounts.Execute())
+	require.Contains(t, accountsOutput.String(), "Bank:131.2:Checking\tAsset:131.2-Cash-in-Bank")
+	override := command()
+	override.SetOut(&bytes.Buffer{})
+	override.SetArgs([]string{
+		"--config", config,
+		"--statement-inbox", filepath.Join(root, "missing-inbox"),
+		"--statement", filepath.Join(root, "statement.pdf"),
+		"--statement-check",
+	})
+	require.NoError(t, override.Execute(), "an explicit statement must override automatic inbox scanning")
+	check := command()
+	check.SetOut(&bytes.Buffer{})
+	check.SetArgs([]string{
+		"--config", config,
+		"--statement-inbox", filepath.Join(root, "missing-inbox"),
+		"check",
+	})
+	require.NoError(t, check.Execute(), "noninteractive subcommands must not mutate or scan the statement inbox")
 	second := filepath.Join(root, "z-statement.pdf")
 	require.NoError(t, os.WriteFile(second, []byte("%PDF-1.7\nsecond synthetic statement\n"), 0600))
 	seed := command()
@@ -64,11 +89,11 @@ func TestStatementFlagAndCache(t *testing.T) {
 	require.Less(t, strings.Index(output.String(), "Statement file: "+second), strings.Index(output.String(), "Statement file: "+filepath.Join(root, "statement.pdf")), "preserve supplied order instead of sorting")
 	for _, args := range [][]string{
 		{"--statement", second, "--statements", second},
-		{"--statements", second, "--statement-pages", "1"},
 		{"--statements", second, "--statement-extraction", filepath.Join(root, "extract.json")},
 		{"--statements"},
 		{"--statements", ""},
 		{"--statements", filepath.Join(root, "*.pdf"), "--statement-check"},
+		{"--statement-inbox", root, "--statement-check"},
 		{second},
 	} {
 		cmd := command()

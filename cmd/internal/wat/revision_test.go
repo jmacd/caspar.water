@@ -22,14 +22,14 @@ func TestRevisionReplacesOnlySelectedEntry(t *testing.T) {
 	require.Equal(t, entry, revised)
 	revised.Payee = "Corrected utility"
 	revised.Postings[0].Amount = "7.34"
-	revised.Postings = append(revised.Postings, Posting{Account: "Income:Other:Misc", Amount: "5.00"})
+	revised.Postings = append(revised.Postings, Posting{Account: "Income:421:Misc", Amount: "5.00"})
 	text, err := draft.Preview(revised)
 	require.NoError(t, err)
 	backup, err := draft.Save()
 	require.NoError(t, err)
 	require.Equal(t, original, read(t, backup))
 	want := strings.Replace(original, middle, text, 1)
-	require.Equal(t, want, read(t, books.Config.WriteJournal))
+	require.Equal(t, want, read(t, books.Config.ManualJournal))
 	require.Equal(t, 1, strings.Count(want, "; id: middle"))
 	transactions, err := books.transactions(books.Config.Journal)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestRevisionReplacesOnlySelectedEntry(t *testing.T) {
 	require.Len(t, transactions[1].Postings, 3)
 	_, err = draft.Save()
 	require.Error(t, err)
-	require.Equal(t, want, read(t, books.Config.WriteJournal))
+	require.Equal(t, want, read(t, books.Config.ManualJournal))
 }
 
 func TestRevisionPreservesTransactionNotes(t *testing.T) {
@@ -51,7 +51,7 @@ func TestRevisionPreservesTransactionNotes(t *testing.T) {
 	require.NoError(t, err)
 	_, err = draft.Save()
 	require.NoError(t, err)
-	saved := read(t, books.Config.WriteJournal)
+	saved := read(t, books.Config.ManualJournal)
 	require.Contains(t, saved, "; Receipt was corrected after review.")
 	require.Contains(t, saved, "; tax-year: 2021")
 	require.Contains(t, saved, "Revised description")
@@ -68,14 +68,14 @@ func TestRevisionRejectsStaleAndInvalidEdits(t *testing.T) {
 	entry.Postings[0].Amount = "999.00"
 	_, err = draft.Preview(entry)
 	require.Error(t, err)
-	require.Equal(t, original, read(t, books.Config.WriteJournal))
+	require.Equal(t, original, read(t, books.Config.ManualJournal))
 	entry.Postings[0].Amount = "12.34"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(books.Config.WriteJournal, []byte(original+"; concurrent change\n"), 0600))
+	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(original+"; concurrent change\n"), 0600))
 	_, err = draft.Save()
 	require.ErrorContains(t, err, "journal changed")
-	require.Equal(t, original+"; concurrent change\n", read(t, books.Config.WriteJournal))
+	require.Equal(t, original+"; concurrent change\n", read(t, books.Config.ManualJournal))
 }
 
 func TestRevisionIncludedJournalsAreReadOnly(t *testing.T) {
@@ -93,27 +93,26 @@ func TestRevisionIncludedJournalsAreReadOnly(t *testing.T) {
 	require.Empty(t, entries[0].ReadOnly)
 	require.NotEmpty(t, entries[1].ReadOnly)
 	require.Equal(t, closed, read(t, path))
-	require.Equal(t, working, read(t, books.Config.WriteJournal))
+	require.Equal(t, working, read(t, books.Config.ManualJournal))
 }
 
 func TestJournalEntriesIncludeRunningBankBalance(t *testing.T) {
 	prior := Entry{
 		Date: "2020-12-31", Payee: "Opening bank balance",
 		Postings: []Posting{
-			{Account: "Assets:Bank:Checking", Amount: "100.00"},
-			{Account: "Equity:Capital:Owner", Amount: "-100.00"},
+			{Account: "Bank:131.2:Checking", Amount: "100.00"},
+			{Account: "Equity:218:Owner", Amount: "-100.00"},
 		},
 	}.journalText("prior")
 	payment := testEntry().journalText("payment")
 	deposit := Entry{
 		Date: "2021-04-06", Payee: "Deposit",
 		Postings: []Posting{
-			{Account: "Assets:Bank:Checking", Amount: "20.00"},
-			{Account: "Equity:Capital:Owner", Amount: "-20.00"},
+			{Account: "Bank:131.2:Checking", Amount: "20.00"},
+			{Account: "Equity:218:Owner", Amount: "-20.00"},
 		},
 	}.journalText("deposit")
 	books, _ := fixture(t, payment+"\n"+deposit+"\n"+prior)
-	books.Config.BankAccount = "Assets:Bank:Checking"
 	entries, err := books.JournalEntries()
 	require.NoError(t, err)
 	require.Len(t, entries, 2, "prior-year entries contribute to balance but are not listed")
@@ -121,6 +120,36 @@ func TestJournalEntriesIncludeRunningBankBalance(t *testing.T) {
 	require.Equal(t, int64(8766), entries[0].BankBalance)
 	require.Equal(t, int64(2000), entries[1].BankChange)
 	require.Equal(t, int64(10766), entries[1].BankBalance)
+}
+
+func TestJournalEntriesTrackConfiguredBankAccountsIndependently(t *testing.T) {
+	books, _ := fixture(t, "")
+	second := addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
+	checking := Entry{
+		Date: "2021-04-05", Payee: "Checking deposit",
+		Postings: []Posting{
+			{Account: "Bank:131.2:Checking", Amount: "10.00"},
+			{Account: "Equity:218:Owner", Amount: "-10.00"},
+		},
+	}.journalText("checking")
+	savings := Entry{
+		Date: "2021-04-06", Payee: "Savings deposit",
+		Postings: []Posting{
+			{Account: second.Account, Amount: "20.00"},
+			{Account: "Equity:218:Owner", Amount: "-20.00"},
+		},
+	}.journalText("savings")
+	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(checking+savings), 0600))
+
+	entries, err := books.JournalEntries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.Equal(t, "Bank:131.2:Checking", entries[0].BankAccount)
+	require.Equal(t, int64(1000), entries[0].BankBalance)
+	require.True(t, entries[0].BankValues)
+	require.Equal(t, second.Account, entries[1].BankAccount)
+	require.Equal(t, int64(2000), entries[1].BankBalance)
+	require.True(t, entries[1].BankValues)
 }
 
 func TestRevisionRejectsDuplicateOrMissingIDs(t *testing.T) {
@@ -136,7 +165,7 @@ func TestRevisionRejectsDuplicateOrMissingIDs(t *testing.T) {
 		for _, entry := range entries {
 			require.NotEmpty(t, entry.ReadOnly)
 		}
-		require.Equal(t, text, read(t, books.Config.WriteJournal))
+		require.Equal(t, text, read(t, books.Config.ManualJournal))
 	}
 }
 
@@ -153,7 +182,7 @@ func TestRevisionDoesNotDropUnsupportedLedgerFeatures(t *testing.T) {
 			books, _ := fixture(t, text)
 			_, _, err := books.EditDraft("advanced")
 			require.ErrorContains(t, err, "cannot preserve")
-			require.Equal(t, text, read(t, books.Config.WriteJournal))
+			require.Equal(t, text, read(t, books.Config.ManualJournal))
 		})
 	}
 }
@@ -175,7 +204,7 @@ func TestRevisionSourceOffsets(t *testing.T) {
 			require.NoError(t, err)
 			_, err = draft.Save()
 			require.NoError(t, err)
-			require.Equal(t, expected, read(t, books.Config.WriteJournal))
+			require.Equal(t, expected, read(t, books.Config.ManualJournal))
 		})
 	}
 }
@@ -184,12 +213,13 @@ func TestRevisionRecordedStatementPreservesBankEvidence(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(statement, 1)
 	require.NoError(t, err)
-	entry.Postings[1].Account = "Expenses:Power:Utility"
+	entry.Postings[1].Account = "Expense:615:Utility"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
 	require.NoError(t, err)
-	original := read(t, books.Config.WriteJournal)
+	journal := bankJournal(t, books, statement.BankAccount)
+	original := read(t, journal)
 	revision, revised, err := books.EditStatementDraft(statement, 1)
 	require.NoError(t, err)
 	require.Equal(t, draft.id, revision.id)
@@ -202,10 +232,10 @@ func TestRevisionRecordedStatementPreservesBankEvidence(t *testing.T) {
 		strings.Replace(original, "source: "+entry.Source, "source: other.pdf", 1),
 	} {
 		require.Error(t, revision.PreviewText(text))
-		require.Equal(t, original, read(t, books.Config.WriteJournal))
+		require.Equal(t, original, read(t, journal))
 	}
 	revised.Payee = "Corrected power payee"
-	revised.Postings[1].Account = "Income:Other:Misc"
+	revised.Postings[1].Account = "Income:421:Misc"
 	_, err = revision.Preview(revised)
 	require.NoError(t, err)
 	_, err = revision.Save()
@@ -213,11 +243,11 @@ func TestRevisionRecordedStatementPreservesBankEvidence(t *testing.T) {
 	statuses, err := books.StatementStatuses(statement)
 	require.NoError(t, err)
 	require.True(t, statuses[1].Recorded)
-	require.Equal(t, "Income:Other:Misc", statuses[2].Suggestion)
-	saved := read(t, books.Config.WriteJournal)
+	require.Equal(t, "Income:421:Misc", statuses[2].Suggestion)
+	saved := read(t, journal)
 	require.Equal(t, 1, strings.Count(saved, "; id: "+draft.id))
 	require.Equal(t, 1, strings.Count(saved, "; bank-row: "+statement.key(1)))
-	require.Contains(t, saved, "Assets:Bank:Checking  $-12.34")
+	require.Contains(t, saved, "Bank:131.2:Checking  $-12.34")
 	require.Contains(t, saved, "; source: "+entry.Source)
 	require.Contains(t, saved, "Corrected power payee")
 }
