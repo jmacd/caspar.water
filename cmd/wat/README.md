@@ -351,6 +351,9 @@ automatically.
 complete PDF. The extracted opening balance, transactions, and closing balance
 must balance-verify. Missing text or a discrepancy is reported as an extraction
 failure; `wat` does not select pages or switch to an image model.
+Some statements present a dated zero-value beginning/ending balance as a row.
+`wat` omits such rows from the posting queue and shows an extraction notice;
+opening and closing balances remain part of mandatory arithmetic verification.
 
 For scripted diagnostics, `--statement-check` extracts/validates and prints
 queue counts without opening a terminal. `--statement-extraction reviewed.json`

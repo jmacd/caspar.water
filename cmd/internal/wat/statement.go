@@ -707,6 +707,7 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 		OpeningCents: opening, ClosingCents: closing, Warnings: raw.Warnings,
 	}
 	total := big.NewInt(opening)
+	zeroRows := 0
 	for i, tx := range raw.Transactions {
 		_, dateErr := time.Parse("2006-01-02", tx.Date)
 		cents, amountErr := ParseCents(tx.Amount)
@@ -716,17 +717,31 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 		if raw.Period != nil && (tx.Date < raw.Period.Start || tx.Date > raw.Period.End) {
 			return nil, fmt.Errorf("statement row %d is outside its statement period", i+1)
 		}
-		if amountErr != nil || cents == 0 || tx.Currency != "USD" {
-			return nil, fmt.Errorf("statement row %d requires a nonzero exact USD amount", i+1)
+		if amountErr != nil || tx.Currency != "USD" {
+			return nil, fmt.Errorf("statement row %d requires an exact USD amount", i+1)
 		}
 		if strings.TrimSpace(tx.Description) == "" || !singleLine(tx.Description) || strings.ContainsAny(tx.Description, ";|") {
 			return nil, fmt.Errorf("statement row %d requires a single-line description without journal delimiters ';' or '|'", i+1)
+		}
+		if cents == 0 {
+			zeroRows++
+			continue
 		}
 		total.Add(total, big.NewInt(cents))
 		result.Rows = append(result.Rows, StatementRow{tx.Date, tx.Description, cents})
 	}
 	if total.Cmp(big.NewInt(closing)) != 0 {
 		return nil, fmt.Errorf("statement transactions do not match opening and closing balances; review the extraction against the PDF")
+	}
+	if zeroRows != 0 {
+		label := "rows"
+		if zeroRows == 1 {
+			label = "row"
+		}
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"Ignored %d zero-amount statement %s; no ledger posting is required.",
+			zeroRows, label,
+		))
 	}
 	return result, nil
 }

@@ -77,6 +77,18 @@ func TestStatementCanCrossReportYearBoundary(t *testing.T) {
 	require.Equal(t, books.Config.BankAccounts[0].Account, decoded.BankAccount)
 }
 
+func TestStatementIgnoresZeroAmountBalanceMarkers(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
+	withMarker := strings.Replace(statementJSON, `"transactions":[`, `"transactions":[
+  {"booking_date":"2021-04-01","description":"BEGINNING BALANCE","currency":"USD","amount":"0.00","account_id":"Checking"},`, 1)
+
+	decoded, err := books.decodeStatement([]byte(withMarker), statement.Hash, dir)
+	require.NoError(t, err)
+	require.Equal(t, statement.Rows, decoded.Rows, "a zero marker must not shift or create postable rows")
+	require.Contains(t, decoded.Warnings, "Ignored 1 zero-amount statement row; no ledger posting is required.")
+}
+
 func TestStatementAccountIdentifierRoutesToUniqueBankJournal(t *testing.T) {
 	books, root := fixture(t, "")
 	savings := addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
