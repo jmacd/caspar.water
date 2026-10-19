@@ -248,17 +248,28 @@ func TestJournalBrowserUsesRightAlignedBankColumns(t *testing.T) {
 }
 
 func TestEmptyJournalBrowserCanReturnToMenu(t *testing.T) {
-	books, _ := fixture(t, "")
-	ui := &terminal{app: tview.NewApplication(), books: books}
-	ui.journalEntries()
-	table, ok := ui.app.GetFocus().(*tview.Table)
-	require.True(t, ok)
-	require.Equal(t, 1, table.GetRowCount())
-	table.InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone), func(tview.Primitive) {})
-	menu, ok := ui.app.GetFocus().(*tview.List)
-	require.True(t, ok)
-	label, _ := menu.GetItemText(0)
-	require.Equal(t, "Record a transaction", label)
+	for name, event := range map[string]*tcell.EventKey{
+		"enter":  tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone),
+		"escape": tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone),
+		"q":      tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone),
+	} {
+		t.Run(name, func(t *testing.T) {
+			books, _ := fixture(t, "")
+			ui := &terminal{app: tview.NewApplication(), books: books}
+			ui.journalEntries()
+			list, ok := ui.app.GetFocus().(*tview.List)
+			require.True(t, ok)
+			require.Equal(t, 1, list.GetItemCount())
+			empty, detail := list.GetItemText(0)
+			require.Equal(t, "Back to menu", empty)
+			require.Equal(t, "No journal transactions have been recorded", detail)
+			list.InputHandler()(event, func(tview.Primitive) {})
+			menu, ok := ui.app.GetFocus().(*tview.List)
+			require.True(t, ok)
+			label, _ := menu.GetItemText(0)
+			require.Equal(t, "Record a transaction", label)
+		})
+	}
 }
 
 func TestControlCStopsTerminalCleanly(t *testing.T) {

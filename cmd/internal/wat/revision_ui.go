@@ -15,6 +15,20 @@ func (ui *terminal) journalEntryList(selectedID string) {
 		ui.message(" Journal review failed ", err.Error(), ui.menu)
 		return
 	}
+	if len(entries) == 0 {
+		list := tview.NewList().ShowSecondaryText(true)
+		list.AddItem("Back to menu", "No journal transactions have been recorded", 'q', ui.menu)
+		list.SetBorder(true).SetTitle(" Journal | no transactions recorded ")
+		list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter || event.Rune() == 'q' {
+				ui.menu()
+				return nil
+			}
+			return event
+		})
+		ui.screen("Review / revise journal", list, "Enter/q Menu | Esc Menu")
+		return
+	}
 	table := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0)
 	headers := []struct {
 		text      string
