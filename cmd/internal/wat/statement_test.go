@@ -60,7 +60,7 @@ func TestStatementCacheAndValidation(t *testing.T) {
 	require.ErrorContains(t, err, "fingerprint")
 }
 
-func TestStatementCanCrossReportYearBoundary(t *testing.T) {
+func TestStatementCanCrossCalendarYearBoundary(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
 	crossYear := strings.NewReplacer(
@@ -91,7 +91,7 @@ func TestStatementIgnoresZeroAmountBalanceMarkers(t *testing.T) {
 
 func TestStatementAccountIdentifierRoutesToUniqueBankJournal(t *testing.T) {
 	books, root := fixture(t, "")
-	savings := addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
+	savings := addBankAccount(t, books, "Bank:131.2:Savings")
 	extraction := strings.ReplaceAll(statementJSON, `"account_id":"Checking"`, `"account_id":"0000-Savings"`)
 	pdf := filepath.Join(root, "savings.pdf")
 	jsonPath := filepath.Join(root, "savings.json")
@@ -170,8 +170,11 @@ func TestCachedStatementsEmptyWorkspace(t *testing.T) {
 	statements, err := books.CachedStatements()
 	require.NoError(t, err)
 	require.Empty(t, statements)
-	_, err = os.Lstat(books.Config.Sources)
-	require.True(t, os.IsNotExist(err), "browsing must not create cache directories")
+	info, err := os.Stat(books.Config.Sources)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+	_, err = os.Lstat(filepath.Join(books.Config.Sources, "statements"))
+	require.True(t, os.IsNotExist(err), "browsing must not create the statement cache directory")
 	require.NoError(t, os.MkdirAll(filepath.Join(books.Config.Sources, "statements"), 0700))
 	statements, err = books.CachedStatements()
 	require.NoError(t, err)

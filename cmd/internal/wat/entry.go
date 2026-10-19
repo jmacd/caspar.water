@@ -113,7 +113,7 @@ func (e Entry) balanceStatus() string {
 	return fmt.Sprintf("Balance: $%s | To balance: %s USD (%s)", formatCents(total), needed, side)
 }
 
-func (e Entry) render(year int, accounts []string, id string) (string, error) {
+func (e Entry) render(accounts []string, id string) (string, error) {
 	if _, err := time.Parse("2006-01-02", e.Date); err != nil {
 		return "", fmt.Errorf("date must be a valid YYYY-MM-DD date")
 	}

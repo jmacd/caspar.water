@@ -102,7 +102,7 @@ func TestEditorErrorsKeepEditedTextWithoutSaving(t *testing.T) {
 
 func TestEditorCheatsheetStrippingPreservesUserText(t *testing.T) {
 	userText := "; evidence note\n2021-04-05 Payee\n    ; id: preserved\n    Bank:131.2:Checking  $1.00\n    Equity:218:Owner  $-1.00\n"
-	help := editorHelp(2021, []string{"Bank:131.2:Checking", "Equity:218:Owner"})
+	help := editorHelp([]string{"Bank:131.2:Checking", "Equity:218:Owner"})
 	require.Equal(t, userText, stripEditorHelp(userText+help))
 	require.Equal(t, userText+"; my own closing note\n", stripEditorHelp(userText+help+"; my own closing note\n"))
 	require.Equal(t, userText, stripEditorHelp(userText+strings.TrimSuffix(help, "\n")))
@@ -115,7 +115,7 @@ func TestEditorCheatsheetUsesCurrentAccountsOnReopen(t *testing.T) {
 	books, _ := fixture(t, "")
 	t.Setenv("VISUAL", helperEditor(t, books))
 	initial := testEntry().journalText("test-id")
-	text, err := books.editText(initial + editorHelp(2021, []string{"Assets:Old-Account"}))
+	text, err := books.editText(initial + editorHelp([]string{"Assets:Old-Account"}))
 	require.NoError(t, err)
 	require.NotContains(t, text, "Assets:Old-Account")
 	require.NotContains(t, text, editorHelpPrefix)

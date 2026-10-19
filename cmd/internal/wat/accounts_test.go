@@ -40,6 +40,12 @@ func addAccountDeclarations(t *testing.T, books *Books, text string) {
 	require.NoError(t, os.WriteFile(path, []byte(read(t, path)+text), 0600))
 }
 
+func configureAccounts(t *testing.T, books *Books, accounts ...string) {
+	t.Helper()
+	books.Config.Accounts = append(books.Config.Accounts, accounts...)
+	require.NoError(t, prepareWorkspace(books.Config))
+}
+
 func TestPostingAccountsResolveThroughCPUCChart(t *testing.T) {
 	books, _ := fixture(t, "")
 	accounts, err := books.PostingAccounts()
@@ -59,14 +65,23 @@ func TestPostingAccountsRejectUnknownAndMismatchedCPUCNumbers(t *testing.T) {
 	for _, tc := range []struct {
 		name, declaration, message string
 	}{
-		{"unknown", "account Expense:999:Unknown\n", "not in account_chart"},
+		{"unknown", "account Expense:999:Unknown\n", "not in the CPUC chart"},
 		{"wrong category", "account Expense:131.2:Wrong\n", "classifies it as Asset"},
 		{"Bank must be asset", "account Bank:615:Wrong\n", "classifies it as Expense"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			books, _ := fixture(t, "")
-			addAccountDeclarations(t, books, tc.declaration)
-			_, err := books.Accounts()
+			account := strings.TrimSpace(strings.TrimPrefix(tc.declaration, "account "))
+			cfg := books.Config
+			if strings.HasPrefix(account, "Bank:") {
+				cfg.BankAccounts = append(cfg.BankAccounts, BankAccountConfig{
+					Account: account,
+					Journal: filepath.Join(cfg.root, booksDirectory, bankJournalFilename(account)),
+				})
+			} else {
+				cfg.Accounts = append(cfg.Accounts, account)
+			}
+			_, err := Open(cfg)
 			require.ErrorContains(t, err, tc.message)
 		})
 	}
@@ -83,7 +98,7 @@ func TestAccountChartRejectsConflictingNumberMappings(t *testing.T) {
 
 func TestPostingChoicesRequireDepthNotLeaves(t *testing.T) {
 	books, _ := fixture(t, "")
-	addAccountDeclarations(t, books, "account Expense:615:PGE\naccount Expense:615:PGE:Shop\n")
+	configureAccounts(t, books, "Expense:615:PGE", "Expense:615:PGE:Shop")
 	accounts, err := books.Accounts()
 	require.NoError(t, err)
 	require.Contains(t, accounts, "Expense:615:PGE", "three-level accounts remain postable even when they have children")
@@ -91,7 +106,7 @@ func TestPostingChoicesRequireDepthNotLeaves(t *testing.T) {
 	require.Equal(t,
 		[]string{"Expense:615:PGE", "Expense:615:PGE:Shop", "Expense:615:Utility"},
 		matchingAccounts(accounts, "615"))
-	help := editorHelp(2021, accounts)
+	help := editorHelp(accounts)
 	require.Contains(t, help, "Expense:615:PGE\n")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
@@ -104,44 +119,19 @@ func TestPostingChoicesRequireDepthNotLeaves(t *testing.T) {
 	require.NoError(t, books.Check())
 }
 
-func TestExistingShallowEntriesCanBeMigratedIndividually(t *testing.T) {
+func TestGeneratedAccountsRejectUndeclaredLegacyEntriesAtOpen(t *testing.T) {
 	books, _ := fixture(t, "")
-	addAccountDeclarations(t, books, "account Expense:615-Power\naccount Expense:615:PGE\n")
 	entry := testEntry()
 	entry.Postings[0].Account = "Expense:615-Power"
-	first := entry.journalText("first")
-	second := entry.journalText("second")
-	original := first + "\n" + second
-	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(original), 0600))
+	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(entry.journalText("legacy")), 0600))
 	_, err := Open(books.Config)
-	require.NoError(t, err, "legacy entries must not prevent opening the app to correct them")
-	require.ErrorContains(t, books.Check(), "Category:CPUC-number:LocalName")
-	for _, id := range []string{"first", "second"} {
-		draft, revised, err := books.EditDraft(id)
-		require.NoError(t, err)
-		require.Equal(t, "Expense:615-Power", revised.Postings[0].Account)
-		_, err = draft.Save()
-		require.Error(t, err, "verifying the old source must not make it savable without validation")
-		_, err = draft.Preview(revised)
-		require.ErrorContains(t, err, "Category:CPUC-number:LocalName")
-		require.ErrorContains(t, draft.PreviewText(revised.journalText(id)), "Category:CPUC-number:LocalName")
-		revised.Postings[0].Account = "Expense:615:PGE"
-		_, err = draft.Preview(revised)
-		require.NoError(t, err)
-		_, err = draft.Save()
-		require.NoError(t, err)
-		if id == "first" {
-			require.Contains(t, read(t, books.Config.ManualJournal), second, "other legacy entries must stay untouched")
-			require.Error(t, books.Check())
-		}
-	}
-	require.NoError(t, books.Check())
-	require.Equal(t, 2, strings.Count(read(t, books.Config.ManualJournal), "Expense:615:PGE"))
+	require.ErrorContains(t, err, "has not been declared")
 }
 
 func TestNewEntriesRejectShallowAccountsInFormAndText(t *testing.T) {
 	books, _ := fixture(t, "")
-	addAccountDeclarations(t, books, "account Expense:615-Power\naccount Expense:615:PGE\n")
+	configureAccounts(t, books, "Expense:615:PGE")
+	addAccountDeclarations(t, books, "account Expense:615-Power\n")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
 	entry := testEntry()

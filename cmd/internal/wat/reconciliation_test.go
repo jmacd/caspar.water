@@ -160,7 +160,7 @@ func TestReconciliationRequiresRecordedRowsAndEarlierStatements(t *testing.T) {
 
 func TestReconciliationOrderingIsIndependentPerBankAccount(t *testing.T) {
 	books, statement, _ := statementFixture(t)
-	addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
+	addBankAccount(t, books, "Bank:131.2:Savings")
 	root := books.Config.root
 	earlierPDF := filepath.Join(root, "earlier-savings.pdf")
 	earlierJSON := filepath.Join(root, "earlier-savings.json")

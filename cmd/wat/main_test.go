@@ -26,14 +26,13 @@ func TestStatementFlagAndCache(t *testing.T) {
 	}
 	root := t.TempDir()
 	config := filepath.Join(root, "wat.yaml")
+	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
 	for name, text := range map[string]string{
-		"wat.yaml":      "version: 2\nname: Test\nreport_year: 2021\njournal: books.journal\naccount_chart: chart.journal\nmanual_journal: 2021.journal\nsources: sources\nbank_accounts:\n  - account: Bank:131.2:Checking\n    journal: bank.journal\n",
-		"books.journal": "include chart.journal\naccount Bank ; type: A\naccount Bank:131.2:Checking\naccount Equity:218:Owner\ninclude 2021.journal\ninclude bank.journal\n",
-		"chart.journal": "commodity $\naccount Asset:131.2-Cash-in-Bank\naccount Equity:218-Proprietary-Capital\n",
-		"2021.journal":  "",
-		"bank.journal":  "",
-		"statement.pdf": "%PDF-1.7\nsynthetic\n",
-		"extract.json":  `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD","account_id":"Checking"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
+		"wat.yaml":             "version: 3\nname: Test\naccounts:\n  - Equity:218:Owner\nbank_accounts:\n  - Bank:131.2:Checking\n",
+		"books/chart.journal":  "commodity $\naccount Asset:131.2-Cash-in-Bank\naccount Equity:218-Proprietary-Capital\n",
+		"books/manual.journal": "",
+		"statement.pdf":        "%PDF-1.7\nsynthetic\n",
+		"extract.json":         `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD","account_id":"Checking"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
 	}
@@ -100,7 +99,7 @@ func TestStatementFlagAndCache(t *testing.T) {
 		cmd.SetArgs(append([]string{"--config", config}, args...))
 		require.Error(t, cmd.Execute())
 	}
-	content, err := os.ReadFile(filepath.Join(root, "2021.journal"))
+	content, err := os.ReadFile(filepath.Join(root, "books", "manual.journal"))
 	require.NoError(t, err)
 	require.Empty(t, content, "ingesting/checking a statement must not create journal postings")
 }

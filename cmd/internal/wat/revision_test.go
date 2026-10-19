@@ -115,16 +115,18 @@ func TestJournalEntriesIncludeRunningBankBalance(t *testing.T) {
 	books, _ := fixture(t, payment+"\n"+deposit+"\n"+prior)
 	entries, err := books.JournalEntries()
 	require.NoError(t, err)
-	require.Len(t, entries, 2, "prior-year entries contribute to balance but are not listed")
-	require.Equal(t, int64(-1234), entries[0].BankChange)
-	require.Equal(t, int64(8766), entries[0].BankBalance)
-	require.Equal(t, int64(2000), entries[1].BankChange)
-	require.Equal(t, int64(10766), entries[1].BankBalance)
+	require.Len(t, entries, 3)
+	require.Equal(t, int64(10000), entries[0].BankChange)
+	require.Equal(t, int64(10000), entries[0].BankBalance)
+	require.Equal(t, int64(-1234), entries[1].BankChange)
+	require.Equal(t, int64(8766), entries[1].BankBalance)
+	require.Equal(t, int64(2000), entries[2].BankChange)
+	require.Equal(t, int64(10766), entries[2].BankBalance)
 }
 
 func TestJournalEntriesTrackConfiguredBankAccountsIndependently(t *testing.T) {
 	books, _ := fixture(t, "")
-	second := addBankAccount(t, books, "Bank:131.2:Savings", "savings.journal")
+	second := addBankAccount(t, books, "Bank:131.2:Savings")
 	checking := Entry{
 		Date: "2021-04-05", Payee: "Checking deposit",
 		Postings: []Posting{

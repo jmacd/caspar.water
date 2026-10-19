@@ -5,27 +5,43 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	booksDirectory   = "books"
+	masterJournal    = "books.journal"
+	chartJournal     = "chart.journal"
+	accountsJournal  = "accounts.journal"
+	manualJournal    = "manual.journal"
+	sourcesDirectory = "sources"
+)
+
+var (
+	filenameSeparatorPattern = regexp.MustCompile(`[._-]+`)
+	localAccountPartPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+)
+
 type Config struct {
 	Version       int                 `yaml:"version"`
 	Name          string              `yaml:"name"`
-	ReportYear    int                 `yaml:"report_year"`
-	Journal       string              `yaml:"journal"`
-	AccountChart  string              `yaml:"account_chart"`
-	ManualJournal string              `yaml:"manual_journal"`
-	Sources       string              `yaml:"sources"`
+	Accounts      []string            `yaml:"accounts"`
 	BankAccounts  []BankAccountConfig `yaml:"bank_accounts"`
 	Statement     StatementConfig     `yaml:"statement"`
+	Journal       string              `yaml:"-"`
+	AccountChart  string              `yaml:"-"`
+	LocalAccounts string              `yaml:"-"`
+	ManualJournal string              `yaml:"-"`
+	Sources       string              `yaml:"-"`
 	root          string
 }
 
 type BankAccountConfig struct {
 	Account string `yaml:"account"`
-	Journal string `yaml:"journal"`
+	Journal string `yaml:"-"`
 }
 
 type StatementConfig struct {
@@ -34,6 +50,14 @@ type StatementConfig struct {
 	APIVersion string `yaml:"api_version"`
 	Model      string `yaml:"model"`
 	OllamaURL  string `yaml:"ollama_url,omitempty"`
+}
+
+func (b *BankAccountConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode {
+		return fmt.Errorf("bank account must be a Category:CPUC-number:LocalName string")
+	}
+	b.Account = node.Value
+	return nil
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -52,11 +76,11 @@ func LoadConfig(path string) (Config, error) {
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return cfg, fmt.Errorf("configuration must contain exactly one YAML document")
 	}
-	if cfg.Version != 2 {
-		return cfg, fmt.Errorf("unsupported configuration version %d (expected 2)", cfg.Version)
+	if cfg.Version != 3 {
+		return cfg, fmt.Errorf("unsupported configuration version %d (expected 3)", cfg.Version)
 	}
-	if strings.TrimSpace(cfg.Name) == "" || cfg.ReportYear < 1 || cfg.ReportYear > 9998 {
-		return cfg, fmt.Errorf("name and a report_year between 1 and 9998 are required")
+	if strings.TrimSpace(cfg.Name) == "" {
+		return cfg, fmt.Errorf("name is required")
 	}
 	if strings.TrimSpace(cfg.Statement.APIBase) != "" && strings.TrimSpace(cfg.Statement.OllamaURL) != "" {
 		return cfg, fmt.Errorf("statement.api_base and legacy statement.ollama_url cannot both be set")
@@ -69,29 +93,31 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("resolve configuration directory: %w", err)
 	}
-	for _, item := range []struct {
-		name string
-		path *string
-	}{
-		{"journal", &cfg.Journal},
-		{"account_chart", &cfg.AccountChart},
-		{"manual_journal", &cfg.ManualJournal},
-		{"sources", &cfg.Sources},
-	} {
-		if err := resolveConfigPath(cfg.root, item.name, item.path); err != nil {
-			return cfg, err
-		}
-	}
+	books := filepath.Join(cfg.root, booksDirectory)
+	cfg.Journal = filepath.Join(books, masterJournal)
+	cfg.AccountChart = filepath.Join(books, chartJournal)
+	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
+	cfg.ManualJournal = filepath.Join(books, manualJournal)
+	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
+
 	accounts := make(map[string]bool)
 	identifiers := make(map[string]bool)
-	journals := map[string]bool{cfg.ManualJournal: true}
+	journals := make(map[string]bool)
+	for index, name := range cfg.Accounts {
+		account, valid := parsePostingAccount(name)
+		if !valid || account.Category == "Bank" {
+			return cfg, fmt.Errorf("accounts[%d] must use Asset, Equity, Liability, Expense, or Income:CPUC-number:local-name", index)
+		}
+		if accounts[name] {
+			return cfg, fmt.Errorf("account %q is configured more than once", name)
+		}
+		accounts[name] = true
+	}
 	for index := range cfg.BankAccounts {
 		bank := &cfg.BankAccounts[index]
 		account, valid := parsePostingAccount(bank.Account)
-		if strings.TrimSpace(bank.Account) == "" || !singleLine(bank.Account) ||
-			strings.Contains(bank.Account, "  ") || strings.ContainsAny(bank.Account, ";[]()") ||
-			!valid || account.Category != "Bank" {
-			return cfg, fmt.Errorf("bank_accounts[%d].account must use Bank:CPUC-number:local-name", index)
+		if !valid || account.Category != "Bank" {
+			return cfg, fmt.Errorf("bank_accounts[%d] must use Bank:CPUC-number:local-name", index)
 		}
 		if accounts[bank.Account] {
 			return cfg, fmt.Errorf("bank account %q is configured more than once", bank.Account)
@@ -100,31 +126,33 @@ func LoadConfig(path string) (Config, error) {
 		if identifier == "" || identifiers[identifier] {
 			return cfg, fmt.Errorf("bank account %q must have a unique final account-identifier component", bank.Account)
 		}
-		if err := resolveConfigPath(cfg.root, fmt.Sprintf("bank_accounts[%d].journal", index), &bank.Journal); err != nil {
-			return cfg, err
-		}
+		bank.Journal = filepath.Join(books, bankJournalFilename(bank.Account))
 		if journals[bank.Journal] {
-			return cfg, fmt.Errorf("journal %s is assigned to more than one writable account", bank.Journal)
+			return cfg, fmt.Errorf("bank accounts derive the same journal filename %s", bankJournalFilename(bank.Account))
 		}
 		accounts[bank.Account], identifiers[identifier], journals[bank.Journal] = true, true, true
 	}
 	return cfg, nil
 }
 
-func resolveConfigPath(root, name string, path *string) error {
-	if strings.TrimSpace(*path) == "" || strings.ContainsAny(*path, "\r\n") {
-		return fmt.Errorf("%s must be a nonempty local path", name)
+func bankJournalFilename(account string) string {
+	parts := strings.Split(account, ":")
+	tail := strings.ToLower(strings.Join(parts[2:], "-"))
+	tail = filenameSeparatorPattern.ReplaceAllString(tail, "-")
+	return "bank-" + tail + ".journal"
+}
+
+func validLocalAccountName(name string) bool {
+	if strings.TrimSpace(name) != name || !singleLine(name) {
+		return false
 	}
-	resolved := *path
-	if !filepath.IsAbs(resolved) {
-		resolved = filepath.Join(root, resolved)
+	parts := strings.Split(name, ":")
+	for _, part := range parts[2:] {
+		if !localAccountPartPattern.MatchString(part) {
+			return false
+		}
 	}
-	resolved = filepath.Clean(resolved)
-	if !within(root, resolved) {
-		return fmt.Errorf("%s must be inside the configuration directory", name)
-	}
-	*path = resolved
-	return nil
+	return true
 }
 
 func (c Config) bankAccount(account string) (BankAccountConfig, bool) {

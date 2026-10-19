@@ -17,6 +17,7 @@ type fileState struct {
 type Draft struct {
 	books         *Books
 	files         map[string]fileState
+	chart         fileState
 	accounts      []string
 	accountSearch map[string]string
 	history       completionHistory
@@ -67,9 +68,6 @@ func (b *Books) snapshot() (map[string]fileState, error) {
 			return nil, fmt.Errorf("writable journal must exist and be included in journal: %s", target)
 		}
 	}
-	if _, ok := files[b.Config.AccountChart]; !ok {
-		return nil, fmt.Errorf("account_chart must exist and be included in journal: %s", b.Config.AccountChart)
-	}
 	return files, nil
 }
 
@@ -108,7 +106,7 @@ func (b *Books) newDraft(target string) (*Draft, error) {
 	}
 	return &Draft{
 		books: b, files: files, accounts: accounts, accountSearch: accountSearch,
-		history: history, id: id, target: target,
+		history: history, id: id, target: target, chart: b.chartState,
 	}, nil
 }
 
@@ -117,7 +115,7 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 	if d.saved {
 		return "", fmt.Errorf("this transaction has already been saved")
 	}
-	text, err := entry.render(d.books.Config.ReportYear, d.accounts, d.id)
+	text, err := entry.render(d.accounts, d.id)
 	if err != nil {
 		return "", err
 	}
@@ -131,6 +129,13 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 }
 
 func (d *Draft) unchanged() error {
+	chart, err := readNonsymlinkFileState(d.books.Config.AccountChart, "CPUC account chart")
+	if err != nil {
+		return err
+	}
+	if chart.mode != d.chart.mode || !bytes.Equal(chart.data, d.chart.data) {
+		return fmt.Errorf("CPUC account chart changed; cancel and reopen the transaction")
+	}
 	current, err := d.books.snapshot()
 	if err != nil {
 		return err

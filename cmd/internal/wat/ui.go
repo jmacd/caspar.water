@@ -76,8 +76,8 @@ func (ui *terminal) captureGlobalInput() {
 
 func (ui *terminal) screen(title string, body tview.Primitive, footer string) {
 	header := tview.NewTextView().SetDynamicColors(true)
-	header.SetText(tview.Escape(fmt.Sprintf(" %s | %d | %s\n %s",
-		ui.books.Config.Name, ui.books.Config.ReportYear, title, ui.books.Config.Journal)))
+	header.SetText(tview.Escape(fmt.Sprintf(" %s | %s\n %s",
+		ui.books.Config.Name, title, ui.books.Config.Journal)))
 	hint := tview.NewTextView().SetText(" " + footer)
 	frame := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 3, 0, false).

@@ -1,13 +1,11 @@
-version: 2
+version: 3
 name: Caspar Water
-report_year: 2021
-journal: books/books.journal
-account_chart: books/accounts.journal
-manual_journal: books/manual.journal
-sources: sources
+accounts:
+  - Asset:151:Admin-Supplies
+  - Expense:615:Electricity
+  - Equity:218:Owner-Equity
 bank_accounts:
-  - account: Bank:131.2:SBMC:0000
-    journal: books/bank-sbmc-0000.journal
+  - Bank:131.2:SBMC:0000
 statement:
   python: python3.13
   api_base: https://caspar-wat-ai.cognitiveservices.azure.com/

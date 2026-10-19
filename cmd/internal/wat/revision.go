@@ -74,7 +74,7 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 	var entries []JournalEntry
 	bankBalances := make(map[string]int64)
 	for _, tx := range transactions {
-		date, err := time.Parse("2006-01-02", tx.Date)
+		_, err := time.Parse("2006-01-02", tx.Date)
 		if err != nil {
 			return nil, fmt.Errorf("read journal date: %w", err)
 		}
@@ -99,9 +99,6 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 			bankChange = amount
 			bankBalance = bankBalances[bank.Account]
 			bankValues = true
-		}
-		if date.Year() != b.Config.ReportYear {
-			continue
 		}
 		id, idErr := transactionID(tx)
 		entry := JournalEntry{
@@ -318,7 +315,7 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	if _, err := entry.render(b.Config.ReportYear, declared, id); err != nil {
+	if _, err := entry.render(declared, id); err != nil {
 		return nil, Entry{}, fmt.Errorf("entry cannot be represented by the structured form: %w", err)
 	}
 	if err := draft.previewText(string(draft.files[draft.target].data[start:end]), false); err != nil {

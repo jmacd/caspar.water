@@ -33,6 +33,10 @@ func loadAccountChart(path string) (accountChart, error) {
 	if err != nil {
 		return accountChart{}, fmt.Errorf("read account chart: %w", err)
 	}
+	return parseAccountChart(data)
+}
+
+func parseAccountChart(data []byte) (accountChart, error) {
 	chart := accountChart{byNumber: make(map[string]chartAccount)}
 	for number, line := range strings.Split(string(data), "\n") {
 		account, ok := parseChartDeclaration(line)
@@ -89,13 +93,8 @@ func baseCategory(category string) bool {
 func parsePostingAccount(name string) (PostingAccount, bool) {
 	parts := strings.Split(name, ":")
 	if len(parts) < 3 || (!baseCategory(parts[0]) && parts[0] != "Bank") ||
-		!accountNumberPattern.MatchString(parts[1]) {
+		!accountNumberPattern.MatchString(parts[1]) || !validLocalAccountName(name) {
 		return PostingAccount{}, false
-	}
-	for _, part := range parts[2:] {
-		if strings.TrimSpace(part) == "" {
-			return PostingAccount{}, false
-		}
 	}
 	return PostingAccount{Name: name, Category: parts[0], Number: parts[1]}, true
 }
@@ -103,7 +102,7 @@ func parsePostingAccount(name string) (PostingAccount, bool) {
 func (c accountChart) resolve(account PostingAccount) (PostingAccount, error) {
 	formal, ok := c.byNumber[account.Number]
 	if !ok {
-		return PostingAccount{}, fmt.Errorf("posting account %q uses CPUC account %s, which is not in account_chart", account.Name, account.Number)
+		return PostingAccount{}, fmt.Errorf("posting account %q uses CPUC account %s, which is not in the CPUC chart", account.Name, account.Number)
 	}
 	expected := account.Category
 	if expected == "Bank" {
@@ -111,7 +110,7 @@ func (c accountChart) resolve(account PostingAccount) (PostingAccount, error) {
 	}
 	if formal.Category != expected {
 		return PostingAccount{}, fmt.Errorf(
-			"posting account %q classifies CPUC account %s as %s, but account_chart classifies it as %s",
+			"posting account %q classifies CPUC account %s as %s, but the CPUC chart classifies it as %s",
 			account.Name, account.Number, account.Category, formal.Category,
 		)
 	}

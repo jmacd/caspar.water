@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"os/exec"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 )
 
 type Books struct {
-	Config Config
-	binary string
-	chart  accountChart
+	Config     Config
+	binary     string
+	chart      accountChart
+	chartState fileState
 }
 
 type journalTransaction struct {
@@ -73,11 +73,30 @@ func Open(cfg Config) (*Books, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wat requires hledger on PATH: %w", err)
 	}
-	chart, err := loadAccountChart(cfg.AccountChart)
+	chartState, err := readNonsymlinkFileState(cfg.AccountChart, "CPUC account chart")
 	if err != nil {
 		return nil, err
 	}
-	books := &Books{Config: cfg, binary: binary, chart: chart}
+	chart, err := parseAccountChart(chartState.data)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range cfg.Accounts {
+		account, _ := parsePostingAccount(name)
+		if _, err := chart.resolve(account); err != nil {
+			return nil, err
+		}
+	}
+	for _, bank := range cfg.BankAccounts {
+		account, _ := parsePostingAccount(bank.Account)
+		if _, err := chart.resolve(account); err != nil {
+			return nil, err
+		}
+	}
+	if err := prepareWorkspace(cfg); err != nil {
+		return nil, err
+	}
+	books := &Books{Config: cfg, binary: binary, chart: chart, chartState: chartState}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
 	}
@@ -181,18 +200,12 @@ func (b *Books) Report(name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unknown report %q", name)
 	}
-	// Balance reports include prior years; journal and income reports describe
-	// activity in the selected year.
-	if name == "journal" || name == "income-statement" {
-		args = append(args, "--begin", fmt.Sprintf("%04d-01-01", b.Config.ReportYear))
-	}
-	args = append(args, "--end", fmt.Sprintf("%04d-01-01", b.Config.ReportYear+1))
 	text, err := b.run(b.Config.Journal, append(args, "--strict")...)
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(text) == "" {
-		return "No transactions for " + strconv.Itoa(b.Config.ReportYear) + ".\n", nil
+		return "No transactions.\n", nil
 	}
 	return text, nil
 }

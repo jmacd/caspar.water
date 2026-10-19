@@ -65,52 +65,53 @@ Copy the example into a private workspace; do not enter real books in the exampl
 ```sh
 mkdir -p local
 cp -R cmd/wat/example local/water-books
-mkdir -p local/water-books/sources
 go run ./cmd/wat --config local/water-books/wat.yaml
 ```
 
-`books/accounts.journal` is the configured CPUC U-39-W master account chart.
-It maps each CPUC number to its formal category and designation. It is reference
-data, not the instance's literal posting-account namespace. Keep local account
-declarations in `books/local-accounts.journal`; do not add vendors, banks, owners,
-or other instance names to the master chart. No opening balances, purchase
-price, or financial activity are fabricated.
+`books/chart.journal` is the CPUC U-39-W master account chart. It maps each CPUC
+number to its formal category and designation. Wat parses it as reference data,
+but does not include it in hledger. Do not add vendors, banks, owners, or other
+instance names to the master chart. No opening balances, purchase price, or
+financial activity are fabricated.
 
 ```yaml
-version: 2
+version: 3
 name: Caspar Water
-report_year: 2021
-journal: books/books.journal
-account_chart: books/accounts.journal
-manual_journal: books/manual.journal
-sources: sources
+accounts:
+  - Asset:151:Admin-Supplies
+  - Expense:615:Electricity
+  - Equity:218:Owner-Equity
 bank_accounts:
-  - account: Bank:131.2:SBMC:0000
-    journal: books/bank-sbmc-0000.journal
+  - Bank:131.2:SBMC:0000
 ```
 
-Paths are relative to the configuration file. All included journals must be
-regular `.journal` or `.ledger` files within that directory, without symlinks.
-Use relative includes. `manual_journal` and every `bank_accounts[].journal` must
-already exist and be included by the master `journal`; each writable journal
-must be distinct. `account_chart` must also be an included regular journal file,
-so validation and draft concurrency checks cover it. Unknown configuration keys
-and additional YAML documents are errors.
-`sources` names the supporting-document directory; references are currently
-free-form text, not imported or automatically verified document links.
+The workspace layout is fixed and is not configuration:
 
-`manual_journal` receives ordinary transaction entry. Each configured bank
-account has a separate all-years journal for entries derived from its statements.
-An account must exactly match a declared `Bank:CPUC-number:LocalName` posting
-account whose CPUC number is classified as an Asset by `account_chart`. Its final
-component is the unique
-statement identifier suffix: an extracted identifier ending in `0000` binds to
-the example account. A missing or ambiguous match is an error; `wat` never
-guesses a journal. The bound account is stored in the private extraction cache.
+- `books/chart.journal` is the manually maintained CPUC reference chart.
+- `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
+- `books/books.journal` is the generated hledger include file.
+- `books/manual.journal` receives ordinary entries.
+- each bank account receives a derived all-years journal, such as
+  `books/bank-sbmc-0000.journal`.
+- `sources/statements` holds Wat-managed statement sources and caches.
 
-`report_year` controls the current report and journal-browser view only. It does
-not constrain transaction dates, statement dates, or journal files. A statement
-may cross a calendar-year boundary.
+Generated files carry a do-not-edit header and are refreshed when Wat opens the
+workspace. The generated account declarations include `commodity $` and declare
+the `Bank` hierarchy as hledger Asset type. Writable journals are created when
+missing and remain ordinary plain-text hledger files. All workspace files and
+directories must be nonsymlink paths. Unknown configuration keys and additional
+YAML documents are errors.
+
+An account must use `Category:CPUC-number:LocalName[:MoreNames...]`, and its CPUC
+number and category must agree with `books/chart.journal`. `Bank` accounts must
+map to an Asset number. Their final component is the unique statement identifier
+suffix: an extracted identifier ending in `0000` binds to the example account.
+A missing or ambiguous match is an error; Wat never guesses a journal. The bound
+account is stored in the private extraction cache.
+
+Views and reports cover all accounting dates by default. Report-period selection
+belongs in the report workflow rather than persistent workspace configuration.
+A statement may cross a calendar-year boundary.
 
 ## CPUC chart and local posting accounts
 
@@ -121,8 +122,9 @@ account Asset:131.2-Cash-in-Bank
 account Expense:650.1-Contract-Water-Quality-and-Testing-Work
 ```
 
-Local posting accounts use the shorter
-`Category:CPUC-number:LocalName[:MoreNames...]` form:
+Local posting accounts in `wat.yaml` use the shorter
+`Category:CPUC-number:LocalName[:MoreNames...]` form. Wat materializes them as
+these declarations in generated `books/accounts.journal`:
 
 ```journal
 account Bank  ; type: A
@@ -137,7 +139,7 @@ and `Income`. `Bank` is the special Asset category used for accounts that have
 statements. It needs the hledger `type: A` declaration shown above so standard
 balance-sheet reports classify it as an asset.
 
-`wat` resolves the number in each local account through `account_chart`.
+`wat` resolves the number in each local account through `books/chart.journal`.
 `Expense:650.1:Feiner-Fixings`, for example, maps to formal CPUC designation
 `Expense:650.1-Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
 category mismatches, and `Bank` accounts whose number is not an Asset are errors.
@@ -379,13 +381,12 @@ Recorded statement rows can also be revised directly from their statement list.
 The journal browser is a chronological one-row table. When bank accounts are
 configured, **Bank change** and the running **Bank balance** are right-aligned
 and computed independently for each account. With multiple accounts, the table
-also identifies the affected bank account. Balances include earlier-year
-activity even though the page lists only `report_year`. Up/Down selects a row,
-Enter revises it, and Esc or `q` returns
+also identifies the affected bank account. All dated activity is shown and
+contributes to the running balances. Up/Down selects a row, Enter revises it, and Esc or `q` returns
 to the menu. These key instructions appear once in the footer rather than on
 every transaction.
 
-`manual_journal` and the configured bank journals are writable sections.
+`books/manual.journal` and the derived bank journals are writable sections.
 Transactions are revised in the same source journal: ordinary entries stay in
 the manual journal, and statement-derived entries stay in their bank journal.
 Entries in other included journals remain read-only.
@@ -445,8 +446,8 @@ changes that to `+60.00`. Blank amounts are ignored while drafting, but invalid
 amounts or overflow show an explicit unavailable-balance message rather than an
 incorrect total. A balanced amount total alone does not mean the entry is valid.
 
-Enter the actual transaction date in `YYYY-MM-DD` form; dates are not limited to
-`report_year`. Enter the payee, optional description, reference, and source
+Enter the actual transaction date in `YYYY-MM-DD` form. Enter the payee,
+optional description, reference, and source
 reference. Every saved entry
 also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
@@ -499,11 +500,10 @@ go run ./cmd/wat --config local/water-books/wat.yaml report balance-sheet
 go run ./cmd/wat --config local/water-books/wat.yaml report income-statement
 ```
 
-Journal and income reports show the selected year's activity. Trial balance and
-balance sheet include earlier balances through the selected year-end and exclude
-later activity. The balance sheet uses hledger's `balancesheetequity`, showing
-assets, liabilities, and equity. Its Net line reflects unclosed income/expense
-balances; displaying the report does not post a closing entry to equity.
+Reports cover all dates currently in the books. The balance sheet uses hledger's
+`balancesheetequity`, showing assets, liabilities, and equity. Its Net line
+reflects unclosed income/expense balances; displaying the report does not post a
+closing entry to equity.
 The journals remain usable directly:
 
 ```sh

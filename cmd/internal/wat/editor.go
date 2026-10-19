@@ -15,7 +15,7 @@ import (
 
 const editorHelpPrefix = "; wat-help: "
 
-func editorHelp(year int, accounts []string) string {
+func editorHelp(accounts []string) string {
 	lines := []string{
 		"EDITOR CHEATSHEET - temporary, removed before preview and save.",
 		"Edit the transaction ABOVE this cheatsheet; keep its id tag unchanged.",
@@ -75,7 +75,7 @@ func (b *Books) editText(initial string) (text string, err error) {
 	if !strings.HasSuffix(editorText, "\n") {
 		editorText += "\n"
 	}
-	editorText += editorHelp(b.Config.ReportYear, accounts)
+	editorText += editorHelp(accounts)
 	if err := os.WriteFile(path, []byte(editorText), 0600); err != nil {
 		return text, err
 	}
