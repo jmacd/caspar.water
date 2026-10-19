@@ -26,14 +26,10 @@ func (ui *terminal) bankStatements() {
 		return
 	}
 	list := tview.NewList().ShowSecondaryText(true)
-	list.SetBorder(true).SetTitle(" Bank statements - recorded does not mean reconciled ")
-	for _, statement := range pending {
-		label := fmt.Sprintf("READY TO EXTRACT | %s | %s", statement.Name, statement.Hash[:12])
-		hint := "Enter to extract this complete PDF"
-		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
-			ui.extractPendingStatement(statement)
-		})
-	}
+	list.SetBorder(true).SetTitle(fmt.Sprintf(
+		" Bank statements | %d extracted | %d ready - recorded does not mean reconciled ",
+		len(statements), len(pending),
+	))
 	for _, statement := range statements {
 		statuses, err := ui.books.StatementStatuses(statement)
 		if err != nil {
@@ -61,7 +57,7 @@ func (ui *terminal) bankStatements() {
 			state = "RECONCILED"
 			hint = "Finished " + checkpoint.FinishedAt + " | read-only | " + statement.Source
 		}
-		label := fmt.Sprintf("%s | %s | %s | %s", statement.BankAccount, period, state, statement.Hash[:12])
+		label := fmt.Sprintf("EXTRACTED | %s | %s | %s | %s", statement.BankAccount, period, state, statement.Hash[:12])
 		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
 			current, err := ui.books.cachedStatement(statement.Hash)
 			if err != nil {
@@ -69,6 +65,13 @@ func (ui *terminal) bankStatements() {
 				return
 			}
 			ui.openStatementFromBrowser(current)
+		})
+	}
+	for _, statement := range pending {
+		label := fmt.Sprintf("READY TO EXTRACT | %s | %s", statement.Name, statement.Hash[:12])
+		hint := "Enter to extract this complete PDF"
+		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+			ui.extractPendingStatement(statement)
 		})
 	}
 	list.AddItem("Back to menu", "Saved entries and statement caches are unchanged", 'q', ui.menu)

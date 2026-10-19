@@ -55,12 +55,23 @@ func runTerminal(books *Books, statement *Statement, queue *statementQueue) erro
 	tview.Styles.BorderColor = tcell.NewHexColor(0x629ac2)
 	tview.Styles.PrimaryTextColor = tcell.NewHexColor(0xe6edf3)
 	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement, queue: queue}
+	ui.captureGlobalInput()
 	if statement == nil {
 		ui.menu()
 	} else {
 		ui.statementList()
 	}
 	return ui.app.Run()
+}
+
+func (ui *terminal) captureGlobalInput() {
+	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			ui.app.Stop()
+			return nil
+		}
+		return event
+	})
 }
 
 func (ui *terminal) screen(title string, body tview.Primitive, footer string) {

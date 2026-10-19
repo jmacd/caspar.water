@@ -73,6 +73,22 @@ func TestBankStatementsDoesNotInventMissingPeriod(t *testing.T) {
 	require.NotContains(t, label, "2021-05-05")
 }
 
+func TestBankStatementsListsExtractedBeforeReadyStatements(t *testing.T) {
+	books, _, _ := statementFixture(t)
+	inbox := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(inbox, "pending.pdf"), []byte("%PDF-1.7\npending\n"), 0600))
+	require.NoError(t, books.ImportStatementInbox(inbox, nil))
+
+	ui := &terminal{app: tview.NewApplication(), books: books}
+	ui.bankStatements()
+	list := ui.app.GetFocus().(*tview.List)
+	require.Contains(t, list.GetTitle(), "1 extracted | 1 ready")
+	extracted, _ := list.GetItemText(0)
+	ready, _ := list.GetItemText(1)
+	require.Contains(t, extracted, "EXTRACTED")
+	require.Contains(t, ready, "READY TO EXTRACT")
+}
+
 func TestBankStatementsBrowserPreservesActiveBatch(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	for index := range statement.Rows {

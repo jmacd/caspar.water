@@ -247,6 +247,39 @@ func TestJournalBrowserUsesRightAlignedBankColumns(t *testing.T) {
 	}
 }
 
+func TestEmptyJournalBrowserCanReturnToMenu(t *testing.T) {
+	books, _ := fixture(t, "")
+	ui := &terminal{app: tview.NewApplication(), books: books}
+	ui.journalEntries()
+	table, ok := ui.app.GetFocus().(*tview.Table)
+	require.True(t, ok)
+	require.Equal(t, 1, table.GetRowCount())
+	table.InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone), func(tview.Primitive) {})
+	menu, ok := ui.app.GetFocus().(*tview.List)
+	require.True(t, ok)
+	label, _ := menu.GetItemText(0)
+	require.Equal(t, "Record a transaction", label)
+}
+
+func TestControlCStopsTerminalCleanly(t *testing.T) {
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	app.SetScreen(screen)
+	ui := &terminal{app: app}
+	ui.captureGlobalInput()
+	app.SetRoot(tview.NewBox(), true)
+	done := make(chan error, 1)
+	go func() { done <- app.Run() }()
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone))
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Ctrl-C did not stop the terminal")
+	}
+}
+
 func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	app := tview.NewApplication()
 	screen := tcell.NewSimulationScreen("UTF-8")

@@ -22,7 +22,8 @@ directories on first use, builds a Linux accounting image, and initializes the
 persistent Pond at `local/wat-pond`. The first Pond run imports the complete
 existing `local/wat-test` workspace, so work from the earlier direct runner is
 preserved. Later runs stage `/accounting/`, open `wat` interactively, and commit
-all saved changes together only after a clean exit.
+all saved changes together only after a clean exit. Ctrl-C stops `wat` cleanly,
+allowing the runner to commit changes already saved during the session.
 
 Place statement PDFs in `local/wat-inbox`, set `WAT_STATEMENT_INBOX`, or select
 another host directory explicitly:
@@ -168,9 +169,12 @@ detect external journal changes and refuse to overwrite them.
 
 For the Pond workflow, place PDFs in the configured inbox and run
 `./cmd/wat/run.sh`. Choose **Bank statements (5)** to see both pending inbox PDFs
-and previously extracted statements. Selecting **READY TO EXTRACT** opens the
-statement immediately; no extraction questions or command-line statement flags
-are required. While extraction is running, the screen animates and shows the
+and previously extracted statements. The title reports extracted and ready
+counts. Cached entries labeled **EXTRACTED** appear first, followed by pending
+entries labeled **READY TO EXTRACT**, so a successful extraction remains visible
+at the top of the list. Selecting **READY TO EXTRACT** opens the statement
+immediately; no extraction questions or command-line statement flags are
+required. While extraction is running, the screen animates and shows the
 configured model and elapsed time.
 
 To reopen an imported statement later, run `./cmd/wat/run.sh` without flags and
