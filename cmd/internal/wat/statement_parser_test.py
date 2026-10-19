@@ -18,16 +18,20 @@ class ParserBridgeTest(unittest.TestCase):
         *,
         dates="Beginning Balance 11/01/21 Ending Balance 11/30/21",
         closing_balance="100.00",
+        statement_period=None,
         provider="ollama",
         azure_token="synthetic-token",
         azure_host="synthetic.cognitiveservices.azure.com",
     ):
         seen = []
+        if statement_period is None:
+            statement_period = {"start": "2021-11-01", "end": "2021-11-30"}
         payload = {
             "account_id": "SYNTHETIC",
             "currency": "USD",
             "opening_balance": "0.00",
             "closing_balance": closing_balance,
+            "statement_period": statement_period,
             "transactions": [{
                 "booking_date": "2021-11-10",
                 "description": "DEPOSIT",
@@ -128,6 +132,7 @@ class ParserBridgeTest(unittest.TestCase):
         self.assertEqual(document["wat_extraction"]["source_method"], "llm")
         self.assertFalse(requests[0]["stream"])
         self.assertNotIn("images", requests[0]["messages"][1])
+        self.assertIn("statement_period", requests[0]["messages"][0]["content"])
 
     def test_azure_uses_entra_token_with_direct_chat_completion(self):
         result, requests = self.run_bridge(provider="azure")
@@ -178,20 +183,31 @@ class ParserBridgeTest(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertEqual(len(requests), 1)
 
-    def test_missing_dates_are_not_inferred_from_transactions(self):
-        result, _ = self.run_bridge(dates="")
+    def test_model_period_does_not_depend_on_transaction_bounds(self):
+        result, _ = self.run_bridge(
+            dates="",
+            statement_period={"start": "2021-11-01", "end": "2021-11-30"},
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         document = json.loads(result.stdout)
-        self.assertNotIn("wat_statement_period", document)
-        self.assertIn("Statement period unavailable", " ".join(document["warnings"]))
+        self.assertEqual(
+            document["wat_statement_period"],
+            {"start": "2021-11-01", "end": "2021-11-30"},
+        )
 
-    def test_reversed_period_is_rejected_before_inference(self):
+    def test_missing_statement_period_is_rejected(self):
+        result, requests = self.run_bridge(statement_period=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not identify its explicit statement period", result.stderr)
+        self.assertEqual(len(requests), 1)
+
+    def test_reversed_period_is_rejected(self):
         result, requests = self.run_bridge(
-            dates="Beginning Balance 12/01/21 Ending Balance 11/30/21"
+            statement_period={"start": "2021-12-01", "end": "2021-11-30"},
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("out of order", result.stderr)
-        self.assertEqual(requests, [])
+        self.assertIn("period dates are out of order", result.stderr)
+        self.assertEqual(len(requests), 1)
 
 
 if __name__ == "__main__":

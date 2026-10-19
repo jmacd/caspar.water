@@ -11,9 +11,24 @@ from bankstatementparser.hybrid import (
     ollama_direct_completion,
     verify_transactions,
 )
+from bankstatementparser._llm_common import parse_json_payload
 from datetime import datetime, timezone
 from importlib.metadata import version
 from urllib.parse import quote, urlparse
+
+
+STATEMENT_PERIOD_INSTRUCTION = """
+
+Also extract the explicit statement cycle dates. Add this top-level field
+to the JSON object:
+  "statement_period": {
+    "start": "YYYY-MM-DD",
+    "end": "YYYY-MM-DD"
+  }
+Use the dates printed for the statement period, beginning balance, and
+ending balance. Do not substitute the first or last transaction date.
+If the statement cycle dates are not explicit, return null.
+"""
 
 
 path, endpoint, api_version, model = sys.argv[1:]
@@ -51,6 +66,9 @@ if provider == "azure":
 
 
 def completion(**kwargs):
+    messages = [dict(message) for message in kwargs["messages"]]
+    messages[0]["content"] += STATEMENT_PERIOD_INSTRUCTION
+    kwargs["messages"] = messages
     if provider == "ollama":
         kwargs["timeout"] = 1100
         return ollama_direct_completion(**kwargs)
@@ -71,21 +89,6 @@ def completion(**kwargs):
 
 
 layout = "\n".join(extract_text_pages(path))
-period = None
-date_pattern = r"(\d{1,2}/\d{1,2}/(?:\d{4}|\d{2}))(?=\s|$)"
-beginning = set(re.findall(r"Beginning\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
-ending = set(re.findall(r"Ending\s+Balance\s+" + date_pattern, layout, re.IGNORECASE))
-if len(beginning) == 1 and len(ending) == 1:
-
-    def iso_date(text):
-        date_format = "%m/%d/%Y" if len(text.rsplit("/", 1)[1]) == 4 else "%m/%d/%y"
-        return datetime.strptime(text, date_format).date().isoformat()
-
-    start, end = iso_date(next(iter(beginning))), iso_date(next(iter(ending)))
-    if end < start:
-        raise ValueError("PDF beginning/ending balance dates are out of order")
-    period = {"start": start, "end": end}
-
 extractor = LLMExtractor(
     model=model,
     api_base=endpoint,
@@ -101,6 +104,27 @@ if verification.status != VerificationStatus.VERIFIED:
     raise ValueError(
         f"bank statement text extraction did not balance-verify: {verification.message}"
     )
+payload = parse_json_payload(text_result.raw_response)
+period = payload.get("statement_period")
+if not isinstance(period, dict):
+    raise ValueError("statement extraction did not identify its explicit statement period")
+if set(period) != {"start", "end"}:
+    raise ValueError("statement period must contain only start and end dates")
+start, end = period["start"], period["end"]
+if (
+    not isinstance(start, str)
+    or not isinstance(end, str)
+    or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start)
+    or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end)
+):
+    raise ValueError("statement period requires YYYY-MM-DD start and end dates")
+try:
+    start_date = datetime.strptime(start, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end, "%Y-%m-%d").date()
+except ValueError as exc:
+    raise ValueError("statement period requires valid calendar dates") from exc
+if end_date < start_date:
+    raise ValueError("statement period dates are out of order")
 result = IngestResult(
     source_method="llm",
     source_format="pdf",
@@ -108,12 +132,7 @@ result = IngestResult(
     verification=verification,
 )
 document = json.loads(result.to_json())
-if period is not None:
-    document["wat_statement_period"] = period
-else:
-    document["warnings"].append(
-        "Statement period unavailable: no unambiguous dated Beginning Balance and Ending Balance labels found in the PDF."
-    )
+document["wat_statement_period"] = period
 document["wat_extraction"] = {
     "parser_version": version("bankstatementparser"),
     "provider": provider,

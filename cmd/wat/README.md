@@ -183,11 +183,13 @@ rows or revise its recorded entries. The list shows the bound bank account,
 actual statement period,
 journal-derived recorded/pending counts, and **RECONCILED** for finished statements.
 Statement dates come from `wat_statement_period` metadata in the cached
-extraction, never from the first/last transactions. New PDF extractions capture
-unambiguous dated Beginning Balance and Ending Balance labels. If unavailable,
-the list explicitly says **Statement dates unavailable**. Known periods are
-ordered by start date; caches without dates use their earliest activity only
-for ordering, not as a displayed statement period.
+extraction, never from the first/last transactions. The extraction model must
+return the explicit statement-cycle start and end dates printed in the PDF;
+`wat` validates their format, ordering, and containment of every transaction
+before caching the result. Legacy caches without this metadata explicitly say
+**Statement dates unavailable**. Known periods are ordered by start date;
+legacy caches without dates use their earliest activity only for ordering, not
+as a displayed statement period.
 It uses the retained PDF and extraction:
 the original input path, Python process, model service, and another `--statement`
 run are not needed. Esc returns to the statement browser, then the main menu. Reopening does
