@@ -65,6 +65,7 @@ if [[ "$azure_cli" == true ]]; then
 fi
 
 printf 'Accounting Pond: %s\n' "$pond_dir" >&2
+printf 'Editable config: %s\n' "$test_dir/wat.yaml" >&2
 printf 'Statement inbox: %s (read-only)\n' "$inbox" >&2
 "$runtime" build --quiet -t "$image" -f "$script_dir/Dockerfile.local" "$script_dir"
 

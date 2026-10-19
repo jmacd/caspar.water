@@ -21,9 +21,14 @@ The script creates git-ignored `local/wat-test` and `local/wat-inbox`
 directories on first use, builds a Linux accounting image, and initializes the
 persistent Pond at `local/wat-pond`. The first Pond run imports the complete
 existing `local/wat-test` workspace, so work from the earlier direct runner is
-preserved. Later runs stage `/accounting/`, open `wat` interactively, and commit
-all saved changes together only after a clean exit. Ctrl-C stops `wat` cleanly,
-allowing the runner to commit changes already saved during the session.
+preserved. Before every later run, the runner copies changed
+`local/wat-test/wat.yaml` and `local/wat-test/books/chart.journal` into Pond and
+refreshes the exec factory definition. These are the two host-editable inputs;
+manual/bank journals, generated files, and statement caches remain Pond-owned.
+Edit the YAML or chart while Wat is stopped, then restart it. Each run stages
+`/accounting/`, opens `wat` interactively, and commits all saved changes together
+only after a clean exit. Ctrl-C stops `wat` cleanly, allowing the runner to
+commit changes already saved during the session.
 
 Place statement PDFs in `local/wat-inbox`, set `WAT_STATEMENT_INBOX`, or select
 another host directory explicitly:
