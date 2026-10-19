@@ -10,6 +10,6 @@ bank_accounts:
     journal: books/bank-sbmc-0000.journal
 statement:
   python: python3.13
-  api_base: https://ciq-caspar-ba5902.openai.azure.com/
+  api_base: https://caspar-wat-ai.cognitiveservices.azure.com/
   api_version: 2025-04-01-preview
-  model: azure/gpt-5-mini-community-iq
+  model: azure/gpt-5-mini-statements
