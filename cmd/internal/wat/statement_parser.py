@@ -31,12 +31,16 @@ provider, separator, provider_model = model.partition("/")
 if not separator or not provider_model or provider not in ("ollama", "azure"):
     raise ValueError("statement.model must use an ollama/ or azure/ provider prefix")
 if provider == "azure":
+    azure_hosts = (".openai.azure.com", ".cognitiveservices.azure.com")
     if (
         url.scheme != "https"
-        or not url.hostname.endswith(".openai.azure.com")
+        or not any(url.hostname.endswith(suffix) for suffix in azure_hosts)
         or url.path not in ("", "/")
     ):
-        raise ValueError("Azure statement.api_base must be an https://*.openai.azure.com base URL")
+        raise ValueError(
+            "Azure statement.api_base must use an https://*.openai.azure.com "
+            "or https://*.cognitiveservices.azure.com base URL"
+        )
     if not api_version:
         raise ValueError("statement.api_version is required for Azure")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", provider_model):

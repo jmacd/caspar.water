@@ -20,6 +20,7 @@ class ParserBridgeTest(unittest.TestCase):
         closing_balance="100.00",
         provider="ollama",
         azure_token="synthetic-token",
+        azure_host="synthetic.cognitiveservices.azure.com",
     ):
         seen = []
         payload = {
@@ -79,7 +80,7 @@ class ParserBridgeTest(unittest.TestCase):
                 model = "ollama/test-model"
                 env = os.environ.copy()
                 if provider == "azure":
-                    endpoint = "https://synthetic.openai.azure.com/"
+                    endpoint = f"https://{azure_host}/"
                     api_version = "2025-04-01-preview"
                     model = "azure/test-deployment"
                     env["AZURE_AD_TOKEN"] = azure_token
@@ -137,11 +138,32 @@ class ParserBridgeTest(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertEqual(
             requests[0]["url"],
-            "https://synthetic.openai.azure.com/openai/deployments/test-deployment/chat/completions",
+            "https://synthetic.cognitiveservices.azure.com/openai/deployments/test-deployment/chat/completions",
         )
         self.assertEqual(requests[0]["params"], {"api-version": "2025-04-01-preview"})
         self.assertEqual(requests[0]["headers"]["Authorization"], "Bearer synthetic-token")
         self.assertEqual(requests[0]["message_count"], 2)
+
+    def test_azure_accepts_legacy_openai_endpoint(self):
+        result, requests = self.run_bridge(
+            provider="azure",
+            azure_host="synthetic.openai.azure.com",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0]["url"],
+            "https://synthetic.openai.azure.com/openai/deployments/test-deployment/chat/completions",
+        )
+
+    def test_azure_rejects_lookalike_endpoint(self):
+        result, requests = self.run_bridge(
+            provider="azure",
+            azure_host="synthetic.cognitiveservices.azure.com.example.test",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Azure statement.api_base must use", result.stderr)
+        self.assertEqual(requests, [])
 
     def test_azure_requires_entra_token(self):
         result, requests = self.run_bridge(provider="azure", azure_token="")
