@@ -717,15 +717,18 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 		if raw.Period != nil && (tx.Date < raw.Period.Start || tx.Date > raw.Period.End) {
 			return nil, fmt.Errorf("statement row %d is outside its statement period", i+1)
 		}
-		if amountErr != nil || tx.Currency != "USD" {
-			return nil, fmt.Errorf("statement row %d requires an exact USD amount", i+1)
-		}
-		if strings.TrimSpace(tx.Description) == "" || !singleLine(tx.Description) || strings.ContainsAny(tx.Description, ";|") {
-			return nil, fmt.Errorf("statement row %d requires a single-line description without journal delimiters ';' or '|'", i+1)
+		if amountErr != nil {
+			return nil, fmt.Errorf("statement row %d requires an exact decimal amount", i+1)
 		}
 		if cents == 0 {
 			zeroRows++
 			continue
+		}
+		if tx.Currency != "USD" {
+			return nil, fmt.Errorf("statement row %d requires USD currency", i+1)
+		}
+		if strings.TrimSpace(tx.Description) == "" || !singleLine(tx.Description) || strings.ContainsAny(tx.Description, ";|") {
+			return nil, fmt.Errorf("statement row %d requires a single-line description without journal delimiters ';' or '|'", i+1)
 		}
 		total.Add(total, big.NewInt(cents))
 		result.Rows = append(result.Rows, StatementRow{tx.Date, tx.Description, cents})

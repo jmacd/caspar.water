@@ -46,8 +46,8 @@ func TestStatementCacheAndValidation(t *testing.T) {
 
 	for _, test := range []struct{ old, replacement, message string }{
 		{`"67.66"`, `"67.65"`, "do not match"},
-		{`"USD"`, `"GBP"`, "exact USD"},
-		{`"-12.34"`, `"-12.345"`, "exact USD"},
+		{`"USD"`, `"GBP"`, "requires USD currency"},
+		{`"-12.34"`, `"-12.345"`, "exact decimal amount"},
 		{`"POWER CO"`, `"POWER; CO"`, "description"},
 	} {
 		t.Run(test.message+test.replacement, func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestStatementIgnoresZeroAmountBalanceMarkers(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
 	withMarker := strings.Replace(statementJSON, `"transactions":[`, `"transactions":[
-  {"booking_date":"2021-04-01","description":"BEGINNING BALANCE","currency":"USD","amount":"0.00","account_id":"Checking"},`, 1)
+  {"booking_date":"2021-04-01","description":"BEGINNING BALANCE","currency":"","amount":"0.00","account_id":"Checking"},`, 1)
 
 	decoded, err := books.decodeStatement([]byte(withMarker), statement.Hash, dir)
 	require.NoError(t, err)
