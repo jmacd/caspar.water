@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jmacd/caspar.water/cmd/internal/wat"
@@ -16,6 +17,8 @@ func command() *cobra.Command {
 	var statement, statementInbox, extraction string
 	var statements bool
 	var statementCheck bool
+	var quickBooksYear int
+	var quickBooksInspect bool
 	root := &cobra.Command{
 		Use:           "wat",
 		Short:         "Water Accounting Terminal - local hledger bookkeeping",
@@ -98,7 +101,7 @@ func command() *cobra.Command {
 		},
 	}
 	root.PersistentFlags().StringVar(&config, "config", "wat.yaml", "workspace YAML configuration")
-	root.PersistentFlags().StringVar(&statementInbox, "statement-inbox", "", "copy unseen PDFs from a read-only inbox into the terminal's pending statement list")
+	root.PersistentFlags().StringVar(&statementInbox, "statement-inbox", "", "read-only import inbox for statement PDFs and QuickBooks files")
 	root.Flags().StringVar(&statement, "statement", "", "extract or resume review of a bank statement PDF")
 	root.Flags().BoolVar(&statements, "statements", false, "review PDF file arguments in supplied order, one at a time")
 	root.Flags().StringVar(&extraction, "statement-extraction", "", "seed a new statement cache from reviewed bankstatementparser JSON")
@@ -142,6 +145,47 @@ func command() *cobra.Command {
 			return err
 		},
 	})
+	quickBooks := &cobra.Command{
+		Use:   "quickbooks [FILE...]",
+		Short: "Generate an editable journal from QuickBooks reports",
+		Long: "Generate a balanced candidate journal without changing the books. " +
+			"With no FILE arguments, scan the configured read-only inbox for .xls, .xlsx, and .csv files.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			paths, err := quickBooksFiles(args, statementInbox)
+			if err != nil {
+				return err
+			}
+			if quickBooksInspect {
+				return books.InspectQuickBooks(
+					cmd.Context(),
+					paths,
+					quickBooksYear,
+					cmd.OutOrStdout(),
+					cmd.ErrOrStderr(),
+				)
+			}
+			journal, err := books.GenerateQuickBooksJournal(
+				cmd.Context(), paths, quickBooksYear, cmd.ErrOrStderr(),
+			)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), strings.TrimRight(journal, "\n"))
+			return err
+		},
+	}
+	quickBooks.Flags().IntVar(&quickBooksYear, "year", 0, "four-digit reconstruction year")
+	quickBooks.Flags().BoolVar(
+		&quickBooksInspect,
+		"inspect",
+		false,
+		"report deterministic extraction diagnostics without calling a model",
+	)
+	if err := quickBooks.MarkFlagRequired("year"); err != nil {
+		panic(err)
+	}
+	root.AddCommand(quickBooks)
 	return root
 }
 
@@ -156,6 +200,49 @@ func checkStatementFiles(paths []string) error {
 		}
 	}
 	return nil
+}
+
+func quickBooksFiles(arguments []string, inbox string) ([]string, error) {
+	paths := append([]string(nil), arguments...)
+	if len(paths) == 0 {
+		if strings.TrimSpace(inbox) == "" {
+			return nil, fmt.Errorf("provide QuickBooks files or configure --statement-inbox")
+		}
+		entries, err := os.ReadDir(inbox)
+		if err != nil {
+			return nil, fmt.Errorf("read QuickBooks inbox: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.Type().IsRegular() && quickBooksExtension(entry.Name()) {
+				paths = append(paths, filepath.Join(inbox, entry.Name()))
+			}
+		}
+		if len(paths) == 0 {
+			return nil, fmt.Errorf("QuickBooks inbox contains no .xls, .xlsx, or .csv files")
+		}
+	} else if strings.TrimSpace(inbox) != "" {
+		for index, path := range paths {
+			if !filepath.IsAbs(path) {
+				paths[index] = filepath.Join(inbox, path)
+			}
+		}
+	}
+	for _, path := range paths {
+		if !quickBooksExtension(path) {
+			return nil, fmt.Errorf("QuickBooks input must be .xls, .xlsx, or .csv: %s", path)
+		}
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+func quickBooksExtension(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".xls", ".xlsx", ".csv":
+		return true
+	default:
+		return false
+	}
 }
 
 func main() {

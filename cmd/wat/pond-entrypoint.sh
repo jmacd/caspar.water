@@ -6,6 +6,7 @@ cargo build --quiet --manifest-path watertown/Cargo.toml --bin pond
 go build -o /usr/local/bin/wat ./cmd/wat
 
 pond_bin="${CARGO_TARGET_DIR}/debug/pond"
+install -m 0755 "${pond_bin}" /usr/local/bin/pond
 run() {
     "${pond_bin}" --pond /pond "$@"
 }

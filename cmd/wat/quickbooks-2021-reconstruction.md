@@ -23,7 +23,8 @@ exports.
 
 | Observation | Initial result | Meaning |
 |---|---:|---|
-| Bank-register rows dated 2021 | 5 | Almost certainly incomplete; investigate extraction before trusting any reconstruction |
+| SBMC bank-register rows dated 2021 | 5 | Confirmed complete for that account; earlier company costs were paid through a personal bank account |
+| Personal-account transaction history | Unavailable by design | Do not request or ingest it; preserve cash-side and owner-treatment questions explicitly |
 | Account QuickReport rows dated 2021 | 56 | Includes appearances of the same transaction in different account reports |
 | Total extracted source rows dated 2021 | 61 | Not a count of unique accounting transactions |
 | Later Wat journal examples | 0 | No later classification evidence reached the model |
@@ -44,6 +45,8 @@ account guesses.
 - [ ] Never map an unknown QuickBooks account to a merely plausible Wat account.
 - [ ] Never treat a guessed cash account, owner-equity account, or expense
   account as established evidence.
+- [ ] Never request, ingest, or reconstruct the operator's personal bank-account
+  history. Use only the available business records.
 - [ ] Every normalized source row must receive an explicit disposition:
   transaction evidence, duplicate appearance, structural/report row, unresolved
   row, or rejected row with an error.
@@ -54,11 +57,26 @@ account guesses.
 - [ ] Do not incorporate a candidate journal into Wat until the final validation
   gate is complete.
 
-## Gate 1: prove the bank-register extraction
+## Gate 1: prove the SBMC bank-register extraction
 
-The five-row result is the first issue to resolve. Determine whether the source
-export is incomplete, Pond selected the wrong worksheet/range, or Wat discarded
-otherwise valid rows.
+The five-row result initially needed to be separated into a source-data question
+and a parser question.
+
+### Current evidence
+
+The model-free `quickbooks --inspect` path reports 202 normalized data rows in
+the bank-register export. All 202 rows have valid dates; none are blank,
+undated, or silently skipped after header detection. The date span is
+`2021-11-10` through `2026-09-30`, and exactly five rows are dated 2021.
+
+This rules out Wat's year filter and blank-date handling as the cause of the
+five-row result. The operator confirmed that five is the correct count for the
+SBMC account: the other side of the earlier 2021 company transactions is in a
+personal bank account.
+
+The SBMC count question is therefore resolved. Amount and balance checks remain
+part of final accounting validation, but the reconstruction must not expect this
+register to provide the cash side of pre-SBMC transactions.
 
 ### Inspect the workbook and Pond output
 
@@ -82,28 +100,32 @@ otherwise valid rows.
   filtered ranges, blank date cells, and multi-line transaction/split rows.
 - [ ] Check the raw cell types and number formats used by every apparent date
   column.
-- [ ] Confirm whether blank dates mean continuation/split rows rather than
+- [x] Confirm whether blank dates mean continuation/split rows rather than
   nontransaction rows. The current parser skips any blank-date row unless it is
-  a one-cell section heading.
+  a one-cell section heading. This register's normalized data contains no
+  blank-date rows.
 - [ ] Confirm whether payments and deposits use separate columns, a signed amount
   column, or both.
 - [ ] Check whether the export contains opening and ending balances.
 
 ### Add deterministic diagnostics
 
-- [ ] Add an extraction/inspection mode that stops before any model request.
+- [x] Add an extraction/inspection mode that stops before any model request.
 - [ ] Report the workbook, worksheet, selected header, date range, and row counts
-  by classification.
-- [ ] Report the minimum and maximum parsed dates and counts by calendar year.
-- [ ] Report nonempty skipped rows individually with row number and reason.
-- [ ] Fail if a nonempty row cannot be classified; do not silently continue.
+  by classification. Header, date range, and normalized row counts are
+  implemented; worksheet metadata remains.
+- [x] Report the minimum and maximum parsed dates and counts by calendar year.
+- [x] Report nonempty undated rows individually with row number and populated
+  fields.
+- [x] Fail on malformed dates or nonempty values beyond the detected header
+  columns; do not silently continue.
 - [ ] Add a private normalized-row export suitable for manual comparison.
 - [ ] Add a regression fixture reproducing the actual register structure without
   including private financial data.
 
 ### Reconcile the extracted register
 
-- [ ] Compare the extracted transaction count with the count visible in the
+- [x] Compare the extracted transaction count with the count expected in the
   original QuickBooks export.
 - [ ] Compare the first and last transaction dates.
 - [ ] Compare total payments and total deposits.
@@ -113,8 +135,8 @@ otherwise valid rows.
 
 **Exit condition:** the normalized register contains every transaction row in
 the exported register, with matching dates, amounts, payment/deposit direction,
-and balances. If the export itself contains only five 2021 transactions, obtain
-a corrected full-year export before continuing.
+and balances. The five-row 2021 count is confirmed; the remaining amount and
+balance checks are retained for final reconciliation.
 
 ## Gate 2: inventory every input file
 
@@ -155,7 +177,8 @@ Account QuickReports.
 
 ### Required
 
-- [ ] Complete bank register for `2021-01-01` through `2021-12-31`.
+- [x] Complete SBMC register for its 2021 active period. The five-row count is
+  confirmed; amounts and balances still require final reconciliation.
 - [ ] General Ledger or Transaction Detail by Account for all accounts over the
   same date range, including split detail.
 - [ ] QuickBooks Chart of Accounts with account type and hierarchy.
@@ -175,9 +198,23 @@ Account QuickReports.
   reimbursements, and inter-account transfers that cannot be inferred from the
   bank register.
 
+### Known unavailable evidence
+
+- [x] The personal bank-account transaction history will not be shared with or
+  ingested by this workflow.
+- [ ] Treat a QuickBooks business transaction described as personally paid as
+  evidence only for the business-side posting. Do not attempt to reconstruct
+  the personal account or infer its other transactions.
+- [ ] When the available business records do not establish whether a payment was
+  reimbursable, contributed capital, or subsequently reimbursed, emit one
+  structured open question rather than a balanced candidate.
+- [ ] Allow manual answers to those questions to supply the missing
+  due-to-owner, owner-contribution, reimbursement, or other approved posting.
+
 **Exit condition:** opening balances, 2021 activity, and ending balances can each
 be checked against an independent QuickBooks report or source record. Any
-unavailable evidence is listed explicitly as a known reconstruction limitation.
+unavailable evidence is listed explicitly as a known reconstruction limitation,
+and every transaction affected by it remains visible as an open question.
 
 ## Gate 4: normalize rows without accounting guesses
 
@@ -212,8 +249,8 @@ every nonempty source row has a recorded classification.
 Account reports can show different sides of the same transaction. Build
 transaction groups before asking the model for interpretation.
 
-- [ ] Use the bank register as the primary cash chronology once its completeness
-  is proven.
+- [ ] Use the SBMC register as the primary cash chronology only for transactions
+  actually present in that account.
 - [ ] Group report appearances using available transaction IDs first.
 - [ ] When no ID exists, use a conservative combination of date, amount,
   transaction type, reference number, payee, report account, distribution
@@ -244,6 +281,10 @@ Account translation is an accounting decision and must not vary by model run.
   `wat.yaml`.
 - [ ] Distinguish expenses, capital assets, liabilities, owner equity,
   reimbursements, transfers, income, and noncash contributions.
+- [ ] Decide whether each company cost paid from the personal account created an
+  amount due to the owner, was an owner contribution, or was later reimbursed;
+  otherwise retain that decision as an open question. Do not assume one
+  treatment for every personal-account payment.
 - [ ] Decide the treatment of historical categories that currently have no Wat
   account, including professional services, insurance, maintenance, operations,
   taxes, legal/project costs, and invested labor.
@@ -294,6 +335,9 @@ invent the chart of accounts.
   month.
 - [ ] Keep unresolved items in a structured artifact with reason and required
   decision.
+- [ ] For missing personal cash-side evidence, require the unresolved item to
+  state the supported business-side posting, missing counterposting fact,
+  allowed accounting decisions, and the question a reviewer must answer.
 - [ ] Decide an acceptance policy for confidence. Recommended: low-confidence
   items remain unresolved rather than entering the candidate journal.
 - [ ] Prevent the model from choosing a cash account where no source evidence or
@@ -314,6 +358,15 @@ One stdout journal and free-form stderr warnings are insufficient.
 
 - [ ] Produce a candidate journal containing only accepted balanced candidates.
 - [ ] Produce a structured unresolved-transactions report.
+- [ ] Produce an open-questions report that can be answered incrementally
+  without exposing personal-account records.
+- [ ] Render unresolved transactions as editable half-written entry skeletons in
+  a separate, non-imported review artifact. Include the supported date, payee,
+  description, amount, and business-side posting, then mark the missing
+  counterposting and question explicitly.
+- [ ] Expect manual work to complete those skeletons. An incomplete entry is not
+  a reconstruction failure, but it must never appear balanced or resolved until
+  a reviewer supplies the missing fact and account.
 - [ ] Produce a source coverage report showing:
   - workbook rows;
   - normalized transaction rows;
@@ -363,16 +416,17 @@ low-confidence accounting decision has been reviewed.
 ## Order of work
 
 1. Prove the bank-register extraction and add parser diagnostics.
-2. Inventory all supplied reports and explain every zero-row result.
-3. Obtain the complete register and accounting control reports.
+2. Inventory all supplied business reports and explain every zero-row result.
+3. Obtain the available business accounting control reports.
 4. Correct deterministic normalization, including blank-date split rows.
 5. Group duplicate appearances and split transactions.
 6. Build and approve the QuickBooks-to-Wat account map.
 7. Fix or explicitly waive the missing later-journal examples.
-8. Replace free-form omission warnings with complete structured dispositions.
+8. Replace free-form omission warnings with complete structured dispositions and
+   open questions.
 9. Generate the private review artifacts and candidate journal.
-10. Reconcile the result to the bank register and QuickBooks control reports.
+10. Reconcile the result to SBMC and the available QuickBooks control reports.
 
-Do not skip directly to another AI run. The next executable task is Gate 1:
-explain why the current bank-register export produces only five 2021
-transactions.
+Do not skip directly to another AI run. The next task is to inventory the
+available business reports and design the structured open-question output for
+facts the intentionally unavailable personal-account history cannot establish.
