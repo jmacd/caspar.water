@@ -75,7 +75,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		{"Source reference", &entry.Source},
 	}
 	for row, item := range metadata {
-		field := tview.NewInputField().SetLabel(item.label).SetLabelWidth(20).
+		field := themedInputField().SetLabel(item.label).SetLabelWidth(20).
 			SetText(*item.value).SetChangedFunc(func(text string) { *item.value = text })
 		switch row {
 		case 1:
@@ -92,11 +92,11 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 	for i := range entry.Postings {
 		posting := &entry.Postings[i]
 		row := 7 + i
-		account := tview.NewInputField().SetText(posting.Account).
+		account := themedInputField().SetText(posting.Account).
 			SetPlaceholder("Account code or name").
 			SetChangedFunc(func(text string) { posting.Account = text })
 		browsing := completeAccountInput(account, draft.accounts, draft.accountSearch)
-		amount := tview.NewInputField().SetText(posting.Amount).
+		amount := themedInputField().SetText(posting.Amount).
 			SetPlaceholder("0.00 or -0.00").
 			SetChangedFunc(func(text string) {
 				posting.Amount = text
@@ -118,7 +118,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		{"Remove last posting", remove},
 		{"Back (Esc)", discard},
 	} {
-		button := tview.NewButton(action.label).SetSelectedFunc(action.run)
+		button := themedButton(action.label).SetSelectedFunc(action.run)
 		button.SetDisabled(action.label == "Remove last posting" && len(entry.Postings) <= 2)
 		buttons.AddItem(button, 0, 1, false)
 		register(button, button.Box, 8+len(entry.Postings), 0, false, nil)

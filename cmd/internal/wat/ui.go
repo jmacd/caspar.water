@@ -24,6 +24,63 @@ type statementQueue struct {
 	advance         bool
 }
 
+var (
+	tuiHighlight  = tcell.NewHexColor(0xfcfe54)
+	tuiText       = tcell.NewHexColor(0x54fefc)
+	tuiBackground = tcell.NewHexColor(0x0402ac)
+)
+
+func applyTUITheme() {
+	tview.Styles = tview.Theme{
+		PrimitiveBackgroundColor:    tuiBackground,
+		ContrastBackgroundColor:     tuiBackground,
+		MoreContrastBackgroundColor: tuiHighlight,
+		BorderColor:                 tuiHighlight,
+		TitleColor:                  tuiHighlight,
+		GraphicsColor:               tuiHighlight,
+		PrimaryTextColor:            tuiText,
+		SecondaryTextColor:          tuiHighlight,
+		TertiaryTextColor:           tuiText,
+		InverseTextColor:            tuiBackground,
+		ContrastSecondaryTextColor:  tuiHighlight,
+	}
+}
+
+func highlightStyle() tcell.Style {
+	return tcell.StyleDefault.Foreground(tuiBackground).Background(tuiHighlight)
+}
+
+func themedList() *tview.List {
+	return tview.NewList().SetSelectedStyle(highlightStyle())
+}
+
+func themedTable() *tview.Table {
+	return tview.NewTable().SetSelectedStyle(highlightStyle())
+}
+
+func themedButton(label string) *tview.Button {
+	return tview.NewButton(label).SetActivatedStyle(highlightStyle())
+}
+
+func themedForm() *tview.Form {
+	return tview.NewForm().SetButtonActivatedStyle(highlightStyle())
+}
+
+func themedModal() *tview.Modal {
+	return tview.NewModal().
+		SetBackgroundColor(tuiBackground).
+		SetTextColor(tuiText).
+		SetButtonActivatedStyle(highlightStyle())
+}
+
+func themedInputField() *tview.InputField {
+	return tview.NewInputField().SetAutocompleteStyles(
+		tuiBackground,
+		tcell.StyleDefault.Foreground(tuiText).Background(tuiBackground),
+		highlightStyle(),
+	)
+}
+
 func RunTerminal(books *Books) error {
 	return runTerminal(books, nil, nil)
 }
@@ -50,10 +107,7 @@ func RunStatementsTerminal(books *Books, paths []string, progress io.Writer) err
 }
 
 func runTerminal(books *Books, statement *Statement, queue *statementQueue) error {
-	tview.Styles.PrimitiveBackgroundColor = tcell.NewHexColor(0x101b2b)
-	tview.Styles.ContrastBackgroundColor = tcell.NewHexColor(0x25466b)
-	tview.Styles.BorderColor = tcell.NewHexColor(0x629ac2)
-	tview.Styles.PrimaryTextColor = tcell.NewHexColor(0xe6edf3)
+	applyTUITheme()
 	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement, queue: queue}
 	ui.captureGlobalInput()
 	if statement == nil {
@@ -87,14 +141,14 @@ func (ui *terminal) screen(title string, body tview.Primitive, footer string) {
 }
 
 func (ui *terminal) message(title, text string, back func()) {
-	modal := tview.NewModal().SetText(tview.Escape(text)).AddButtons([]string{"OK"})
+	modal := themedModal().SetText(tview.Escape(text)).AddButtons([]string{"OK"})
 	modal.SetTitle(title).SetBorder(true)
 	modal.SetDoneFunc(func(_ int, _ string) { back() })
 	ui.app.SetRoot(modal, true).SetFocus(modal)
 }
 
 func (ui *terminal) menu() {
-	list := tview.NewList().ShowSecondaryText(true)
+	list := themedList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Water Accounting Terminal ")
 	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
 		AddItem("Review / revise journal", "Browse entries; revise entries in the working journal", '2', ui.journalEntries).
@@ -124,7 +178,7 @@ func (ui *terminal) menu() {
 }
 
 func (ui *terminal) reports() {
-	list := tview.NewList().ShowSecondaryText(false)
+	list := themedList().ShowSecondaryText(false)
 	list.SetBorder(true).SetTitle(" Reports ")
 	for _, name := range []string{"journal", "trial-balance", "balance-sheet", "income-statement"} {
 		name := name
@@ -175,7 +229,7 @@ func (ui *terminal) entryForm(draft *Draft, entry Entry, back func(), focus int)
 	var showForm func()
 	showForm = func() {
 		discard := func() {
-			modal := tview.NewModal().SetText("Discard this unsaved transaction?\nPress Esc again to discard and go back.").
+			modal := themedModal().SetText("Discard this unsaved transaction?\nPress Esc again to discard and go back.").
 				AddButtons([]string{"Keep editing", "Discard"})
 			modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 				if event.Key() == tcell.KeyEscape {
@@ -278,7 +332,7 @@ func formNavigation(event *tcell.EventKey) *tcell.EventKey {
 func (ui *terminal) preview(draft *Draft, text string, back, edit func()) {
 	view := tview.NewTextView().SetWrap(false).SetText(text)
 	view.SetBorder(true).SetTitle(" Preview - NOT SAVED ")
-	buttons := tview.NewForm().
+	buttons := themedForm().
 		AddButton("Save", func() { ui.save(draft, back) }).
 		AddButton("Edit ledger text (F4)", edit).
 		AddButton("Back to edit", back)
@@ -318,7 +372,7 @@ func (ui *terminal) edit(draft *Draft, initial string, back func()) {
 		err = draft.PreviewText(text)
 	}
 	if err != nil {
-		modal := tview.NewModal().
+		modal := themedModal().
 			SetText(tview.Escape(err.Error() + "\n\nThe journals have not changed. Reopen the editor to keep working on this text.")).
 			AddButtons([]string{"Edit again", "Discard text edits"})
 		modal.SetTitle(" Pending transaction ").SetBorder(true)
@@ -335,7 +389,7 @@ func (ui *terminal) edit(draft *Draft, initial string, back func()) {
 	var showPreview func()
 	showPreview = func() {
 		ui.preview(draft, draft.text, func() {
-			modal := tview.NewModal().
+			modal := themedModal().
 				SetText("Discard ledger-text edits and return to the entry form?").
 				AddButtons([]string{"Keep text", "Discard text edits"})
 			modal.SetDoneFunc(func(index int, _ string) {

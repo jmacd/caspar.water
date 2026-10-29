@@ -25,7 +25,7 @@ func (ui *terminal) bankStatements() {
 		ui.message(" Bank statements ", "No bank statements are available. Add PDF files to the configured statement inbox, then start wat again.", ui.menu)
 		return
 	}
-	list := tview.NewList().ShowSecondaryText(true)
+	list := themedList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(fmt.Sprintf(
 		" Bank statements | %d extracted | %d ready - recorded does not mean reconciled ",
 		len(statements), len(pending),
@@ -173,7 +173,7 @@ func (ui *terminal) statementList() {
 		ui.message(" Statement review failed ", err.Error(), back)
 		return
 	}
-	list := tview.NewList().ShowSecondaryText(true)
+	list := themedList().ShowSecondaryText(true)
 	footer := "Enter Select | i Source/notices | Esc " + destination + " | Only Save records an entry"
 	recorded := 0
 	for index, row := range ui.statement.Rows {
@@ -309,7 +309,7 @@ func (ui *terminal) statementOpen(index int) {
 		ui.entryForm(draft, entry, ui.statementList, 7)
 	}
 	if statuses[index].PossibleMatch {
-		modal := tview.NewModal().SetText("The journal already has a bank posting with this date and amount. It may be this transaction. Check the existing entry before recording another. Back leaves this row pending.").
+		modal := themedModal().SetText("The journal already has a bank posting with this date and amount. It may be this transaction. Check the existing entry before recording another. Back leaves this row pending.").
 			AddButtons([]string{"Back", "Record separate transaction"})
 		modal.SetDoneFunc(func(index int, _ string) {
 			if index == 1 {

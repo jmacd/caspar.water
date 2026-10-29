@@ -44,7 +44,7 @@ func (ui *terminal) reconciliationAt(selected int) {
 		formatCents(value.BookDebits), formatCents(value.BookClosing),
 		formatCents(value.OutstandingCredit), formatCents(value.OutstandingDebit),
 		formatCents(value.AdjustedStatement), formatCents(value.Difference)))
-	list := tview.NewList().ShowSecondaryText(true)
+	list := themedList().ShowSecondaryText(true)
 	for _, item := range value.Items {
 		state := "UNEXPLAINED"
 		hint := "Review or edit it from the journal; o marks an existing genuine outstanding item"
@@ -69,7 +69,7 @@ func (ui *terminal) reconciliationAt(selected int) {
 			ui.message(" Cannot finish ", "The unexplained difference must be zero before Finish.", func() { ui.reconciliationAt(finishIndex) })
 			return
 		}
-		modal := tview.NewModal().
+		modal := themedModal().
 			SetText("Finish this reconciliation?\n\nThe statement transactions will become read-only in wat.").
 			AddButtons([]string{"Cancel", "Finish"})
 		modal.SetDoneFunc(func(index int, _ string) {

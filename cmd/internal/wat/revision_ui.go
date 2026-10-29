@@ -16,7 +16,7 @@ func (ui *terminal) journalEntryList(selectedID string) {
 		return
 	}
 	if len(entries) == 0 {
-		list := tview.NewList().ShowSecondaryText(true)
+		list := themedList().ShowSecondaryText(true)
 		list.AddItem("Back to menu", "No journal transactions have been recorded", 'q', ui.menu)
 		list.SetBorder(true).SetTitle(" Journal | no transactions recorded ")
 		list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -29,7 +29,7 @@ func (ui *terminal) journalEntryList(selectedID string) {
 		ui.screen("Review / revise journal", list, "Enter/q Menu | Esc Menu")
 		return
 	}
-	table := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0)
+	table := themedTable().SetSelectable(true, false).SetFixed(1, 0)
 	headers := []struct {
 		text      string
 		align     int
