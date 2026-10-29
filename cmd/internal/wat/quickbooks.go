@@ -18,12 +18,13 @@ import (
 )
 
 type quickBooksRecord struct {
-	ID      string            `json:"id"`
-	Source  string            `json:"source"`
-	Row     int               `json:"row"`
-	Section string            `json:"section,omitempty"`
-	Date    string            `json:"date"`
-	Fields  map[string]string `json:"fields"`
+	ID         string            `json:"id"`
+	Source     string            `json:"source"`
+	Row        int               `json:"row"`
+	Section    string            `json:"section,omitempty"`
+	CashSource bool              `json:"cash_source"`
+	Date       string            `json:"date"`
+	Fields     map[string]string `json:"fields"`
 }
 
 type quickBooksJournalExample struct {
@@ -212,6 +213,13 @@ func parseQuickBooksCSVRows(
 	if dateColumn < 0 {
 		return quickBooksParseResult{}, fmt.Errorf("header row has no transaction date column")
 	}
+	cashSource := false
+	for _, header := range headers {
+		key := normalizeQuickBooksHeader(header)
+		if key == "payment" || key == "deposit" {
+			cashSource = true
+		}
+	}
 	result := quickBooksParseResult{
 		Headers:          headers,
 		TotalRows:        len(rows),
@@ -313,12 +321,13 @@ func parseQuickBooksCSVRows(
 			}
 		}
 		result.Records = append(result.Records, quickBooksRecord{
-			ID:      fmt.Sprintf("%s:%d", source, rowNumber),
-			Source:  source,
-			Row:     rowNumber,
-			Section: section,
-			Date:    date.Format("2006-01-02"),
-			Fields:  fields,
+			ID:         fmt.Sprintf("%s:%d", source, rowNumber),
+			Source:     source,
+			Row:        rowNumber,
+			Section:    section,
+			CashSource: cashSource,
+			Date:       date.Format("2006-01-02"),
+			Fields:     fields,
 		})
 	}
 	if !earliest.IsZero() {

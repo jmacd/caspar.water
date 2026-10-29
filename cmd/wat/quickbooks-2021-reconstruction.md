@@ -365,8 +365,9 @@ invent the chart of accounts.
   allowed accounting decisions, and the question a reviewer must answer.
 - [ ] Decide an acceptance policy for confidence. Recommended: low-confidence
   items remain unresolved rather than entering the candidate journal.
-- [ ] Prevent the model from choosing a cash account where no source evidence or
-  approved deterministic rule identifies one.
+- [x] Prevent the model from choosing a configured bank account unless the
+  disposition cites an extracted payment/deposit cash-source row. Apply the same
+  rule to balanced candidates and the known side of unresolved skeletons.
 - [ ] Cache the exact structured response by normalized-input hash so a reviewed
   run can be reproduced.
 - [ ] Use deterministic model settings where the provider supports them.

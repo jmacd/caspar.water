@@ -127,12 +127,12 @@ processed one month at a time by the configured Azure or Ollama model. Existing
 transactions after that year are supplied as account-classification examples.
 The model must use exact configured Wat accounts and produce balanced entries;
 Wat rejects invented accounts, unbalanced postings, malformed dates, duplicate
-candidates, incomplete source-row coverage, reused source rows, and non-JSON
-responses. Every dated source row must belong to exactly one balanced candidate
-or unresolved item. Unresolved items are rendered as fully commented,
-half-written entry skeletons with an explicit question; hledger ignores them
-until a reviewer supplies the missing counterposting and uncomments the
-completed entry.
+candidates, configured-bank postings without a cited cash-source row, incomplete
+source-row coverage, reused source rows, and non-JSON responses. Every dated
+source row must belong to exactly one balanced candidate or unresolved item.
+Unresolved items are rendered as fully commented, half-written entry skeletons
+with an explicit question; hledger ignores them until a reviewer supplies the
+missing counterposting and uncomments the completed entry.
 
 The staged 2021 recovery work and its required completeness gates are tracked in
 [QuickBooks 2021 reconstruction work list](quickbooks-2021-reconstruction.md).

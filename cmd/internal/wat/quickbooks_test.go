@@ -31,6 +31,7 @@ Insurance,,,,,
 	require.Equal(t, "Insurance", records[0].Section)
 	require.Equal(t, "-12.34", records[0].Fields["Amount"])
 	require.Equal(t, "report.xlsx:9", records[0].ID)
+	require.False(t, records[0].CashSource)
 	require.Equal(t, "2021-02-01", records[1].Date)
 }
 
@@ -42,6 +43,7 @@ func TestParseQuickBooksCSVRegister(t *testing.T) {
 	require.Len(t, records, 1)
 	require.Equal(t, "2021-03-02", records[0].Date)
 	require.Equal(t, "25.00", records[0].Fields["Payment"])
+	require.True(t, records[0].CashSource)
 }
 
 func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {

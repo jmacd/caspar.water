@@ -60,6 +60,11 @@ learn payee/account mappings, but never copy their dates or amounts.
 
 Use only exact account strings from configured_accounts. Each candidate must
 have at least two nonzero postings whose signed amounts total exactly 0.00.
+Use an account from bank_accounts only when at least one of that disposition's
+cited source records has cash_source=true. A QuickBooks account report, payee,
+check number, or plausible date is not evidence that a configured bank account
+was involved. If no cash-source row is cited, preserve the supported noncash
+side in unresolved and ask for the missing counterposting.
 Do not invent transactions, amounts, or accounts. When monetary or accounting
 facts are missing, put the transaction in unresolved, preserving the supported
 business-side posting and asking for the missing counterposting.
@@ -74,6 +79,7 @@ type quickBooksAIInput struct {
 	Year               int                        `json:"year"`
 	Month              string                     `json:"month"`
 	ConfiguredAccounts []string                   `json:"configured_accounts"`
+	BankAccounts       []string                   `json:"bank_accounts"`
 	LaterExamples      []quickBooksJournalExample `json:"later_journal_examples"`
 	Records            []quickBooksRecord         `json:"quickbooks_records"`
 }
@@ -146,6 +152,10 @@ func (b *Books) GenerateQuickBooksJournal(
 	for index, account := range accounts {
 		accountNames[index] = account.Name
 	}
+	bankAccounts := make([]string, len(b.Config.BankAccounts))
+	for index, bank := range b.Config.BankAccounts {
+		bankAccounts[index] = bank.Account
+	}
 	byMonth := make(map[string][]quickBooksRecord)
 	var months []string
 	for _, record := range records {
@@ -166,7 +176,7 @@ func (b *Books) GenerateQuickBooksJournal(
 			month, len(byMonth[month]), len(examples))
 		input := quickBooksAIInput{
 			Year: year, Month: month, ConfiguredAccounts: accountNames,
-			LaterExamples: examples, Records: byMonth[month],
+			BankAccounts: bankAccounts, LaterExamples: examples, Records: byMonth[month],
 		}
 		response, err := b.quickBooksCompletion(ctx, input)
 		if err != nil {
@@ -390,6 +400,13 @@ func renderQuickBooksCandidates(
 	for _, account := range input.ConfiguredAccounts {
 		accounts[account] = true
 	}
+	bankAccounts := make(map[string]bool, len(input.BankAccounts))
+	for _, account := range input.BankAccounts {
+		if !accounts[account] {
+			return "", fmt.Errorf("bank account %q is not a configured account", account)
+		}
+		bankAccounts[account] = true
+	}
 	recordsByID := make(map[string]quickBooksRecord, len(input.Records))
 	for _, record := range input.Records {
 		if record.ID == "" || !singleLine(record.ID) {
@@ -470,6 +487,13 @@ func renderQuickBooksCandidates(
 				}
 				positiveTotal += cents
 			}
+			if bankAccounts[posting.Account] && !quickBooksCashEvidence(sourceRecords) {
+				return "", fmt.Errorf(
+					"%s posts to bank account %q without a cited cash-source row",
+					disposition,
+					posting.Account,
+				)
+			}
 			entry.Postings[postingIndex] = Posting{
 				Account: posting.Account, Amount: posting.Amount,
 			}
@@ -540,6 +564,14 @@ func renderQuickBooksCandidates(
 			return "", fmt.Errorf("%s uses unconfigured known account %q",
 				disposition, unresolved.KnownPosting.Account)
 		}
+		if bankAccounts[unresolved.KnownPosting.Account] &&
+			!quickBooksCashEvidence(sourceRecords) {
+			return "", fmt.Errorf(
+				"%s presents bank account %q without a cited cash-source row",
+				disposition,
+				unresolved.KnownPosting.Account,
+			)
+		}
 		if strings.TrimSpace(unresolved.MissingFact) == "" ||
 			strings.TrimSpace(unresolved.Question) == "" {
 			return "", fmt.Errorf("%s requires a missing fact and question", disposition)
@@ -608,6 +640,15 @@ func renderQuickBooksUnresolved(unresolved quickBooksAIUnresolved, knownCents in
 	fmt.Fprintf(&output, "; Missing evidence: %s\n", unresolved.MissingFact)
 	fmt.Fprintf(&output, "; Question: %s\n", unresolved.Question)
 	return output.String()
+}
+
+func quickBooksCashEvidence(records []quickBooksRecord) bool {
+	for _, record := range records {
+		if record.CashSource {
+			return true
+		}
+	}
+	return false
 }
 
 func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error) {

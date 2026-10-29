@@ -227,6 +227,65 @@ func TestQuickBooksCandidatesRejectReusedSource(t *testing.T) {
 	require.ErrorContains(t, err, `reuses source id "report:2"`)
 }
 
+func TestQuickBooksCandidatesRejectBankWithoutCashEvidence(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{{
+			SourceIDs: []string{"report:2"},
+			Date:      "2021-01-02", Payee: "Vendor", Confidence: "high",
+			Postings: []quickBooksAIPosting{
+				{Account: "Expense:615:Electricity", Amount: "10.00"},
+				{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+			},
+		}},
+		Unresolved: []quickBooksAIUnresolved{},
+		Warnings:   []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		ConfiguredAccounts: []string{
+			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+		},
+		BankAccounts: []string{"Bank:131.2:SBMC:0000"},
+		Records: []quickBooksRecord{{
+			ID: "report:2", Date: "2021-01-02",
+			Fields: map[string]string{"Amount": "10.00"},
+		}},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`posts to bank account "Bank:131.2:SBMC:0000" without a cited cash-source row`,
+	)
+}
+
+func TestQuickBooksUnresolvedRejectsBankWithoutCashEvidence(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{},
+		Unresolved: []quickBooksAIUnresolved{{
+			SourceIDs: []string{"report:2"}, Date: "2021-01-02",
+			KnownPosting: quickBooksAIKnownPosting{
+				Account: "Bank:131.2:SBMC:0000", Amount: "-10.00",
+			},
+			MissingFact: "Missing expense account", Question: "Which expense account?",
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		ConfiguredAccounts: []string{
+			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+		},
+		BankAccounts: []string{"Bank:131.2:SBMC:0000"},
+		Records: []quickBooksRecord{{
+			ID: "report:2", Date: "2021-01-02",
+			Fields: map[string]string{"Amount": "10.00"},
+		}},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`presents bank account "Bank:131.2:SBMC:0000" without a cited cash-source row`,
+	)
+}
+
 func TestParseQuickBooksCents(t *testing.T) {
 	for value, expected := range map[string]int64{
 		"$1,234.56": 123456,
