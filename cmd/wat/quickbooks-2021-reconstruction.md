@@ -27,6 +27,7 @@ exports.
 | Personal-account transaction history | Unavailable by design | Do not request or ingest it; preserve cash-side and owner-treatment questions explicitly |
 | Account QuickReport rows dated 2021 | 56 | Includes appearances of the same transaction in different account reports |
 | Total extracted source rows dated 2021 | 61 | Not a count of unique accounting transactions |
+| Deterministic 2021 transaction groups | 56 | Five two-row groups consolidate cross-report appearances; no ambiguous groups were found |
 | Later Wat journal examples | 0 | No later classification evidence reached the model |
 | Candidates in one run | 27 | Many source rows were omitted or deduplicated |
 | Candidates in an earlier run | 31 | Model interpretation is not reproducible yet |
@@ -47,8 +48,9 @@ account guesses.
   account as established evidence.
 - [ ] Never request, ingest, or reconstruct the operator's personal bank-account
   history. Use only the available business records.
-- [x] Every normalized dated transaction row must receive exactly one
-  model-response disposition: balanced candidate or unresolved skeleton.
+- [x] Every normalized dated transaction row belongs to exactly one immutable
+  transaction group, and every group must receive exactly one model-response
+  disposition: balanced candidate or unresolved skeleton.
 - [x] Classify structural/report rows deterministically before the model as
   section, total, export footer, blank, or rejected row with an error.
 - [x] Keep unresolved transactions visible; do not turn them into prose warnings
@@ -273,19 +275,29 @@ every nonempty source row has a recorded classification.
 Account reports can show different sides of the same transaction. Build
 transaction groups before asking the model for interpretation.
 
-- [ ] Use the SBMC register as the primary cash chronology only for transactions
+- [x] Use the SBMC register as the primary cash chronology only for transactions
   actually present in that account.
 - [ ] Group report appearances using available transaction IDs first.
-- [ ] When no ID exists, use a conservative combination of date, amount,
-  transaction type, reference number, payee, report account, distribution
-  account, and split structure.
-- [ ] Never merge records solely because date and amount match.
-- [ ] Represent one-to-many split transactions as one candidate group.
-- [ ] Record every contributing source row in the private group artifact.
-- [ ] Mark ambiguous possible matches unresolved rather than selecting one.
+- [x] When no ID exists, group by date, transaction type, and reference number;
+  otherwise require date, amount, type, payee, and description. When type is
+  absent, reference matching also requires amount and payee.
+- [x] Never merge records solely because date and amount match.
+- [x] Represent reference-linked split transaction lines as one candidate
+  group.
+- [x] Record every contributing source row in the private group artifact.
+- [x] Mark same-source identity collisions ambiguous and prohibit balanced
+  candidates for ambiguous groups.
 - [ ] Identify noncash journal entries separately from bank transactions.
 - [ ] Check that grouped cash transactions account for the register's payment
   and deposit totals.
+
+The model-free inspection currently finds 61 source rows and 56 deterministic
+groups: 51 single-row groups, three reference-linked groups, and two
+description-linked groups. The five multi-row groups are the May 9 and July 30
+cross-report journal lines plus the November 24, December 15, and December 23
+register/report pairs. No ambiguous groups were found. This supersedes the
+previous model's 57-disposition count: that run merged the July split but left
+the analogous May split separate.
 
 **Exit condition:** every normalized transaction row belongs to exactly one
 transaction group or one explicit unresolved set, and duplicate appearances do
@@ -348,16 +360,17 @@ invent the chart of accounts.
 - [ ] Supply complete global context: input-file inventory, whether a register
   exists, whether that register is complete, and whether the current month has a
   register row.
-- [ ] Supply pre-grouped transactions instead of unrelated raw rows.
+- [x] Supply immutable, deterministically pre-grouped transactions instead of
+  unrelated raw rows; prohibit the model from merging, splitting, or regrouping
+  them.
 - [ ] Supply only approved account mappings and configured accounts.
-- [x] Require one structured disposition for every supplied transaction row:
-  candidate, unresolved, or excluded with an allowed deterministic reason.
-- [x] Require candidates and unresolved items to cite temporary source
-  identifiers in the private response. Reject missing, unknown, and reused
-  identifiers.
-- [ ] Validate that every candidate posting structure is supported by its cited
-  transaction group. Amounts are now checked against cited rows rather than any
-  same-valued row in the month; deterministic grouping remains.
+- [x] Require one structured disposition for every supplied transaction group:
+  candidate or unresolved.
+- [x] Require candidates and unresolved items to cite one temporary group ID in
+  the private response. Reject missing, unknown, and reused group IDs.
+- [x] Validate that every candidate or unresolved posting structure preserves
+  every distinct source amount in its cited group. Also require matching dates
+  and cash-source evidence for configured bank postings.
 - [x] Keep unresolved items in a structured artifact with reason and required
   decision.
 - [x] For missing personal cash-side evidence, require the unresolved item to

@@ -22,7 +22,7 @@ Return one JSON object with exactly these fields:
 {
   "candidates": [
     {
-      "source_ids": ["exact input record id"],
+      "group_id": "exact input transaction group id",
       "date": "YYYY-MM-DD",
       "payee": "single-line payee",
       "description": "single-line description or empty string",
@@ -35,16 +35,16 @@ Return one JSON object with exactly these fields:
   ],
   "unresolved": [
     {
-      "source_ids": ["exact input record id"],
+      "group_id": "exact input transaction group id",
       "date": "YYYY-MM-DD",
       "payee": "single-line payee or empty string",
       "description": "single-line description or empty string",
       "reference": "check/reference number or empty string",
-      "known_posting": {
+      "known_postings": [{
         "account": "exact configured account or empty string",
         "quickbooks_account": "source QuickBooks account label",
         "amount": "signed decimal USD without $"
-      },
+      }],
       "missing_fact": "single-line description of evidence that is unavailable",
       "question": "single-line question a human must answer"
     }
@@ -52,36 +52,38 @@ Return one JSON object with exactly these fields:
   "warnings": ["single-line warning"]
 }
 
-The input contains one month of rows gathered from multiple QuickBooks account
-reports and a bank register. The same transaction can appear in several reports.
-Deduplicate those appearances and reconstruct each real transaction once. Treat
+The input contains one month of deterministic transaction_groups gathered from
+multiple QuickBooks account reports and a bank register. Records already grouped
+together are appearances of the same transaction. Never merge groups, split a
+group, or redo grouping. A group with ambiguous=true must be unresolved. Treat
 the bank register as the cash-side chronology. Use later journal examples to
 learn payee/account mappings, but never copy their dates or amounts.
 
 Use only exact account strings from configured_accounts. Each candidate must
 have at least two nonzero postings whose signed amounts total exactly 0.00.
-Use an account from bank_accounts only when at least one of that disposition's
-cited source records has cash_source=true. A QuickBooks account report, payee,
+Use an account from bank_accounts only when at least one record in that group
+has cash_source=true. A QuickBooks account report, payee,
 check number, or plausible date is not evidence that a configured bank account
 was involved. If no cash-source row is cited, preserve the supported noncash
 side in unresolved and ask for the missing counterposting.
-Do not invent transactions, amounts, or accounts. When monetary or accounting
-facts are missing, put the transaction in unresolved, preserving the supported
-business-side posting and asking for the missing counterposting.
+Do not invent transactions, amounts, or accounts. Preserve every distinct
+source amount in the candidate postings or unresolved known_postings. When
+monetary or accounting facts are missing, put the transaction in unresolved,
+preserving all supported business-side postings and asking for the missing
+counterposting.
 Warnings are for batch-level notices, never omitted transactions.
 
-Every quickbooks_records id must appear exactly once across candidates and
-unresolved. A deduplicated candidate or unresolved item may cite multiple source
-ids. Use only source ids present in the input. Produce only dispositions in
-input.year and input.month. Return JSON only.`
+Every transaction_groups id must appear exactly once across candidates and
+unresolved. Use only group ids present in the input. Produce only dispositions
+in input.year and input.month. Return JSON only.`
 
 type quickBooksAIInput struct {
-	Year               int                        `json:"year"`
-	Month              string                     `json:"month"`
-	ConfiguredAccounts []string                   `json:"configured_accounts"`
-	BankAccounts       []string                   `json:"bank_accounts"`
-	LaterExamples      []quickBooksJournalExample `json:"later_journal_examples"`
-	Records            []quickBooksRecord         `json:"quickbooks_records"`
+	Year               int                          `json:"year"`
+	Month              string                       `json:"month"`
+	ConfiguredAccounts []string                     `json:"configured_accounts"`
+	BankAccounts       []string                     `json:"bank_accounts"`
+	LaterExamples      []quickBooksJournalExample   `json:"later_journal_examples"`
+	Groups             []quickBooksTransactionGroup `json:"transaction_groups"`
 }
 
 type quickBooksAIPosting struct {
@@ -90,7 +92,7 @@ type quickBooksAIPosting struct {
 }
 
 type quickBooksAICandidate struct {
-	SourceIDs   []string              `json:"source_ids"`
+	GroupID     string                `json:"group_id"`
 	Date        string                `json:"date"`
 	Payee       string                `json:"payee"`
 	Description string                `json:"description"`
@@ -106,14 +108,14 @@ type quickBooksAIKnownPosting struct {
 }
 
 type quickBooksAIUnresolved struct {
-	SourceIDs    []string                 `json:"source_ids"`
-	Date         string                   `json:"date"`
-	Payee        string                   `json:"payee"`
-	Description  string                   `json:"description"`
-	Reference    string                   `json:"reference"`
-	KnownPosting quickBooksAIKnownPosting `json:"known_posting"`
-	MissingFact  string                   `json:"missing_fact"`
-	Question     string                   `json:"question"`
+	GroupID       string                     `json:"group_id"`
+	Date          string                     `json:"date"`
+	Payee         string                     `json:"payee"`
+	Description   string                     `json:"description"`
+	Reference     string                     `json:"reference"`
+	KnownPostings []quickBooksAIKnownPosting `json:"known_postings"`
+	MissingFact   string                     `json:"missing_fact"`
+	Question      string                     `json:"question"`
 }
 
 type quickBooksAIResponse struct {
@@ -140,6 +142,10 @@ func (b *Books) GenerateQuickBooksJournal(
 	if err != nil {
 		return "", err
 	}
+	groups, err := groupQuickBooksRecords(records)
+	if err != nil {
+		return "", fmt.Errorf("group QuickBooks transactions: %w", err)
+	}
 	examples, err := b.quickBooksJournalExamples(year)
 	if err != nil {
 		return "", fmt.Errorf("load later journal examples: %w", err)
@@ -156,14 +162,14 @@ func (b *Books) GenerateQuickBooksJournal(
 	for index, bank := range b.Config.BankAccounts {
 		bankAccounts[index] = bank.Account
 	}
-	byMonth := make(map[string][]quickBooksRecord)
+	byMonth := make(map[string][]quickBooksTransactionGroup)
 	var months []string
-	for _, record := range records {
-		month := record.Date[:7]
+	for _, group := range groups {
+		month := group.Date[:7]
 		if _, exists := byMonth[month]; !exists {
 			months = append(months, month)
 		}
-		byMonth[month] = append(byMonth[month], record)
+		byMonth[month] = append(byMonth[month], group)
 	}
 	slices.Sort(months)
 
@@ -171,12 +177,17 @@ func (b *Books) GenerateQuickBooksJournal(
 	candidateCount := 0
 	unresolvedCount := 0
 	for _, month := range months {
+		sourceRows := 0
+		for _, group := range byMonth[month] {
+			sourceRows += len(group.Records)
+		}
 		fmt.Fprintf(progress,
-			"Requesting QuickBooks reconstruction for %s: %d source rows, %d later examples.\n",
-			month, len(byMonth[month]), len(examples))
+			"Requesting QuickBooks reconstruction for %s: %d source rows in %d "+
+				"deterministic groups, %d later examples.\n",
+			month, sourceRows, len(byMonth[month]), len(examples))
 		input := quickBooksAIInput{
 			Year: year, Month: month, ConfiguredAccounts: accountNames,
-			BankAccounts: bankAccounts, LaterExamples: examples, Records: byMonth[month],
+			BankAccounts: bankAccounts, LaterExamples: examples, Groups: byMonth[month],
 		}
 		response, err := b.quickBooksCompletion(ctx, input)
 		if err != nil {
@@ -407,54 +418,90 @@ func renderQuickBooksCandidates(
 		}
 		bankAccounts[account] = true
 	}
-	recordsByID := make(map[string]quickBooksRecord, len(input.Records))
-	for _, record := range input.Records {
-		if record.ID == "" || !singleLine(record.ID) {
-			return "", fmt.Errorf("QuickBooks input contains an invalid source id")
+	groupsByID := make(map[string]quickBooksTransactionGroup, len(input.Groups))
+	sourceIDs := make(map[string]bool)
+	for _, group := range input.Groups {
+		if group.ID == "" || !singleLine(group.ID) {
+			return "", fmt.Errorf("QuickBooks input contains an invalid group id")
 		}
-		if _, exists := recordsByID[record.ID]; exists {
-			return "", fmt.Errorf("QuickBooks input contains duplicate source id %q", record.ID)
+		if _, exists := groupsByID[group.ID]; exists {
+			return "", fmt.Errorf("QuickBooks input contains duplicate group id %q", group.ID)
 		}
-		recordsByID[record.ID] = record
-	}
-	claimed := make(map[string]string, len(input.Records))
-	claimRecords := func(sourceIDs []string, disposition string) ([]quickBooksRecord, error) {
-		if len(input.Records) == 0 {
-			return nil, nil
+		if len(group.Records) == 0 {
+			return "", fmt.Errorf("QuickBooks group %q contains no source records", group.ID)
 		}
-		if len(sourceIDs) == 0 {
-			return nil, fmt.Errorf("%s cites no source ids", disposition)
-		}
-		records := make([]quickBooksRecord, 0, len(sourceIDs))
-		for _, sourceID := range sourceIDs {
-			record, exists := recordsByID[sourceID]
-			if !exists {
-				return nil, fmt.Errorf("%s cites unknown source id %q", disposition, sourceID)
+		for _, record := range group.Records {
+			if record.ID == "" || !singleLine(record.ID) {
+				return "", fmt.Errorf("QuickBooks input contains an invalid source id")
 			}
-			if prior, exists := claimed[sourceID]; exists {
-				return nil, fmt.Errorf(
-					"%s reuses source id %q already claimed by %s",
-					disposition,
-					sourceID,
-					prior,
+			if sourceIDs[record.ID] {
+				return "", fmt.Errorf("QuickBooks input reuses source id %q across groups", record.ID)
+			}
+			if record.Date != group.Date {
+				return "", fmt.Errorf(
+					"QuickBooks group %q date %s disagrees with source %q date %s",
+					group.ID,
+					group.Date,
+					record.ID,
+					record.Date,
 				)
 			}
-			claimed[sourceID] = disposition
-			records = append(records, record)
+			sourceIDs[record.ID] = true
 		}
-		return records, nil
+		groupsByID[group.ID] = group
+	}
+	claimed := make(map[string]string, len(input.Groups))
+	claimGroup := func(groupID, disposition string) (quickBooksTransactionGroup, error) {
+		if groupID == "" {
+			return quickBooksTransactionGroup{}, fmt.Errorf("%s cites no transaction group", disposition)
+		}
+		group, exists := groupsByID[groupID]
+		if !exists {
+			return quickBooksTransactionGroup{}, fmt.Errorf(
+				"%s cites unknown transaction group %q",
+				disposition,
+				groupID,
+			)
+		}
+		if prior, exists := claimed[groupID]; exists {
+			return quickBooksTransactionGroup{}, fmt.Errorf(
+				"%s reuses transaction group %q already claimed by %s",
+				disposition,
+				groupID,
+				prior,
+			)
+		}
+		claimed[groupID] = disposition
+		return group, nil
 	}
 	seen := make(map[string]bool)
 	var journal strings.Builder
 	for index, candidate := range response.Candidates {
 		disposition := fmt.Sprintf("candidate %d", index+1)
-		sourceRecords, err := claimRecords(candidate.SourceIDs, disposition)
+		group, err := claimGroup(candidate.GroupID, disposition)
 		if err != nil {
 			return "", err
 		}
+		if group.Ambiguous {
+			return "", fmt.Errorf(
+				"%s uses ambiguous transaction group %q; it must remain unresolved",
+				disposition,
+				group.ID,
+			)
+		}
+		sourceRecords := group.Records
 		date, err := time.Parse("2006-01-02", candidate.Date)
 		if err != nil || date.Year() != input.Year || candidate.Date[:7] != input.Month {
 			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
+		}
+		if candidate.Date != group.Date {
+			return "", fmt.Errorf(
+				"%s date %s disagrees with transaction group %q date %s",
+				disposition,
+				candidate.Date,
+				group.ID,
+				group.Date,
+			)
 		}
 		if candidate.Confidence != "high" &&
 			candidate.Confidence != "medium" && candidate.Confidence != "low" {
@@ -470,6 +517,7 @@ func renderQuickBooksCandidates(
 		fmt.Fprintf(&identity, "%s\x00%s\x00%s\x00%s",
 			entry.Date, entry.Payee, entry.Description, entry.Reference)
 		postingIdentities := make([]string, len(candidate.Postings))
+		postingAmounts := make(map[int64]bool, len(candidate.Postings))
 		var positiveTotal int64
 		for postingIndex, posting := range candidate.Postings {
 			if !accounts[posting.Account] {
@@ -486,6 +534,17 @@ func renderQuickBooksCandidates(
 					return "", fmt.Errorf("%s debit total exceeds supported USD range", disposition)
 				}
 				positiveTotal += cents
+			}
+			absoluteCents := cents
+			if absoluteCents < 0 {
+				if absoluteCents == math.MinInt64 {
+					return "", fmt.Errorf("%s posting %d amount is out of range",
+						disposition, postingIndex+1)
+				}
+				absoluteCents = -absoluteCents
+			}
+			if absoluteCents != 0 {
+				postingAmounts[absoluteCents] = true
 			}
 			if bankAccounts[posting.Account] && !quickBooksCashEvidence(sourceRecords) {
 				return "", fmt.Errorf(
@@ -519,11 +578,20 @@ func renderQuickBooksCandidates(
 		if err != nil {
 			return "", err
 		}
-		if len(sourceRecords) != 0 && !sourceAmounts[positiveTotal] {
+		if len(sourceAmounts) == 1 && !sourceAmounts[positiveTotal] {
 			return "", fmt.Errorf(
 				"%s total %s is not present in its cited QuickBooks transaction amounts",
 				disposition, formatCents(positiveTotal),
 			)
+		}
+		for sourceAmount := range sourceAmounts {
+			if !postingAmounts[sourceAmount] {
+				return "", fmt.Errorf(
+					"%s omits cited QuickBooks transaction amount %s",
+					disposition,
+					formatCents(sourceAmount),
+				)
+			}
 		}
 		if journal.Len() != 0 {
 			journal.WriteByte('\n')
@@ -539,64 +607,114 @@ func renderQuickBooksCandidates(
 	}
 	for index, unresolved := range response.Unresolved {
 		disposition := fmt.Sprintf("unresolved item %d", index+1)
-		sourceRecords, err := claimRecords(unresolved.SourceIDs, disposition)
+		group, err := claimGroup(unresolved.GroupID, disposition)
 		if err != nil {
 			return "", err
 		}
+		sourceRecords := group.Records
 		date, err := time.Parse("2006-01-02", unresolved.Date)
 		if err != nil || date.Year() != input.Year || unresolved.Date[:7] != input.Month {
 			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
 		}
+		if unresolved.Date != group.Date {
+			return "", fmt.Errorf(
+				"%s date %s disagrees with transaction group %q date %s",
+				disposition,
+				unresolved.Date,
+				group.ID,
+				group.Date,
+			)
+		}
 		for name, value := range map[string]string{
 			"payee": unresolved.Payee, "description": unresolved.Description,
-			"reference": unresolved.Reference, "QuickBooks account": unresolved.KnownPosting.QuickBooksAccount,
-			"missing fact": unresolved.MissingFact, "question": unresolved.Question,
+			"reference": unresolved.Reference, "missing fact": unresolved.MissingFact,
+			"question": unresolved.Question,
 		} {
 			if !singleLine(value) {
 				return "", fmt.Errorf("%s %s contains control characters", disposition, name)
 			}
 		}
-		if unresolved.KnownPosting.Account == "" &&
-			strings.TrimSpace(unresolved.KnownPosting.QuickBooksAccount) == "" {
-			return "", fmt.Errorf("%s has no known account label", disposition)
-		}
-		if unresolved.KnownPosting.Account != "" && !accounts[unresolved.KnownPosting.Account] {
-			return "", fmt.Errorf("%s uses unconfigured known account %q",
-				disposition, unresolved.KnownPosting.Account)
-		}
-		if bankAccounts[unresolved.KnownPosting.Account] &&
-			!quickBooksCashEvidence(sourceRecords) {
-			return "", fmt.Errorf(
-				"%s presents bank account %q without a cited cash-source row",
-				disposition,
-				unresolved.KnownPosting.Account,
-			)
-		}
 		if strings.TrimSpace(unresolved.MissingFact) == "" ||
 			strings.TrimSpace(unresolved.Question) == "" {
 			return "", fmt.Errorf("%s requires a missing fact and question", disposition)
 		}
-		knownCents, err := ParseCents(unresolved.KnownPosting.Amount)
-		if err != nil || knownCents == 0 {
-			return "", fmt.Errorf("%s has invalid known posting amount %q",
-				disposition, unresolved.KnownPosting.Amount)
+		if len(unresolved.KnownPostings) == 0 {
+			return "", fmt.Errorf("%s has no known postings", disposition)
 		}
-		absoluteKnown := knownCents
-		if absoluteKnown < 0 {
-			if absoluteKnown == math.MinInt64 {
-				return "", fmt.Errorf("%s known posting amount is out of range", disposition)
+		knownCents := make([]int64, len(unresolved.KnownPostings))
+		knownAmounts := make(map[int64]bool, len(unresolved.KnownPostings))
+		var knownTotal int64
+		for postingIndex, posting := range unresolved.KnownPostings {
+			if !singleLine(posting.QuickBooksAccount) {
+				return "", fmt.Errorf(
+					"%s known posting %d QuickBooks account contains control characters",
+					disposition,
+					postingIndex+1,
+				)
 			}
-			absoluteKnown = -absoluteKnown
+			if posting.Account == "" && strings.TrimSpace(posting.QuickBooksAccount) == "" {
+				return "", fmt.Errorf(
+					"%s known posting %d has no account label",
+					disposition,
+					postingIndex+1,
+				)
+			}
+			if posting.Account != "" && !accounts[posting.Account] {
+				return "", fmt.Errorf("%s uses unconfigured known account %q",
+					disposition, posting.Account)
+			}
+			if bankAccounts[posting.Account] && !quickBooksCashEvidence(sourceRecords) {
+				return "", fmt.Errorf(
+					"%s presents bank account %q without a cited cash-source row",
+					disposition,
+					posting.Account,
+				)
+			}
+			cents, err := ParseCents(posting.Amount)
+			if err != nil || cents == 0 {
+				return "", fmt.Errorf("%s has invalid known posting amount %q",
+					disposition, posting.Amount)
+			}
+			if (cents > 0 && knownTotal > math.MaxInt64-cents) ||
+				(cents < 0 && knownTotal < math.MinInt64-cents) {
+				return "", fmt.Errorf("%s known posting total is out of range", disposition)
+			}
+			knownTotal += cents
+			knownCents[postingIndex] = cents
+			absoluteKnown := cents
+			if absoluteKnown < 0 {
+				if absoluteKnown == math.MinInt64 {
+					return "", fmt.Errorf("%s known posting amount is out of range", disposition)
+				}
+				absoluteKnown = -absoluteKnown
+			}
+			knownAmounts[absoluteKnown] = true
+		}
+		if knownTotal == math.MinInt64 {
+			return "", fmt.Errorf("%s known posting total is out of range", disposition)
 		}
 		sourceAmounts, err := quickBooksSourceAmounts(sourceRecords)
 		if err != nil {
 			return "", err
 		}
-		if len(sourceRecords) != 0 && !sourceAmounts[absoluteKnown] {
-			return "", fmt.Errorf(
-				"%s amount %s is not present in its cited QuickBooks transaction amounts",
-				disposition, formatCents(absoluteKnown),
-			)
+		if len(sourceRecords) != 0 {
+			for knownAmount := range knownAmounts {
+				if !sourceAmounts[knownAmount] {
+					return "", fmt.Errorf(
+						"%s amount %s is not present in its cited QuickBooks transaction amounts",
+						disposition, formatCents(knownAmount),
+					)
+				}
+			}
+			for sourceAmount := range sourceAmounts {
+				if !knownAmounts[sourceAmount] {
+					return "", fmt.Errorf(
+						"%s omits cited QuickBooks transaction amount %s",
+						disposition,
+						formatCents(sourceAmount),
+					)
+				}
+			}
 		}
 		if journal.Len() != 0 && journal.String()[journal.Len()-1] != '\n' {
 			journal.WriteByte('\n')
@@ -604,12 +722,19 @@ func renderQuickBooksCandidates(
 		if index != 0 {
 			journal.WriteByte('\n')
 		}
-		journal.WriteString(renderQuickBooksUnresolved(unresolved, knownCents))
+		journal.WriteString(renderQuickBooksUnresolved(
+			unresolved,
+			knownCents,
+			knownTotal,
+			quickBooksGroupSourceIDs(group),
+		))
 	}
-	for _, record := range input.Records {
-		if _, exists := claimed[record.ID]; !exists {
-			return "", fmt.Errorf("QuickBooks source id %q has no candidate or unresolved disposition",
-				record.ID)
+	for _, group := range input.Groups {
+		if _, exists := claimed[group.ID]; !exists {
+			return "", fmt.Errorf(
+				"QuickBooks transaction group %q has no candidate or unresolved disposition",
+				group.ID,
+			)
 		}
 	}
 	for index, warning := range response.Warnings {
@@ -620,9 +745,14 @@ func renderQuickBooksCandidates(
 	return journal.String(), nil
 }
 
-func renderQuickBooksUnresolved(unresolved quickBooksAIUnresolved, knownCents int64) string {
+func renderQuickBooksUnresolved(
+	unresolved quickBooksAIUnresolved,
+	knownCents []int64,
+	knownTotal int64,
+	sourceIDs []string,
+) string {
 	var output strings.Builder
-	fmt.Fprintf(&output, "; Sources: %s\n", strings.Join(unresolved.SourceIDs, ", "))
+	fmt.Fprintf(&output, "; Sources: %s\n", strings.Join(sourceIDs, ", "))
 	fmt.Fprintf(&output, "; %s %s", unresolved.Date, unresolved.Payee)
 	if unresolved.Description != "" {
 		fmt.Fprintf(&output, " | %s", unresolved.Description)
@@ -631,12 +761,16 @@ func renderQuickBooksUnresolved(unresolved quickBooksAIUnresolved, knownCents in
 		fmt.Fprintf(&output, " (%s)", unresolved.Reference)
 	}
 	output.WriteByte('\n')
-	account := unresolved.KnownPosting.Account
-	if account == "" {
-		account = "[QuickBooks: " + unresolved.KnownPosting.QuickBooksAccount + "]"
+	for index, posting := range unresolved.KnownPostings {
+		account := posting.Account
+		if account == "" {
+			account = "[QuickBooks: " + posting.QuickBooksAccount + "]"
+		}
+		fmt.Fprintf(&output, ";     %s  $%s\n", account, formatCents(knownCents[index]))
 	}
-	fmt.Fprintf(&output, ";     %s  $%s\n", account, formatCents(knownCents))
-	fmt.Fprintf(&output, ";     [TODO counterposting]  $%s\n", formatCents(-knownCents))
+	if knownTotal != 0 {
+		fmt.Fprintf(&output, ";     [TODO counterposting]  $%s\n", formatCents(-knownTotal))
+	}
 	fmt.Fprintf(&output, "; Missing evidence: %s\n", unresolved.MissingFact)
 	fmt.Fprintf(&output, "; Question: %s\n", unresolved.Question)
 	return output.String()

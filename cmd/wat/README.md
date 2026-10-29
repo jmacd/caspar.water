@@ -128,11 +128,13 @@ transactions after that year are supplied as account-classification examples.
 The model must use exact configured Wat accounts and produce balanced entries;
 Wat rejects invented accounts, unbalanced postings, malformed dates, duplicate
 candidates, configured-bank postings without a cited cash-source row, incomplete
-source-row coverage, reused source rows, and non-JSON responses. Every dated
-source row must belong to exactly one balanced candidate or unresolved item.
-Unresolved items are rendered as fully commented, half-written entry skeletons
-with an explicit question; hledger ignores them until a reviewer supplies the
-missing counterposting and uncomments the completed entry.
+group coverage, reused group IDs, omitted split amounts, and non-JSON responses.
+Every dated source row belongs to one immutable deterministic transaction
+group, and every group must become exactly one balanced candidate or unresolved
+item. Unresolved items preserve all known split postings and are rendered as
+fully commented, half-written entry skeletons with an explicit question;
+hledger ignores them until a reviewer supplies the missing counterposting and
+uncomments the completed entry.
 
 The staged 2021 recovery work and its required completeness gates are tracked in
 [QuickBooks 2021 reconstruction work list](quickbooks-2021-reconstruction.md).
@@ -154,7 +156,10 @@ model:
 
 Inspection reports content hashes, normalized headers and row classes, date
 coverage, annual counts, report sections, totals, and selected-year transaction
-types. It does not call a model or modify the books.
+types. It also groups selected-year rows conservatively before any model call,
+reports group counts by month and match basis, and lists every multi-row or
+ambiguous group with its contributing source rows. It does not call a model or
+modify the books.
 
 Pass filenames after the command to select a subset. Relative filenames are
 resolved inside the configured inbox, which avoids exposing host paths inside

@@ -87,6 +87,12 @@ func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	require.Contains(t, output.String(), `section row 6: "Register subtotal"`)
 	require.Contains(t, output.String(), `selected-year transaction types: "Check"=1`)
 	require.Contains(t, output.String(), "content sha256:")
+	require.Contains(t, output.String(), "QuickBooks selected-year grouping (2021):")
+	require.Contains(t, output.String(), "source rows: 1")
+	require.Contains(t, output.String(), "deterministic transaction groups: 1")
+	require.Contains(t, output.String(), "match basis: single=1")
+	require.Contains(t, output.String(), "groups by month: 2021-03=1")
+	require.Contains(t, output.String(), "ambiguous groups: 0")
 }
 
 func TestParseQuickBooksCSVClassifiesReportTotalsAndFooter(t *testing.T) {

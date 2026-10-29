@@ -385,6 +385,7 @@ func (b *Books) InspectQuickBooks(
 	if progress == nil {
 		progress = io.Discard
 	}
+	var selectedYearRecords []quickBooksRecord
 	for fileIndex, path := range paths {
 		contentHash, err := quickBooksContentHash(path)
 		if err != nil {
@@ -398,6 +399,7 @@ func (b *Books) InspectQuickBooks(
 		if err != nil {
 			return fmt.Errorf("inspect QuickBooks input %q: %w", path, err)
 		}
+		selectedYearRecords = append(selectedYearRecords, parsed.Records...)
 		if fileIndex != 0 {
 			fmt.Fprintln(output)
 		}
@@ -476,6 +478,71 @@ func (b *Books) InspectQuickBooks(
 			fmt.Fprintf(output, "  undated nonempty row %d: %s\n",
 				row.Row, formatQuickBooksLabeledRow(row.Fields, row.Values))
 		}
+	}
+	groups, err := groupQuickBooksRecords(selectedYearRecords)
+	if err != nil {
+		return fmt.Errorf("group selected-year QuickBooks records: %w", err)
+	}
+	fmt.Fprintln(output)
+	fmt.Fprintf(output, "QuickBooks selected-year grouping (%d):\n", year)
+	fmt.Fprintf(output, "  source rows: %d\n", len(selectedYearRecords))
+	fmt.Fprintf(output, "  deterministic transaction groups: %d\n", len(groups))
+	basisCounts := make(map[string]int)
+	monthCounts := make(map[string]int)
+	ambiguousCount := 0
+	for _, group := range groups {
+		basisCounts[group.MatchBasis]++
+		if len(group.Date) >= 7 {
+			monthCounts[group.Date[:7]]++
+		}
+		if group.Ambiguous {
+			ambiguousCount++
+		}
+	}
+	bases := make([]string, 0, len(basisCounts))
+	for basis := range basisCounts {
+		bases = append(bases, basis)
+	}
+	slices.Sort(bases)
+	fmt.Fprint(output, "  match basis:")
+	if len(bases) == 0 {
+		fmt.Fprint(output, " none")
+	}
+	for _, basis := range bases {
+		fmt.Fprintf(output, " %s=%d", basis, basisCounts[basis])
+	}
+	fmt.Fprintln(output)
+	months := make([]string, 0, len(monthCounts))
+	for month := range monthCounts {
+		months = append(months, month)
+	}
+	slices.Sort(months)
+	fmt.Fprint(output, "  groups by month:")
+	if len(months) == 0 {
+		fmt.Fprint(output, " none")
+	}
+	for _, month := range months {
+		fmt.Fprintf(output, " %s=%d", month, monthCounts[month])
+	}
+	fmt.Fprintln(output)
+	fmt.Fprintf(output, "  ambiguous groups: %d\n", ambiguousCount)
+	for _, group := range groups {
+		if len(group.Records) == 1 {
+			continue
+		}
+		label := "matched"
+		if group.Ambiguous {
+			label = "ambiguous"
+		}
+		fmt.Fprintf(
+			output,
+			"  %s group %s: date=%s basis=%s sources=%s\n",
+			label,
+			group.ID,
+			group.Date,
+			group.MatchBasis,
+			strings.Join(quickBooksGroupSourceIDs(group), ", "),
+		)
 	}
 	return nil
 }
