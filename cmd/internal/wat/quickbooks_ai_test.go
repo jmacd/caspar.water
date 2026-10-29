@@ -132,6 +132,37 @@ func TestQuickBooksCandidatesRejectUnknownAccount(t *testing.T) {
 	require.ErrorContains(t, err, "unconfigured account")
 }
 
+func TestQuickBooksCandidatesRequireHumanApprovedMapping(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{{
+			GroupID: "group-1",
+			Date:    "2021-01-02", Payee: "Vendor", Confidence: "high",
+			Postings: []quickBooksAIPosting{
+				{Account: "Expense:664:Maintenance", Amount: "10.00"},
+				{Account: "Equity:Owner", Amount: "-10.00"},
+			},
+		}},
+		Unresolved: []quickBooksAIUnresolved{},
+		Warnings:   []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		ConfiguredAccounts: []string{
+			"Expense:615:Utility", "Expense:664:Maintenance", "Equity:Owner",
+		},
+		AccountMappings: []quickBooksAccountMapping{{
+			Label: "Utilities", Account: "Expense:615:Utility",
+		}},
+		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
+			"group-1",
+			quickBooksRecord{
+				ID: "report:2", Date: "2021-01-02", Section: "Utilities",
+				Fields: map[string]string{"Amount": "10.00"},
+			},
+		)},
+	})
+	require.ErrorContains(t, err, `omits human-approved mapped account "Expense:615:Utility"`)
+}
+
 func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
 	candidate := quickBooksAICandidate{
 		GroupID: "group-1",
@@ -596,6 +627,9 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 	prior.Date = "2022-01-02"
 	priorText := prior.journalText("later-example")
 	books, root := fixture(t, priorText)
+	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
+		Label: "Power", Account: "Expense:615:Utility",
+	}}))
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var payload struct {
@@ -608,6 +642,9 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 		var modelInput quickBooksAIInput
 		require.NoError(t, json.Unmarshal([]byte(payload.Messages[1].Content), &modelInput))
 		require.Len(t, modelInput.Groups, 1)
+		require.Equal(t, []quickBooksAccountMapping{{
+			Label: "Power", Account: "Expense:615:Utility",
+		}}, modelInput.AccountMappings)
 		content := fmt.Sprintf(`{"candidates":[{"group_id":%q,`,
 			modelInput.Groups[0].ID) +
 			`"date":"2021-03-02","payee":"Electric company",` +

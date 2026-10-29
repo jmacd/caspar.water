@@ -93,6 +93,28 @@ func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	require.Contains(t, output.String(), "match basis: single=1")
 	require.Contains(t, output.String(), "groups by month: 2021-03=1")
 	require.Contains(t, output.String(), "ambiguous groups: 0")
+	require.Contains(t, output.String(), "QuickBooks selected-year account labels (2021):")
+	require.Contains(t, output.String(), `account "Insurance": 1 source rows`)
+}
+
+func TestQuickBooksAccountLabelsInventory(t *testing.T) {
+	labels := quickBooksAccountLabels([]quickBooksRecord{
+		{
+			Section: " Utilities ",
+			Fields: map[string]string{
+				"Account Name":         "Water Company Expenses:Utilities",
+				"Distribution account": " Utilities ",
+			},
+		},
+		{
+			Section: "Utilities",
+			Fields:  map[string]string{"Account": "Checking:Main  Account"},
+		},
+	})
+	require.Equal(t, 2, labels["report section"]["Utilities"])
+	require.Equal(t, 1, labels["account name"]["Water Company Expenses:Utilities"])
+	require.Equal(t, 1, labels["distribution account"]["Utilities"])
+	require.Equal(t, 1, labels["account"]["Checking:Main Account"])
 }
 
 func TestParseQuickBooksCSVClassifiesReportTotalsAndFooter(t *testing.T) {

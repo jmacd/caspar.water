@@ -307,7 +307,7 @@ not create duplicate journal entries.
 
 Account translation is an accounting decision and must not vary by model run.
 
-- [ ] List every distinct QuickBooks source and distribution account found in
+- [x] List every distinct QuickBooks source and distribution account found in
   2021.
 - [ ] Map each QuickBooks account to:
   - one configured Wat account;
@@ -326,7 +326,7 @@ Account translation is an accounting decision and must not vary by model run.
   taxes, legal/project costs, and invested labor.
 - [ ] Decide whether mappings apply to an entire QuickBooks account or require
   transaction-level review.
-- [ ] Store approved mappings in private, reviewable configuration rather than
+- [x] Store approved mappings in private, reviewable configuration rather than
   only in a prompt.
 - [ ] Prohibit fallback mappings such as using a known vendor expense account
   merely because no better configured account exists.
@@ -335,6 +335,37 @@ Account translation is an accounting decision and must not vary by model run.
 
 **Exit condition:** all deterministic mappings are approved and every remaining
 account or transaction is explicitly unresolved.
+
+The deterministic inventory found these report categories. Counts are source
+rows, not unique transactions. The chart entries are review candidates, not
+approved mappings:
+
+| QuickBooks report category | Rows | Relevant CPUC chart candidates | Status |
+|---|---:|---|---|
+| Caspar Water Co. labor invested | 2 | `Expense:630-Employee-Labor`, `Expense:800-Expenses-Capitalized`, and an approved owner-equity treatment | Accounting and capitalization decision required |
+| Insurance | 1 | `Expense:684-Insurance` | Direct mapping appears likely; approval required |
+| Maintenance | 9 | `Expense:640-Materials`, `Expense:650-Contract-Work`, `Expense:664-Other-Plant-Maintenance-Expenses` | Transaction-level split required |
+| Minna Costs | 13 | Potential plant/CWIP, professional-services, or non-utility accounts depending on the project | Purpose and capitalization evidence required |
+| Operations | 13 | Multiple volume, contract, regulatory, and general-expense accounts | Transaction-level split required |
+| Professional services | 6 | `Expense:682-Professional-Services`, or a capital account when directly attributable to plant | Capitalization decision required |
+| Property Tax 118-090-12 (South Pasture) | 1 | `Expense:408.1-Property-Taxes` | Direct mapping appears likely; utility/non-utility treatment still requires approval |
+| Utilities | 11 | `Expense:615-Power` | Direct mapping appears likely; approval required |
+
+The register also contains one row labeled `Checking:Main Account`, one
+`Supplies`, one `Water Company Expenses:Operations`, and two
+`Water Company Expenses:Utilities`. These are cash-side evidence labels, not
+automatic account mappings. The active local configuration currently exposes
+only four nonbank posting accounts, so even likely CPUC mappings must be
+approved and configured before another model run.
+
+`wat quickbooks --review --year 2021` now presents these decisions in the Wat
+terminal. It uses the report section as the canonical label for Account
+QuickReports and the account field for register rows, maps only to existing
+configured posting accounts, and saves only on `F2` to the private workspace
+file `quickbooks-mappings.yaml`. Generation treats saved mappings as immutable:
+the model receives them, and response validation rejects any disposition that
+omits a required mapped account. All labels remain unresolved until the
+operator saves a choice in this screen.
 
 ## Gate 7: establish later-journal examples
 
@@ -363,7 +394,8 @@ invent the chart of accounts.
 - [x] Supply immutable, deterministically pre-grouped transactions instead of
   unrelated raw rows; prohibit the model from merging, splitting, or regrouping
   them.
-- [ ] Supply only approved account mappings and configured accounts.
+- [x] Supply only human-approved mappings from `quickbooks-mappings.yaml` and
+  existing configured posting accounts.
 - [x] Require one structured disposition for every supplied transaction group:
   candidate or unresolved.
 - [x] Require candidates and unresolved items to cite one temporary group ID in

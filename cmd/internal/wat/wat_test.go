@@ -126,6 +126,11 @@ func TestConfig(t *testing.T) {
 			require.Equal(t, filepath.Join(directory, "books", "accounts.journal"), cfg.LocalAccounts)
 			require.Equal(t, filepath.Join(directory, "books", "manual.journal"), cfg.ManualJournal)
 			require.Equal(t, filepath.Join(directory, "sources"), cfg.Sources)
+			require.Equal(
+				t,
+				filepath.Join(directory, "quickbooks-mappings.yaml"),
+				cfg.QuickBooksMappings,
+			)
 			if len(cfg.BankAccounts) != 0 {
 				require.Equal(t, filepath.Join(directory, "books", "bank-sbmc-1234.journal"), cfg.BankAccounts[0].Journal)
 			}

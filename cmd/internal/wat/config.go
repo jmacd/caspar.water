@@ -26,17 +26,18 @@ var (
 )
 
 type Config struct {
-	Version       int                 `yaml:"version"`
-	Name          string              `yaml:"name"`
-	Accounts      []string            `yaml:"accounts"`
-	BankAccounts  []BankAccountConfig `yaml:"bank_accounts"`
-	Statement     StatementConfig     `yaml:"statement"`
-	Journal       string              `yaml:"-"`
-	AccountChart  string              `yaml:"-"`
-	LocalAccounts string              `yaml:"-"`
-	ManualJournal string              `yaml:"-"`
-	Sources       string              `yaml:"-"`
-	root          string
+	Version            int                 `yaml:"version"`
+	Name               string              `yaml:"name"`
+	Accounts           []string            `yaml:"accounts"`
+	BankAccounts       []BankAccountConfig `yaml:"bank_accounts"`
+	Statement          StatementConfig     `yaml:"statement"`
+	Journal            string              `yaml:"-"`
+	AccountChart       string              `yaml:"-"`
+	LocalAccounts      string              `yaml:"-"`
+	ManualJournal      string              `yaml:"-"`
+	Sources            string              `yaml:"-"`
+	QuickBooksMappings string              `yaml:"-"`
+	root               string
 }
 
 type BankAccountConfig struct {
@@ -99,6 +100,7 @@ func LoadConfig(path string) (Config, error) {
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
 	cfg.ManualJournal = filepath.Join(books, manualJournal)
 	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
+	cfg.QuickBooksMappings = filepath.Join(cfg.root, "quickbooks-mappings.yaml")
 
 	accounts := make(map[string]bool)
 	identifiers := make(map[string]bool)

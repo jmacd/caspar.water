@@ -544,7 +544,47 @@ func (b *Books) InspectQuickBooks(
 			strings.Join(quickBooksGroupSourceIDs(group), ", "),
 		)
 	}
+	fmt.Fprintln(output)
+	fmt.Fprintf(output, "QuickBooks selected-year account labels (%d):\n", year)
+	accountLabels := quickBooksAccountLabels(selectedYearRecords)
+	labelCount := 0
+	for _, kind := range []string{
+		"report section",
+		"account",
+		"account name",
+		"distribution account",
+	} {
+		values := accountLabels[kind]
+		labels := make([]string, 0, len(values))
+		for label := range values {
+			labels = append(labels, label)
+		}
+		slices.Sort(labels)
+		for _, label := range labels {
+			fmt.Fprintf(output, "  %s %q: %d source rows\n", kind, label, values[label])
+			labelCount++
+		}
+	}
+	if labelCount == 0 {
+		fmt.Fprintln(output, "  none")
+	}
 	return nil
+}
+
+func quickBooksAccountLabels(records []quickBooksRecord) map[string]map[string]int {
+	labels := make(map[string]map[string]int)
+	add := func(kind, value string) {
+		if labels[kind] == nil {
+			labels[kind] = make(map[string]int)
+		}
+		labels[kind][value]++
+	}
+	for _, record := range records {
+		for _, sourceLabel := range quickBooksRecordSourceLabels(record) {
+			add(sourceLabel.Kind, sourceLabel.Label)
+		}
+	}
+	return labels
 }
 
 func formatQuickBooksLabeledRow(fields, values []string) string {

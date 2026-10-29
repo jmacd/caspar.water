@@ -19,6 +19,7 @@ func command() *cobra.Command {
 	var statementCheck bool
 	var quickBooksYear int
 	var quickBooksInspect bool
+	var quickBooksReview bool
 	root := &cobra.Command{
 		Use:           "wat",
 		Short:         "Water Accounting Terminal - local hledger bookkeeping",
@@ -152,6 +153,9 @@ func command() *cobra.Command {
 			"With no FILE arguments, scan the configured read-only inbox for .xls, .xlsx, and .csv files.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if quickBooksInspect && quickBooksReview {
+				return fmt.Errorf("use either --inspect or --review, not both")
+			}
 			paths, err := quickBooksFiles(args, statementInbox)
 			if err != nil {
 				return err
@@ -162,6 +166,15 @@ func command() *cobra.Command {
 					paths,
 					quickBooksYear,
 					cmd.OutOrStdout(),
+					cmd.ErrOrStderr(),
+				)
+			}
+			if quickBooksReview {
+				return wat.RunQuickBooksMappingTerminal(
+					cmd.Context(),
+					books,
+					paths,
+					quickBooksYear,
 					cmd.ErrOrStderr(),
 				)
 			}
@@ -181,6 +194,12 @@ func command() *cobra.Command {
 		"inspect",
 		false,
 		"report deterministic extraction diagnostics without calling a model",
+	)
+	quickBooks.Flags().BoolVar(
+		&quickBooksReview,
+		"review",
+		false,
+		"review and save deterministic account mappings without calling a model",
 	)
 	if err := quickBooks.MarkFlagRequired("year"); err != nil {
 		panic(err)

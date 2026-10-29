@@ -20,6 +20,16 @@ func TestHelpDoesNotRequireBooks(t *testing.T) {
 	require.Contains(t, output.String(), "Water Accounting Terminal")
 }
 
+func TestQuickBooksHelpIncludesMappingReview(t *testing.T) {
+	root := command()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetArgs([]string{"quickbooks", "--help"})
+	require.NoError(t, root.Execute())
+	require.Contains(t, output.String(), "--review")
+	require.Contains(t, output.String(), "review and save deterministic account mappings")
+}
+
 func TestStatementFlagAndCache(t *testing.T) {
 	if _, err := exec.LookPath("hledger"); err != nil {
 		t.Skip("requires hledger")

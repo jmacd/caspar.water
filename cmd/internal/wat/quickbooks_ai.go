@@ -61,6 +61,9 @@ learn payee/account mappings, but never copy their dates or amounts.
 
 Use only exact account strings from configured_accounts. Each candidate must
 have at least two nonzero postings whose signed amounts total exactly 0.00.
+account_mappings are human-approved and immutable. If a group contains a mapped
+label, use that exact configured account in the candidate postings or unresolved
+known_postings. Never substitute another account for a mapped label.
 Use an account from bank_accounts only when at least one record in that group
 has cash_source=true. A QuickBooks account report, payee,
 check number, or plausible date is not evidence that a configured bank account
@@ -82,6 +85,7 @@ type quickBooksAIInput struct {
 	Month              string                       `json:"month"`
 	ConfiguredAccounts []string                     `json:"configured_accounts"`
 	BankAccounts       []string                     `json:"bank_accounts"`
+	AccountMappings    []quickBooksAccountMapping   `json:"account_mappings"`
 	LaterExamples      []quickBooksJournalExample   `json:"later_journal_examples"`
 	Groups             []quickBooksTransactionGroup `json:"transaction_groups"`
 }
@@ -162,6 +166,13 @@ func (b *Books) GenerateQuickBooksJournal(
 	for index, bank := range b.Config.BankAccounts {
 		bankAccounts[index] = bank.Account
 	}
+	accountMappings, err := b.quickBooksMappings()
+	if err != nil {
+		return "", err
+	}
+	if err := b.validateQuickBooksMappings(accountMappings); err != nil {
+		return "", err
+	}
 	byMonth := make(map[string][]quickBooksTransactionGroup)
 	var months []string
 	for _, group := range groups {
@@ -187,7 +198,8 @@ func (b *Books) GenerateQuickBooksJournal(
 			month, sourceRows, len(byMonth[month]), len(examples))
 		input := quickBooksAIInput{
 			Year: year, Month: month, ConfiguredAccounts: accountNames,
-			BankAccounts: bankAccounts, LaterExamples: examples, Groups: byMonth[month],
+			BankAccounts: bankAccounts, AccountMappings: accountMappings,
+			LaterExamples: examples, Groups: byMonth[month],
 		}
 		response, err := b.quickBooksCompletion(ctx, input)
 		if err != nil {
@@ -418,6 +430,24 @@ func renderQuickBooksCandidates(
 		}
 		bankAccounts[account] = true
 	}
+	mappingLabels := make(map[string]bool, len(input.AccountMappings))
+	for _, mapping := range input.AccountMappings {
+		if strings.TrimSpace(mapping.Label) != mapping.Label ||
+			mapping.Label == "" || !singleLine(mapping.Label) {
+			return "", fmt.Errorf("QuickBooks input contains an invalid mapped label")
+		}
+		if mappingLabels[mapping.Label] {
+			return "", fmt.Errorf("QuickBooks input maps label %q more than once", mapping.Label)
+		}
+		mappingLabels[mapping.Label] = true
+		if !accounts[mapping.Account] {
+			return "", fmt.Errorf(
+				"QuickBooks input maps label %q to unconfigured account %q",
+				mapping.Label,
+				mapping.Account,
+			)
+		}
+	}
 	groupsByID := make(map[string]quickBooksTransactionGroup, len(input.Groups))
 	sourceIDs := make(map[string]bool)
 	for _, group := range input.Groups {
@@ -490,6 +520,10 @@ func renderQuickBooksCandidates(
 			)
 		}
 		sourceRecords := group.Records
+		requiredAccounts, err := quickBooksMappedAccounts(group, input.AccountMappings)
+		if err != nil {
+			return "", err
+		}
 		date, err := time.Parse("2006-01-02", candidate.Date)
 		if err != nil || date.Year() != input.Year || candidate.Date[:7] != input.Month {
 			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
@@ -518,12 +552,14 @@ func renderQuickBooksCandidates(
 			entry.Date, entry.Payee, entry.Description, entry.Reference)
 		postingIdentities := make([]string, len(candidate.Postings))
 		postingAmounts := make(map[int64]bool, len(candidate.Postings))
+		candidateAccounts := make(map[string]bool, len(candidate.Postings))
 		var positiveTotal int64
 		for postingIndex, posting := range candidate.Postings {
 			if !accounts[posting.Account] {
 				return "", fmt.Errorf("%s uses unconfigured account %q",
 					disposition, posting.Account)
 			}
+			candidateAccounts[posting.Account] = true
 			cents, err := ParseCents(posting.Amount)
 			if err != nil {
 				return "", fmt.Errorf("%s posting %d: %w",
@@ -593,6 +629,15 @@ func renderQuickBooksCandidates(
 				)
 			}
 		}
+		for requiredAccount := range requiredAccounts {
+			if !candidateAccounts[requiredAccount] {
+				return "", fmt.Errorf(
+					"%s omits human-approved mapped account %q",
+					disposition,
+					requiredAccount,
+				)
+			}
+		}
 		if journal.Len() != 0 {
 			journal.WriteByte('\n')
 		}
@@ -612,6 +657,10 @@ func renderQuickBooksCandidates(
 			return "", err
 		}
 		sourceRecords := group.Records
+		requiredAccounts, err := quickBooksMappedAccounts(group, input.AccountMappings)
+		if err != nil {
+			return "", err
+		}
 		date, err := time.Parse("2006-01-02", unresolved.Date)
 		if err != nil || date.Year() != input.Year || unresolved.Date[:7] != input.Month {
 			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
@@ -643,6 +692,7 @@ func renderQuickBooksCandidates(
 		}
 		knownCents := make([]int64, len(unresolved.KnownPostings))
 		knownAmounts := make(map[int64]bool, len(unresolved.KnownPostings))
+		knownAccounts := make(map[string]bool, len(unresolved.KnownPostings))
 		var knownTotal int64
 		for postingIndex, posting := range unresolved.KnownPostings {
 			if !singleLine(posting.QuickBooksAccount) {
@@ -662,6 +712,9 @@ func renderQuickBooksCandidates(
 			if posting.Account != "" && !accounts[posting.Account] {
 				return "", fmt.Errorf("%s uses unconfigured known account %q",
 					disposition, posting.Account)
+			}
+			if posting.Account != "" {
+				knownAccounts[posting.Account] = true
 			}
 			if bankAccounts[posting.Account] && !quickBooksCashEvidence(sourceRecords) {
 				return "", fmt.Errorf(
@@ -703,6 +756,15 @@ func renderQuickBooksCandidates(
 					return "", fmt.Errorf(
 						"%s amount %s is not present in its cited QuickBooks transaction amounts",
 						disposition, formatCents(knownAmount),
+					)
+				}
+			}
+			for requiredAccount := range requiredAccounts {
+				if !knownAccounts[requiredAccount] {
+					return "", fmt.Errorf(
+						"%s omits human-approved mapped account %q",
+						disposition,
+						requiredAccount,
 					)
 				}
 			}

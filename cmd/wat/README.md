@@ -158,8 +158,28 @@ Inspection reports content hashes, normalized headers and row classes, date
 coverage, annual counts, report sections, totals, and selected-year transaction
 types. It also groups selected-year rows conservatively before any model call,
 reports group counts by month and match basis, and lists every multi-row or
-ambiguous group with its contributing source rows. It does not call a model or
-modify the books.
+ambiguous group with its contributing source rows. Finally, it inventories
+report sections and account, account-name, and distribution-account labels for
+deterministic mapping review. It does not call a model or modify the books.
+
+Review those source categories in Wat instead of deciding mappings in a prompt:
+
+```sh
+./cmd/wat/run.sh --inbox ../caspar_water_bank \
+  quickbooks --review --year 2021
+```
+
+The review screen shows one canonical decision label per source row: the report
+section for Account QuickReports, or the account label for register rows. Each
+label starts unresolved and can map only to an existing configured posting
+account. `F2` saves the policy to the private
+`quickbooks-mappings.yaml` file in the Wat workspace. The editor never calls a
+model and never changes source spreadsheets or journals.
+
+Normal QuickBooks generation loads that mapping file. Human-approved mappings
+are included as immutable model input, and Wat rejects a candidate or unresolved
+skeleton that omits a mapped account. Remove a mapping in the review screen to
+make that category unresolved again.
 
 Pass filenames after the command to select a subset. Relative filenames are
 resolved inside the configured inbox, which avoids exposing host paths inside
