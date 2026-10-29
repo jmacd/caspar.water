@@ -118,6 +118,44 @@ Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
 A statement may cross a calendar-year boundary.
 
+## QuickBooks reconstruction
+
+`wat quickbooks` generates an editable candidate journal from a directory of
+QuickBooks `.xls`, `.xlsx`, and `.csv` reports without changing the books. The
+spreadsheet rows are normalized with Pond, filtered to the requested year, and
+processed one month at a time by the configured Azure or Ollama model. Existing
+transactions after that year are supplied as account-classification examples.
+The model must use exact configured Wat accounts and produce balanced entries;
+Wat rejects invented accounts, unbalanced postings, malformed dates, duplicate
+candidates, and non-JSON responses.
+
+The staged 2021 recovery work and its required completeness gates are tracked in
+[QuickBooks 2021 reconstruction work list](quickbooks-2021-reconstruction.md).
+
+The local runner scans its read-only inbox when no filenames are supplied:
+
+```sh
+./cmd/wat/run.sh --azure-cli --inbox ../caspar_water_bank \
+  quickbooks --year 2021 >2021-draft.journal
+```
+
+Pass filenames after the command to select a subset. Relative filenames are
+resolved inside the configured inbox, which avoids exposing host paths inside
+the accounting sandbox:
+
+```sh
+./cmd/wat/run.sh --azure-cli --inbox ../caspar_water_bank \
+  quickbooks --year 2021 \
+  'Caspar_Water_SMBC_Register.xls' \
+  'Joshua MacDonald and Ariana Bayer_Account QuickReport.xlsx'
+```
+
+Progress and model warnings go to stderr; stdout contains only the candidate
+journal. The command does not add entries to `manual.journal` or a bank journal.
+Review and edit the generated file before incorporating any transaction. Source
+row identifiers are used only in the model input and are not written to the
+candidate journal.
+
 ## CPUC chart and local posting accounts
 
 The master chart uses the formal CPUC declarations:
