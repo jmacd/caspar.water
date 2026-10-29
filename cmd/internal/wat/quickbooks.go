@@ -3,6 +3,7 @@ package wat
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -34,6 +35,18 @@ type quickBooksJournalExample struct {
 type quickBooksUndatedRow struct {
 	Row    int
 	Fields []string
+	Values []string
+}
+
+type quickBooksSectionRow struct {
+	Row   int
+	Value string
+}
+
+type quickBooksLabeledRow struct {
+	Row    int
+	Fields []string
+	Values []string
 }
 
 type quickBooksParseResult struct {
@@ -49,6 +62,9 @@ type quickBooksParseResult struct {
 	SectionRows          int
 	BlankRows            int
 	UndatedRows          []quickBooksUndatedRow
+	Sections             []quickBooksSectionRow
+	SummaryRows          []quickBooksLabeledRow
+	FooterRows           []quickBooksSectionRow
 	DatesByYear          map[int]int
 	EarliestDate         string
 	LatestDate           string
@@ -241,18 +257,35 @@ func parseQuickBooksCSVRows(
 				continue
 			}
 			if value, ok := singleQuickBooksValue(values); ok {
-				section = value
-				result.SectionRows++
+				if quickBooksExportTimestamp(value) {
+					result.FooterRows = append(result.FooterRows, quickBooksSectionRow{
+						Row: rowNumber, Value: value,
+					})
+				} else {
+					section = value
+					result.SectionRows++
+					result.Sections = append(result.Sections, quickBooksSectionRow{
+						Row: rowNumber, Value: value,
+					})
+				}
 			} else {
 				fields := make([]string, 0, nonempty)
+				fieldValues := make([]string, 0, nonempty)
 				for index, value := range values {
 					if value != "" {
 						fields = append(fields, headers[index])
+						fieldValues = append(fieldValues, value)
 					}
 				}
-				result.UndatedRows = append(result.UndatedRows, quickBooksUndatedRow{
-					Row: rowNumber, Fields: fields,
-				})
+				if quickBooksTotalRow(headers, values) {
+					result.SummaryRows = append(result.SummaryRows, quickBooksLabeledRow{
+						Row: rowNumber, Fields: fields, Values: fieldValues,
+					})
+				} else {
+					result.UndatedRows = append(result.UndatedRows, quickBooksUndatedRow{
+						Row: rowNumber, Fields: fields, Values: fieldValues,
+					})
+				}
 			}
 			continue
 		}
@@ -305,6 +338,28 @@ func quickBooksNonemptyCells(row []string) int {
 	return count
 }
 
+func quickBooksExportTimestamp(value string) bool {
+	_, err := time.Parse("Monday, January 2, 2006 3:04 PM GMT-07:00", value)
+	return err == nil
+}
+
+func quickBooksTotalRow(headers, values []string) bool {
+	label := ""
+	for index, value := range values {
+		if value == "" {
+			continue
+		}
+		switch normalizeQuickBooksHeader(headers[index]) {
+		case "column_1":
+			label = strings.ToLower(strings.TrimSpace(value))
+		case "amount", "balance", "payment", "deposit", "debit", "credit":
+		default:
+			return false
+		}
+	}
+	return label == "total" || strings.HasPrefix(label, "total for ")
+}
+
 func (b *Books) InspectQuickBooks(
 	ctx context.Context,
 	paths []string,
@@ -322,6 +377,10 @@ func (b *Books) InspectQuickBooks(
 		progress = io.Discard
 	}
 	for fileIndex, path := range paths {
+		contentHash, err := quickBooksContentHash(path)
+		if err != nil {
+			return err
+		}
 		data, err := quickBooksInputCSV(ctx, path, progress)
 		if err != nil {
 			return err
@@ -334,6 +393,8 @@ func (b *Books) InspectQuickBooks(
 			fmt.Fprintln(output)
 		}
 		fmt.Fprintf(output, "QuickBooks input: %s\n", filepath.Base(path))
+		fmt.Fprintf(output, "  file type: %s\n", strings.ToLower(filepath.Ext(path)))
+		fmt.Fprintf(output, "  content sha256: %s\n", contentHash)
 		fmt.Fprintf(output, "  normalized CSV: %d rows, %d nonempty, %d columns\n",
 			parsed.TotalRows, parsed.NonemptyRows, len(parsed.Headers))
 		fmt.Fprintf(output, "  detected header: row %d (%s)\n",
@@ -342,10 +403,13 @@ func (b *Books) InspectQuickBooks(
 			parsed.RowsBeforeHeader, parsed.NonemptyBeforeHeader)
 		fmt.Fprintf(
 			output,
-			"  data rows: %d total, %d dated, %d section, %d undated nonempty, %d blank\n",
+			"  data rows: %d total, %d dated, %d section, %d total, %d footer, "+
+				"%d undated nonempty, %d blank\n",
 			parsed.DataRows,
 			parsed.DatedRows,
 			parsed.SectionRows,
+			len(parsed.SummaryRows),
+			len(parsed.FooterRows),
 			len(parsed.UndatedRows),
 			parsed.BlankRows,
 		)
@@ -368,12 +432,64 @@ func (b *Books) InspectQuickBooks(
 		fmt.Fprintln(output)
 		fmt.Fprintf(output, "  selected year %d: %d transaction rows\n",
 			year, len(parsed.Records))
+		transactionTypes := make(map[string]int)
+		for _, record := range parsed.Records {
+			for name, value := range record.Fields {
+				key := normalizeQuickBooksHeader(name)
+				if key == "transaction type" || key == "type" {
+					transactionTypes[value]++
+				}
+			}
+		}
+		typeNames := make([]string, 0, len(transactionTypes))
+		for name := range transactionTypes {
+			typeNames = append(typeNames, name)
+		}
+		slices.Sort(typeNames)
+		if len(typeNames) != 0 {
+			fmt.Fprint(output, "  selected-year transaction types:")
+			for _, name := range typeNames {
+				fmt.Fprintf(output, " %q=%d", name, transactionTypes[name])
+			}
+			fmt.Fprintln(output)
+		}
+		for _, row := range parsed.Sections {
+			fmt.Fprintf(output, "  section row %d: %q\n", row.Row, row.Value)
+		}
+		for _, row := range parsed.SummaryRows {
+			fmt.Fprintf(output, "  total row %d: %s\n",
+				row.Row, formatQuickBooksLabeledRow(row.Fields, row.Values))
+		}
+		for _, row := range parsed.FooterRows {
+			fmt.Fprintf(output, "  footer row %d: %q\n", row.Row, row.Value)
+		}
 		for _, row := range parsed.UndatedRows {
 			fmt.Fprintf(output, "  undated nonempty row %d: %s\n",
-				row.Row, strings.Join(row.Fields, " | "))
+				row.Row, formatQuickBooksLabeledRow(row.Fields, row.Values))
 		}
 	}
 	return nil
+}
+
+func formatQuickBooksLabeledRow(fields, values []string) string {
+	formatted := make([]string, len(fields))
+	for index := range fields {
+		formatted[index] = fmt.Sprintf("%s=%q", fields[index], values[index])
+	}
+	return strings.Join(formatted, " | ")
+}
+
+func quickBooksContentHash(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open QuickBooks input %q for hashing: %w", path, err)
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("hash QuickBooks input %q: %w", path, err)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 func quickBooksHeaderRow(rows [][]string) (int, error) {

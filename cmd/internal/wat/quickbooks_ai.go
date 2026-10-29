@@ -22,6 +22,7 @@ Return one JSON object with exactly these fields:
 {
   "candidates": [
     {
+      "source_ids": ["exact input record id"],
       "date": "YYYY-MM-DD",
       "payee": "single-line payee",
       "description": "single-line description or empty string",
@@ -30,6 +31,22 @@ Return one JSON object with exactly these fields:
       "postings": [
         {"account": "exact configured account", "amount": "signed decimal USD without $"}
       ]
+    }
+  ],
+  "unresolved": [
+    {
+      "source_ids": ["exact input record id"],
+      "date": "YYYY-MM-DD",
+      "payee": "single-line payee or empty string",
+      "description": "single-line description or empty string",
+      "reference": "check/reference number or empty string",
+      "known_posting": {
+        "account": "exact configured account or empty string",
+        "quickbooks_account": "source QuickBooks account label",
+        "amount": "signed decimal USD without $"
+      },
+      "missing_fact": "single-line description of evidence that is unavailable",
+      "question": "single-line question a human must answer"
     }
   ],
   "warnings": ["single-line warning"]
@@ -43,9 +60,15 @@ learn payee/account mappings, but never copy their dates or amounts.
 
 Use only exact account strings from configured_accounts. Each candidate must
 have at least two nonzero postings whose signed amounts total exactly 0.00.
-Do not invent transactions, amounts, or accounts. Omit a transaction rather
-than inventing missing monetary facts, and explain omissions in warnings.
-Produce only candidates in input.year and input.month. Return JSON only.`
+Do not invent transactions, amounts, or accounts. When monetary or accounting
+facts are missing, put the transaction in unresolved, preserving the supported
+business-side posting and asking for the missing counterposting.
+Warnings are for batch-level notices, never omitted transactions.
+
+Every quickbooks_records id must appear exactly once across candidates and
+unresolved. A deduplicated candidate or unresolved item may cite multiple source
+ids. Use only source ids present in the input. Produce only dispositions in
+input.year and input.month. Return JSON only.`
 
 type quickBooksAIInput struct {
 	Year               int                        `json:"year"`
@@ -61,6 +84,7 @@ type quickBooksAIPosting struct {
 }
 
 type quickBooksAICandidate struct {
+	SourceIDs   []string              `json:"source_ids"`
 	Date        string                `json:"date"`
 	Payee       string                `json:"payee"`
 	Description string                `json:"description"`
@@ -69,9 +93,27 @@ type quickBooksAICandidate struct {
 	Postings    []quickBooksAIPosting `json:"postings"`
 }
 
+type quickBooksAIKnownPosting struct {
+	Account           string `json:"account"`
+	QuickBooksAccount string `json:"quickbooks_account"`
+	Amount            string `json:"amount"`
+}
+
+type quickBooksAIUnresolved struct {
+	SourceIDs    []string                 `json:"source_ids"`
+	Date         string                   `json:"date"`
+	Payee        string                   `json:"payee"`
+	Description  string                   `json:"description"`
+	Reference    string                   `json:"reference"`
+	KnownPosting quickBooksAIKnownPosting `json:"known_posting"`
+	MissingFact  string                   `json:"missing_fact"`
+	Question     string                   `json:"question"`
+}
+
 type quickBooksAIResponse struct {
-	Candidates []quickBooksAICandidate `json:"candidates"`
-	Warnings   []string                `json:"warnings"`
+	Candidates []quickBooksAICandidate  `json:"candidates"`
+	Unresolved []quickBooksAIUnresolved `json:"unresolved"`
+	Warnings   []string                 `json:"warnings"`
 }
 
 type chatMessage struct {
@@ -117,6 +159,7 @@ func (b *Books) GenerateQuickBooksJournal(
 
 	var journal strings.Builder
 	candidateCount := 0
+	unresolvedCount := 0
 	for _, month := range months {
 		fmt.Fprintf(progress,
 			"Requesting QuickBooks reconstruction for %s: %d source rows, %d later examples.\n",
@@ -143,12 +186,18 @@ func (b *Books) GenerateQuickBooksJournal(
 			journal.WriteString(text)
 		}
 		candidateCount += len(response.Candidates)
+		unresolvedCount += len(response.Unresolved)
 	}
-	if candidateCount == 0 {
-		return "", fmt.Errorf("AI produced no candidate transactions for %d", year)
+	if candidateCount == 0 && unresolvedCount == 0 {
+		return "", fmt.Errorf("AI produced no transaction dispositions for %d", year)
 	}
-	fmt.Fprintf(progress, "Generated %d balanced QuickBooks candidates for manual review.\n",
-		candidateCount)
+	fmt.Fprintf(
+		progress,
+		"Generated %d balanced QuickBooks candidates and %d unresolved entry skeletons "+
+			"for manual review.\n",
+		candidateCount,
+		unresolvedCount,
+	)
 	return journal.String(), nil
 }
 
@@ -182,8 +231,10 @@ func (b *Books) quickBooksCompletion(
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return response, fmt.Errorf("model response must contain exactly one JSON object")
 	}
-	if response.Candidates == nil || response.Warnings == nil {
-		return response, fmt.Errorf("model response requires candidates and warnings arrays")
+	if response.Candidates == nil || response.Unresolved == nil || response.Warnings == nil {
+		return response, fmt.Errorf(
+			"model response requires candidates, unresolved, and warnings arrays",
+		)
 	}
 	return response, nil
 }
@@ -339,21 +390,59 @@ func renderQuickBooksCandidates(
 	for _, account := range input.ConfiguredAccounts {
 		accounts[account] = true
 	}
-	sourceAmounts, err := quickBooksSourceAmounts(input.Records)
-	if err != nil {
-		return "", err
+	recordsByID := make(map[string]quickBooksRecord, len(input.Records))
+	for _, record := range input.Records {
+		if record.ID == "" || !singleLine(record.ID) {
+			return "", fmt.Errorf("QuickBooks input contains an invalid source id")
+		}
+		if _, exists := recordsByID[record.ID]; exists {
+			return "", fmt.Errorf("QuickBooks input contains duplicate source id %q", record.ID)
+		}
+		recordsByID[record.ID] = record
+	}
+	claimed := make(map[string]string, len(input.Records))
+	claimRecords := func(sourceIDs []string, disposition string) ([]quickBooksRecord, error) {
+		if len(input.Records) == 0 {
+			return nil, nil
+		}
+		if len(sourceIDs) == 0 {
+			return nil, fmt.Errorf("%s cites no source ids", disposition)
+		}
+		records := make([]quickBooksRecord, 0, len(sourceIDs))
+		for _, sourceID := range sourceIDs {
+			record, exists := recordsByID[sourceID]
+			if !exists {
+				return nil, fmt.Errorf("%s cites unknown source id %q", disposition, sourceID)
+			}
+			if prior, exists := claimed[sourceID]; exists {
+				return nil, fmt.Errorf(
+					"%s reuses source id %q already claimed by %s",
+					disposition,
+					sourceID,
+					prior,
+				)
+			}
+			claimed[sourceID] = disposition
+			records = append(records, record)
+		}
+		return records, nil
 	}
 	seen := make(map[string]bool)
 	var journal strings.Builder
 	for index, candidate := range response.Candidates {
+		disposition := fmt.Sprintf("candidate %d", index+1)
+		sourceRecords, err := claimRecords(candidate.SourceIDs, disposition)
+		if err != nil {
+			return "", err
+		}
 		date, err := time.Parse("2006-01-02", candidate.Date)
 		if err != nil || date.Year() != input.Year || candidate.Date[:7] != input.Month {
-			return "", fmt.Errorf("candidate %d has date outside %s", index+1, input.Month)
+			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
 		}
 		if candidate.Confidence != "high" &&
 			candidate.Confidence != "medium" && candidate.Confidence != "low" {
-			return "", fmt.Errorf("candidate %d has invalid confidence %q",
-				index+1, candidate.Confidence)
+			return "", fmt.Errorf("%s has invalid confidence %q",
+				disposition, candidate.Confidence)
 		}
 		entry := Entry{
 			Date: candidate.Date, Payee: candidate.Payee,
@@ -367,18 +456,17 @@ func renderQuickBooksCandidates(
 		var positiveTotal int64
 		for postingIndex, posting := range candidate.Postings {
 			if !accounts[posting.Account] {
-				return "", fmt.Errorf("candidate %d uses unconfigured account %q",
-					index+1, posting.Account)
+				return "", fmt.Errorf("%s uses unconfigured account %q",
+					disposition, posting.Account)
 			}
 			cents, err := ParseCents(posting.Amount)
 			if err != nil {
-				return "", fmt.Errorf("candidate %d posting %d: %w",
-					index+1, postingIndex+1, err)
+				return "", fmt.Errorf("%s posting %d: %w",
+					disposition, postingIndex+1, err)
 			}
 			if cents > 0 {
 				if positiveTotal > math.MaxInt64-cents {
-					return "", fmt.Errorf("candidate %d debit total exceeds supported USD range",
-						index+1)
+					return "", fmt.Errorf("%s debit total exceeds supported USD range", disposition)
 				}
 				positiveTotal += cents
 			}
@@ -392,7 +480,7 @@ func renderQuickBooksCandidates(
 			fmt.Fprintf(&identity, "\x00%s", posting)
 		}
 		if seen[identity.String()] {
-			return "", fmt.Errorf("candidate %d duplicates another generated transaction", index+1)
+			return "", fmt.Errorf("%s duplicates another generated transaction", disposition)
 		}
 		seen[identity.String()] = true
 		id, err := newID()
@@ -401,12 +489,16 @@ func renderQuickBooksCandidates(
 		}
 		text, err := entry.render(input.ConfiguredAccounts, id)
 		if err != nil {
-			return "", fmt.Errorf("candidate %d: %w", index+1, err)
+			return "", fmt.Errorf("%s: %w", disposition, err)
 		}
-		if len(sourceAmounts) != 0 && !sourceAmounts[positiveTotal] {
+		sourceAmounts, err := quickBooksSourceAmounts(sourceRecords)
+		if err != nil {
+			return "", err
+		}
+		if len(sourceRecords) != 0 && !sourceAmounts[positiveTotal] {
 			return "", fmt.Errorf(
-				"candidate %d total %s is not present in the month's QuickBooks transaction amounts",
-				index+1, formatCents(positiveTotal),
+				"%s total %s is not present in its cited QuickBooks transaction amounts",
+				disposition, formatCents(positiveTotal),
 			)
 		}
 		if journal.Len() != 0 {
@@ -414,12 +506,108 @@ func renderQuickBooksCandidates(
 		}
 		journal.WriteString(text)
 	}
+	if len(response.Unresolved) != 0 {
+		if journal.Len() != 0 {
+			journal.WriteByte('\n')
+		}
+		journal.WriteString("; === UNRESOLVED QUICKBOOKS TRANSACTIONS ===\n")
+		journal.WriteString("; Complete these commented entry skeletons manually before importing them.\n")
+	}
+	for index, unresolved := range response.Unresolved {
+		disposition := fmt.Sprintf("unresolved item %d", index+1)
+		sourceRecords, err := claimRecords(unresolved.SourceIDs, disposition)
+		if err != nil {
+			return "", err
+		}
+		date, err := time.Parse("2006-01-02", unresolved.Date)
+		if err != nil || date.Year() != input.Year || unresolved.Date[:7] != input.Month {
+			return "", fmt.Errorf("%s has date outside %s", disposition, input.Month)
+		}
+		for name, value := range map[string]string{
+			"payee": unresolved.Payee, "description": unresolved.Description,
+			"reference": unresolved.Reference, "QuickBooks account": unresolved.KnownPosting.QuickBooksAccount,
+			"missing fact": unresolved.MissingFact, "question": unresolved.Question,
+		} {
+			if !singleLine(value) {
+				return "", fmt.Errorf("%s %s contains control characters", disposition, name)
+			}
+		}
+		if unresolved.KnownPosting.Account == "" &&
+			strings.TrimSpace(unresolved.KnownPosting.QuickBooksAccount) == "" {
+			return "", fmt.Errorf("%s has no known account label", disposition)
+		}
+		if unresolved.KnownPosting.Account != "" && !accounts[unresolved.KnownPosting.Account] {
+			return "", fmt.Errorf("%s uses unconfigured known account %q",
+				disposition, unresolved.KnownPosting.Account)
+		}
+		if strings.TrimSpace(unresolved.MissingFact) == "" ||
+			strings.TrimSpace(unresolved.Question) == "" {
+			return "", fmt.Errorf("%s requires a missing fact and question", disposition)
+		}
+		knownCents, err := ParseCents(unresolved.KnownPosting.Amount)
+		if err != nil || knownCents == 0 {
+			return "", fmt.Errorf("%s has invalid known posting amount %q",
+				disposition, unresolved.KnownPosting.Amount)
+		}
+		absoluteKnown := knownCents
+		if absoluteKnown < 0 {
+			if absoluteKnown == math.MinInt64 {
+				return "", fmt.Errorf("%s known posting amount is out of range", disposition)
+			}
+			absoluteKnown = -absoluteKnown
+		}
+		sourceAmounts, err := quickBooksSourceAmounts(sourceRecords)
+		if err != nil {
+			return "", err
+		}
+		if len(sourceRecords) != 0 && !sourceAmounts[absoluteKnown] {
+			return "", fmt.Errorf(
+				"%s amount %s is not present in its cited QuickBooks transaction amounts",
+				disposition, formatCents(absoluteKnown),
+			)
+		}
+		if journal.Len() != 0 && journal.String()[journal.Len()-1] != '\n' {
+			journal.WriteByte('\n')
+		}
+		if index != 0 {
+			journal.WriteByte('\n')
+		}
+		journal.WriteString(renderQuickBooksUnresolved(unresolved, knownCents))
+	}
+	for _, record := range input.Records {
+		if _, exists := claimed[record.ID]; !exists {
+			return "", fmt.Errorf("QuickBooks source id %q has no candidate or unresolved disposition",
+				record.ID)
+		}
+	}
 	for index, warning := range response.Warnings {
 		if !singleLine(warning) {
 			return "", fmt.Errorf("warning %d contains control characters", index+1)
 		}
 	}
 	return journal.String(), nil
+}
+
+func renderQuickBooksUnresolved(unresolved quickBooksAIUnresolved, knownCents int64) string {
+	var output strings.Builder
+	fmt.Fprintf(&output, "; Sources: %s\n", strings.Join(unresolved.SourceIDs, ", "))
+	fmt.Fprintf(&output, "; %s %s", unresolved.Date, unresolved.Payee)
+	if unresolved.Description != "" {
+		fmt.Fprintf(&output, " | %s", unresolved.Description)
+	}
+	if unresolved.Reference != "" {
+		fmt.Fprintf(&output, " (%s)", unresolved.Reference)
+	}
+	output.WriteByte('\n')
+	account := unresolved.KnownPosting.Account
+	if account == "" {
+		account = "[QuickBooks: " + unresolved.KnownPosting.QuickBooksAccount + "]"
+	}
+	fmt.Fprintf(&output, ";     %s  $%s\n", account, formatCents(knownCents))
+	fmt.Fprintf(&output, ";     [TODO counterposting]  $%s\n", formatCents(-knownCents))
+	fmt.Fprintf(&output, "; Missing evidence: %s\n", unresolved.MissingFact)
+	fmt.Fprintf(&output, "; Question: %s\n", unresolved.Question)
+	return output.String()
 }
 
 func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error) {

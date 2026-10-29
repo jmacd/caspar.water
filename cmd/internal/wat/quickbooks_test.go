@@ -72,7 +72,7 @@ func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	require.Contains(
 		t,
 		output.String(),
-		"data rows: 6 total, 3 dated, 1 section, 1 undated nonempty, 1 blank",
+		"data rows: 6 total, 3 dated, 1 section, 0 total, 0 footer, 1 undated nonempty, 1 blank",
 	)
 	require.Contains(t, output.String(), "date span: 2020-12-31 through 2022-01-02")
 	require.Contains(t, output.String(), "dated rows by year: 2020=1 2021=1 2022=1")
@@ -80,8 +80,28 @@ func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	require.Contains(
 		t,
 		output.String(),
-		"undated nonempty row 5: Type | Account | Payment",
+		`undated nonempty row 5: Type="Split" | Account="Professional services" | Payment="5.00"`,
 	)
+	require.Contains(t, output.String(), `section row 6: "Register subtotal"`)
+	require.Contains(t, output.String(), `selected-year transaction types: "Check"=1`)
+	require.Contains(t, output.String(), "content sha256:")
+}
+
+func TestParseQuickBooksCSVClassifiesReportTotalsAndFooter(t *testing.T) {
+	parsed, err := parseQuickBooksCSVRows("report.csv", []byte(
+		"column_1,Distribution account,Transaction date,Transaction type,Amount\n"+
+			"Insurance,,,,\n"+
+			",Bank,1/2/2021,Expense,10.00\n"+
+			"Total for Insurance,,,,10.00\n"+
+			"TOTAL,,,,10.00\n"+
+			"\"Monday, October 19, 2026 10:01 PM GMT-07:00\",,,,\n",
+	), 2021)
+	require.NoError(t, err)
+	require.Len(t, parsed.Records, 1)
+	require.Len(t, parsed.Sections, 1)
+	require.Len(t, parsed.SummaryRows, 2)
+	require.Len(t, parsed.FooterRows, 1)
+	require.Empty(t, parsed.UndatedRows)
 }
 
 func TestParseQuickBooksCSVRejectsUnknownTransactionDate(t *testing.T) {

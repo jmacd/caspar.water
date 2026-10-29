@@ -47,10 +47,11 @@ account guesses.
   account as established evidence.
 - [ ] Never request, ingest, or reconstruct the operator's personal bank-account
   history. Use only the available business records.
-- [ ] Every normalized source row must receive an explicit disposition:
-  transaction evidence, duplicate appearance, structural/report row, unresolved
-  row, or rejected row with an error.
-- [ ] Keep unresolved transactions visible; do not turn them into prose warnings
+- [x] Every normalized dated transaction row must receive exactly one
+  model-response disposition: balanced candidate or unresolved skeleton.
+- [x] Classify structural/report rows deterministically before the model as
+  section, total, export footer, blank, or rejected row with an error.
+- [x] Keep unresolved transactions visible; do not turn them into prose warnings
   that are easy to overlook.
 - [ ] Keep temporary source identifiers in private working artifacts until all
   coverage checks pass, even though they will not appear in the final journal.
@@ -142,25 +143,48 @@ balance checks are retained for final reconciliation.
 
 Create a deterministic source manifest before interpreting transactions.
 
+### Current inventory
+
+The private model-free inventory records a content hash, file type, normalized
+header, row classes, date coverage, annual counts, report sections, totals, and
+selected-year transaction types for every supplied file. All eleven content
+hashes are distinct. Every normalized row is classified as a dated transaction,
+section, total, export footer, or blank row; there are no unexplained undated
+rows.
+
+| File key | QuickBooks report subject | 2021 rows | Date coverage or explanation |
+|---|---|---:|---|
+| SBMC register | SBMC bank account | 5 | Starts `2021-11-10`; count confirmed |
+| unnumbered | Income / company labor invested | 2 | `2021-05-09` through `2021-07-30` |
+| `(1)` | Landlord expenses / professional services | 6 | Starts `2021-01-10` |
+| `(2)` | Minna Costs | 13 | Starts `2021-02-16` |
+| `(3)` | Needs Research | 0 | Only one dated row, in 2024 |
+| `(4)` | Property tax, South Pasture | 1 | Starts `2021-11-19` |
+| `(5)` | Sales of Product Income | 0 | Earliest dated row is in 2022 |
+| `(6)` | Solar Lease Revenue | 0 | Earliest dated row is in 2024 |
+| `(7)` | Water Company Expenses: maintenance, operations, and utilities | 33 | Starts `2021-01-15` |
+| `(8)` | Water Company Non-Service / professional services | 0 | Earliest dated row is in 2022 |
+| `(9)` | Water Company Yearly: insurance and Upper Well property tax | 1 | Starts `2021-02-19` |
+
 - [ ] For every workbook, record:
-  - private file identifier and content hash;
-  - file type;
+  - [x] private file identifier and content hash;
+  - [x] file type;
   - worksheet names;
   - selected worksheet and range;
-  - report title;
-  - QuickBooks account/report subject;
+  - [x] report title/section labels;
+  - [x] QuickBooks account/report subject;
   - stated report date range;
-  - detected header row;
-  - transaction row count by year;
-  - earliest and latest transaction date;
-  - counts by QuickBooks transaction type;
+  - [x] detected header row;
+  - [x] transaction row count by year;
+  - [x] earliest and latest transaction date;
+  - [x] counts by QuickBooks transaction type for the selected year;
   - amount-column totals;
-  - nonempty skipped-row count.
-- [ ] Identify the QuickBooks account represented by each generically named
+  - [x] nonempty skipped-row count and classification.
+- [x] Identify the QuickBooks account represented by each generically named
   Account QuickReport.
-- [ ] Determine whether each zero-row 2021 report genuinely has no 2021 activity
+- [x] Determine whether each zero-row 2021 report genuinely has no 2021 activity
   or failed extraction.
-- [ ] Detect identical files by content hash.
+- [x] Detect identical files by content hash.
 - [ ] Detect repeated report coverage and overlapping date ranges.
 - [ ] Distinguish duplicated transaction appearances across reports from
   genuinely duplicated QuickBooks transactions.
@@ -326,16 +350,17 @@ invent the chart of accounts.
   register row.
 - [ ] Supply pre-grouped transactions instead of unrelated raw rows.
 - [ ] Supply only approved account mappings and configured accounts.
-- [ ] Require one structured disposition for every transaction group:
+- [x] Require one structured disposition for every supplied transaction row:
   candidate, unresolved, or excluded with an allowed deterministic reason.
-- [ ] Require candidates to cite temporary group identifiers in the private
-  response.
-- [ ] Validate that every candidate amount and posting structure is supported by
-  its cited group, not merely that the same amount appears somewhere in the
-  month.
-- [ ] Keep unresolved items in a structured artifact with reason and required
+- [x] Require candidates and unresolved items to cite temporary source
+  identifiers in the private response. Reject missing, unknown, and reused
+  identifiers.
+- [ ] Validate that every candidate posting structure is supported by its cited
+  transaction group. Amounts are now checked against cited rows rather than any
+  same-valued row in the month; deterministic grouping remains.
+- [x] Keep unresolved items in a structured artifact with reason and required
   decision.
-- [ ] For missing personal cash-side evidence, require the unresolved item to
+- [x] For missing personal cash-side evidence, require the unresolved item to
   state the supported business-side posting, missing counterposting fact,
   allowed accounting decisions, and the question a reviewer must answer.
 - [ ] Decide an acceptance policy for confidence. Recommended: low-confidence
@@ -356,15 +381,18 @@ disposition coverage.
 
 One stdout journal and free-form stderr warnings are insufficient.
 
-- [ ] Produce a candidate journal containing only accepted balanced candidates.
-- [ ] Produce a structured unresolved-transactions report.
-- [ ] Produce an open-questions report that can be answered incrementally
+- [x] Produce a candidate draft containing accepted balanced candidates while
+  leaving unresolved skeletons fully commented and therefore ignored by
+  hledger.
+- [x] Produce structured unresolved transactions in the model response.
+- [x] Produce open questions that can be answered incrementally
   without exposing personal-account records.
-- [ ] Render unresolved transactions as editable half-written entry skeletons in
-  a separate, non-imported review artifact. Include the supported date, payee,
+- [x] Render unresolved transactions as editable, fully commented half-written
+  entry skeletons in the generated draft. Include the supported date, payee,
   description, amount, and business-side posting, then mark the missing
-  counterposting and question explicitly.
-- [ ] Expect manual work to complete those skeletons. An incomplete entry is not
+  counterposting and question explicitly. Because they remain comments, they
+  cannot be imported accidentally as postings.
+- [x] Expect manual work to complete those skeletons. An incomplete entry is not
   a reconstruction failure, but it must never appear balanced or resolved until
   a reviewer supplies the missing fact and account.
 - [ ] Produce a source coverage report showing:

@@ -25,14 +25,14 @@ EOF
 
 if [[ ! -d /pond/data/_delta_log ]]; then
     echo "Initializing persistent wat accounting Pond." >&2
-    run init --birthplace wat-local
-    run mkdir -p /system/etc
+    run init --birthplace wat-local >&2
+    run mkdir -p /system/etc >&2
 
     seed="$(mktemp -d /tmp/wat-seed.XXXXXX)"
     cp -a /work/local/wat-test/. "${seed}/"
     find "${seed}" -type f -name '.wat-backup-*' -delete
     rm -f "${seed}/.wat"
-    run copy "host://${seed}" /accounting
+    run copy "host://${seed}" /accounting >&2
 fi
 
 sync_input() {
@@ -42,13 +42,13 @@ sync_input() {
     current="$(mktemp /tmp/wat-input.XXXXXX)"
     if ! run cat "$target" >"$current" 2>/dev/null || ! cmp -s "$source" "$current"; then
         echo "Updating Pond input from ${source#/work/}." >&2
-        run copy "host://${source}" "$target"
+        run copy "host://${source}" "$target" >&2
     fi
     rm -f "$current"
 }
 
 sync_input /work/local/wat-test/wat.yaml /accounting/wat.yaml
 sync_input /work/local/wat-test/books/chart.journal /accounting/books/chart.journal
-run mknod exec /system/etc/wat --config-path /tmp/wat-exec.yaml --overwrite
+run mknod exec /system/etc/wat --config-path /tmp/wat-exec.yaml --overwrite >&2
 
 exec "${pond_bin}" --pond /pond -d /wat-host-inbox run /system/etc/wat -- "$@"

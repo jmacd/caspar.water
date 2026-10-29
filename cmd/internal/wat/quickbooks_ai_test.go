@@ -23,10 +23,11 @@ func TestQuickBooksOllamaCompletion(t *testing.T) {
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
 		require.Equal(t, "test-model", payload.Model)
 		require.Equal(t, "json", payload.Format)
-		content := `{"candidates":[{"date":"2021-01-02","payee":"Vendor",` +
+		content := `{"candidates":[{"source_ids":["source:2"],"date":"2021-01-02","payee":"Vendor",` +
 			`"description":"","reference":"","confidence":"high","postings":[` +
 			`{"account":"Expense:615:Electricity","amount":"10.00"},` +
-			`{"account":"Bank:131.2:SBMC:0000","amount":"-10.00"}]}],"warnings":[]}`
+			`{"account":"Bank:131.2:SBMC:0000","amount":"-10.00"}]}],` +
+			`"unresolved":[],"warnings":[]}`
 		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"message": map[string]string{"role": "assistant", "content": content},
 		}))
@@ -110,6 +111,7 @@ func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
 	}
 	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{candidate, reversed},
+		Unresolved: []quickBooksAIUnresolved{},
 		Warnings:   []string{},
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
@@ -123,7 +125,8 @@ func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
 func TestQuickBooksCandidatesRejectAmountAbsentFromSource(t *testing.T) {
 	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{{
-			Date: "2021-01-02", Payee: "Vendor", Confidence: "medium",
+			SourceIDs: []string{"register:2"},
+			Date:      "2021-01-02", Payee: "Vendor", Confidence: "medium",
 			Postings: []quickBooksAIPosting{
 				{Account: "Expense:615:Electricity", Amount: "11.00"},
 				{Account: "Bank:131.2:SBMC:0000", Amount: "-11.00"},
@@ -140,6 +143,88 @@ func TestQuickBooksCandidatesRejectAmountAbsentFromSource(t *testing.T) {
 		}},
 	})
 	require.ErrorContains(t, err, "total 11.00 is not present")
+}
+
+func TestQuickBooksUnresolvedRendersCommentedSkeleton(t *testing.T) {
+	text, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{},
+		Unresolved: []quickBooksAIUnresolved{{
+			SourceIDs:   []string{"report:2"},
+			Date:        "2021-01-02",
+			Payee:       "Professional firm",
+			Description: "Business service",
+			KnownPosting: quickBooksAIKnownPosting{
+				QuickBooksAccount: "Professional services",
+				Amount:            "10.00",
+			},
+			MissingFact: "The personal cash-side record is unavailable.",
+			Question:    "Was this due to the owner or contributed capital?",
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		Records: []quickBooksRecord{{
+			ID: "report:2", Date: "2021-01-02",
+			Fields: map[string]string{"Amount": "10.00"},
+		}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, text, "; === UNRESOLVED QUICKBOOKS TRANSACTIONS ===")
+	require.Contains(t, text, "; 2021-01-02 Professional firm | Business service")
+	require.Contains(t, text, ";     [QuickBooks: Professional services]  $10.00")
+	require.Contains(t, text, ";     [TODO counterposting]  $-10.00")
+	require.Contains(t, text, "; Question: Was this due to the owner or contributed capital?")
+	for line := range strings.SplitSeq(text, "\n") {
+		if line != "" {
+			require.True(t, strings.HasPrefix(line, ";"), line)
+		}
+	}
+}
+
+func TestQuickBooksCandidatesRequireDispositionForEverySource(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{},
+		Unresolved: []quickBooksAIUnresolved{},
+		Warnings:   []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		Records: []quickBooksRecord{{
+			ID: "report:2", Date: "2021-01-02",
+			Fields: map[string]string{"Amount": "10.00"},
+		}},
+	})
+	require.ErrorContains(t, err, `source id "report:2" has no candidate or unresolved disposition`)
+}
+
+func TestQuickBooksCandidatesRejectReusedSource(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{{
+			SourceIDs: []string{"report:2"},
+			Date:      "2021-01-02", Payee: "Vendor", Confidence: "high",
+			Postings: []quickBooksAIPosting{
+				{Account: "Expense:615:Electricity", Amount: "10.00"},
+				{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+			},
+		}},
+		Unresolved: []quickBooksAIUnresolved{{
+			SourceIDs: []string{"report:2"}, Date: "2021-01-02",
+			KnownPosting: quickBooksAIKnownPosting{
+				QuickBooksAccount: "Electricity", Amount: "10.00",
+			},
+			MissingFact: "Missing cash side", Question: "Which account paid?",
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		ConfiguredAccounts: []string{
+			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+		},
+		Records: []quickBooksRecord{{
+			ID: "report:2", Date: "2021-01-02",
+			Fields: map[string]string{"Amount": "10.00"},
+		}},
+	})
+	require.ErrorContains(t, err, `reuses source id "report:2"`)
 }
 
 func TestParseQuickBooksCents(t *testing.T) {
@@ -169,10 +254,12 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 		require.Len(t, payload.Messages, 2)
 		require.Contains(t, payload.Messages[1].Content, `"date":"2021-03-02"`)
 		require.Contains(t, payload.Messages[1].Content, `"date":"2022-01-02"`)
-		content := `{"candidates":[{"date":"2021-03-02","payee":"Electric company",` +
+		content := `{"candidates":[{"source_ids":["register.csv:2"],` +
+			`"date":"2021-03-02","payee":"Electric company",` +
 			`"description":"Power bill","reference":"44","confidence":"high","postings":[` +
 			`{"account":"Expense:615:Utility","amount":"25.00"},` +
-			`{"account":"Bank:131.2:Checking","amount":"-25.00"}]}],"warnings":[]}`
+			`{"account":"Bank:131.2:Checking","amount":"-25.00"}]}],` +
+			`"unresolved":[],"warnings":[]}`
 		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"message": map[string]string{"role": "assistant", "content": content},
 		}))

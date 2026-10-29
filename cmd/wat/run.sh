@@ -67,7 +67,7 @@ fi
 printf 'Accounting Pond: %s\n' "$pond_dir" >&2
 printf 'Editable config: %s\n' "$test_dir/wat.yaml" >&2
 printf 'Import inbox: %s (read-only)\n' "$inbox" >&2
-"$runtime" build --quiet -t "$image" -f "$script_dir/Dockerfile.local" "$script_dir"
+"$runtime" build --quiet -t "$image" -f "$script_dir/Dockerfile.local" "$script_dir" >&2
 
 run_args=(run --rm -i --privileged --network=host)
 if [[ -t 0 && -t 1 ]]; then
