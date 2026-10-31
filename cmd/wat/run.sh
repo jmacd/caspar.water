@@ -29,14 +29,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ ! -e "$test_dir" ]]; then
-    mkdir -p "$repo_root/local"
-    cp -R "$script_dir/example" "$test_dir"
-    mkdir -p "$test_dir/sources"
-fi
-
 if [[ ! -f "$test_dir/wat.yaml" ]]; then
-    printf 'Test workspace has no wat.yaml: %s\n' "$test_dir" >&2
+    printf 'Integration workspace has no wat.yaml: %s\n' "$test_dir" >&2
+    printf 'Create it explicitly; run.sh does not install a demo workspace.\n' >&2
     exit 1
 fi
 

@@ -17,12 +17,12 @@ For a persistent test workspace, run:
 ./cmd/wat/run.sh report journal
 ```
 
-The script creates git-ignored `local/wat-test` and `local/wat-inbox`
-directories on first use, builds a Linux accounting image, and initializes the
-persistent Pond at `local/wat-pond`. The first Pond run imports the complete
-existing `local/wat-test` workspace, so work from the earlier direct runner is
-preserved. Before every later run, the runner copies changed
-`local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
+The script requires an existing git-ignored `local/wat-test/wat.yaml`; it does
+not install a demo workspace. It creates `local/wat-inbox` and initializes the
+persistent Pond at `local/wat-pond`, then builds a Linux accounting image. The
+first Pond run imports the complete existing `local/wat-test` workspace, so work
+from the earlier direct runner is preserved. Before every later run, the runner
+copies changed `local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
 refreshes the exec factory definition. These are the host-editable inputs;
 manual/bank journals, generated files, and statement caches remain Pond-owned.
 Edit the YAML or chart while Wat is stopped, then restart it. Each run stages
