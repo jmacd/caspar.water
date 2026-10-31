@@ -16,9 +16,19 @@ spec:
   factory: monitor-report
   config:
     pond: "${env:POND_INSTANCE}"
-    title: "Septic pond status"
+    title: "Septic status"
     output_dir: "${env:MONITOR_OUTPUT_DIR}"
-    checks: []
+    checks:
+      - id: septic-data-stale
+        label: "Septic station monitor"
+        description: >-
+          The septic station collector is running.
+        href: "/septic/pumps.html"
+        type: stale-after
+        source: "oteljson:///ingest/septicstation*.json"
+        timestamp_column: timestamp
+        value_column: orenco_RT_Pump1
+        window: 24h
 ---
 version: v1
 kind: mknod

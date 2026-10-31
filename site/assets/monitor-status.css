@@ -8,12 +8,53 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 }
 
+/* The water section always has exactly six checks; pin it to a fixed two
+   column, three row grid instead of auto-fit so the layout is stable
+   regardless of viewport width. */
+.monitor-summary-water .monitor-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.monitor-separator {
+  border: none;
+  border-top: 1px solid var(--border, #d0d5dd);
+  margin: 1.5rem 0;
+}
+
+/* Septic and Noyo staleness checks form a single "other systems" row of two
+   columns, each column keeping its own card plus status caption stacked
+   vertically. */
+.monitor-other-systems {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 40rem) {
+  .monitor-summary-water .monitor-grid,
+  .monitor-other-systems {
+    grid-template-columns: 1fr;
+  }
+}
+
 .monitor-card {
   background: var(--bg-card, #fff);
   border: 1px solid var(--border, #d0d5dd);
   border-left-width: 0.5rem;
   border-radius: 0.4rem;
   padding: 1rem;
+}
+
+a.monitor-card {
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+}
+
+a.monitor-card:hover,
+a.monitor-card:focus-visible {
+  border-color: var(--fg, #101828);
 }
 
 .monitor-card header {
@@ -37,13 +78,33 @@
   text-transform: uppercase;
 }
 
-.monitor-state-healthy {
+.monitor-state-healthy,
+.monitor-state-good {
   background: #ecfdf3;
   border-left-color: #18753c;
 }
 
-.monitor-state-healthy .monitor-state {
+.monitor-state-healthy .monitor-state,
+.monitor-state-good .monitor-state {
   color: #126331;
+}
+
+.monitor-state-watch {
+  background: #fffaeb;
+  border-left-color: #b54708;
+}
+
+.monitor-state-watch .monitor-state {
+  color: #93370d;
+}
+
+.monitor-state-concern {
+  background: #fff6ed;
+  border-left-color: #c4320a;
+}
+
+.monitor-state-concern .monitor-state {
+  color: #b93815;
 }
 
 .monitor-state-alarm,
