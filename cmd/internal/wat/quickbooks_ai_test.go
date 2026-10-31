@@ -676,3 +676,109 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 	require.Equal(t, priorText, read(t, books.Config.ManualJournal),
 		"candidate generation must not change the books")
 }
+
+func TestGenerateQuickBooksJournalCorrectsOmittedDisposition(t *testing.T) {
+	books, root := fixture(t, "")
+	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
+		Label: "Power", Account: "Expense:615:Utility",
+	}}))
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		requests++
+		var payload struct {
+			Messages []chatMessage `json:"messages"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+		var modelInput quickBooksAIInput
+		require.NoError(t, json.Unmarshal([]byte(payload.Messages[1].Content), &modelInput))
+		require.Len(t, modelInput.Groups, 1)
+		if requests == 1 {
+			require.Len(t, payload.Messages, 2)
+			require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
+				"message": map[string]string{
+					"role":    "assistant",
+					"content": `{"candidates":[],"unresolved":[],"warnings":[]}`,
+				},
+			}))
+			return
+		}
+		require.Equal(t, 2, requests)
+		require.Len(t, payload.Messages, 4)
+		require.Equal(t, "assistant", payload.Messages[2].Role)
+		require.Contains(t, payload.Messages[3].Content, modelInput.Groups[0].ID)
+		content := fmt.Sprintf(`{"candidates":[{"group_id":%q,`,
+			modelInput.Groups[0].ID) +
+			`"date":"2021-09-02","payee":"Electric company",` +
+			`"description":"Power bill","reference":"44","confidence":"high","postings":[` +
+			`{"account":"Expense:615:Utility","amount":"25.00"},` +
+			`{"account":"Bank:131.2:Checking","amount":"-25.00"}]}],` +
+			`"unresolved":[],"warnings":[]}`
+		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
+			"message": map[string]string{"role": "assistant", "content": content},
+		}))
+	}))
+	defer server.Close()
+	books.Config.Statement = StatementConfig{APIBase: server.URL, Model: "ollama/test"}
+
+	input := filepath.Join(root, "register.csv")
+	require.NoError(t, os.WriteFile(input, []byte(
+		"Date,Type,Num,Payee,Account,Payment,Deposit,Balance\n"+
+			"9/2/2021,Check,44,Electric company,Power,25.00,,100.00\n",
+	), 0600))
+	var progress strings.Builder
+	journal, err := books.GenerateQuickBooksJournal(
+		context.Background(), []string{input}, 2021, &progress,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, requests)
+	require.Contains(t, journal, "2021-09-02 Electric company | Power bill")
+	require.Contains(t, progress.String(), "requesting one correction")
+	require.Contains(t, progress.String(), "Generated 1 balanced QuickBooks candidates")
+}
+
+func TestGenerateQuickBooksJournalRejectsInvalidCorrection(t *testing.T) {
+	books, root := fixture(t, "")
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		requests++
+		var payload struct {
+			Messages []chatMessage `json:"messages"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+		if requests == 1 {
+			require.Len(t, payload.Messages, 2)
+		} else {
+			require.Equal(t, 2, requests)
+			require.Len(t, payload.Messages, 4)
+		}
+		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
+			"message": map[string]string{
+				"role":    "assistant",
+				"content": `{"candidates":[],"unresolved":[],"warnings":[]}`,
+			},
+		}))
+	}))
+	defer server.Close()
+	books.Config.Statement = StatementConfig{APIBase: server.URL, Model: "ollama/test"}
+
+	input := filepath.Join(root, "register.csv")
+	require.NoError(t, os.WriteFile(input, []byte(
+		"Date,Type,Num,Payee,Account,Payment,Deposit,Balance\n"+
+			"9/2/2021,Check,44,Electric company,Power,25.00,,100.00\n",
+	), 0600))
+	var progress strings.Builder
+	_, err := books.GenerateQuickBooksJournal(
+		context.Background(), []string{input}, 2021, &progress,
+	)
+	require.ErrorContains(t, err, "validate corrected QuickBooks month 2021-09")
+	require.ErrorContains(t, err, "has no candidate or unresolved disposition")
+	require.Equal(t, 2, requests)
+	require.Contains(t, progress.String(), "requesting one correction")
+}

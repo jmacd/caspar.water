@@ -207,7 +207,25 @@ func (b *Books) GenerateQuickBooksJournal(
 		}
 		text, err := renderQuickBooksCandidates(response, input)
 		if err != nil {
-			return "", fmt.Errorf("validate QuickBooks month %s: %w", month, err)
+			fmt.Fprintf(
+				progress,
+				"QuickBooks reconstruction response invalid (%s): %v; "+
+					"requesting one correction.\n",
+				month,
+				err,
+			)
+			response, err = b.quickBooksCorrection(ctx, input, response, err)
+			if err != nil {
+				return "", fmt.Errorf("correct QuickBooks month %s: %w", month, err)
+			}
+			text, err = renderQuickBooksCandidates(response, input)
+			if err != nil {
+				return "", fmt.Errorf(
+					"validate corrected QuickBooks month %s: %w",
+					month,
+					err,
+				)
+			}
 		}
 		for _, warning := range response.Warnings {
 			fmt.Fprintf(progress, "QuickBooks reconstruction warning (%s): %s\n", month, warning)
@@ -238,10 +256,6 @@ func (b *Books) quickBooksCompletion(
 	ctx context.Context,
 	input quickBooksAIInput,
 ) (quickBooksAIResponse, error) {
-	settings, err := configuredQuickBooksAI(b.Config.Statement)
-	if err != nil {
-		return quickBooksAIResponse{}, err
-	}
 	user, err := json.Marshal(input)
 	if err != nil {
 		return quickBooksAIResponse{}, err
@@ -249,6 +263,46 @@ func (b *Books) quickBooksCompletion(
 	messages := []chatMessage{
 		{Role: "system", Content: quickBooksSystemPrompt},
 		{Role: "user", Content: string(user)},
+	}
+	return b.quickBooksCompletionMessages(ctx, messages)
+}
+
+func (b *Books) quickBooksCorrection(
+	ctx context.Context,
+	input quickBooksAIInput,
+	previous quickBooksAIResponse,
+	validationErr error,
+) (quickBooksAIResponse, error) {
+	user, err := json.Marshal(input)
+	if err != nil {
+		return quickBooksAIResponse{}, err
+	}
+	assistant, err := json.Marshal(previous)
+	if err != nil {
+		return quickBooksAIResponse{}, err
+	}
+	messages := []chatMessage{
+		{Role: "system", Content: quickBooksSystemPrompt},
+		{Role: "user", Content: string(user)},
+		{Role: "assistant", Content: string(assistant)},
+		{
+			Role: "user",
+			Content: "Your previous response failed validation: " +
+				validationErr.Error() +
+				". Return one complete corrected JSON object covering every input " +
+				"transaction group exactly once. Do not return commentary.",
+		},
+	}
+	return b.quickBooksCompletionMessages(ctx, messages)
+}
+
+func (b *Books) quickBooksCompletionMessages(
+	ctx context.Context,
+	messages []chatMessage,
+) (quickBooksAIResponse, error) {
+	settings, err := configuredQuickBooksAI(b.Config.Statement)
+	if err != nil {
+		return quickBooksAIResponse{}, err
 	}
 	content, err := settings.complete(ctx, messages)
 	if err != nil {
