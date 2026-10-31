@@ -1,0 +1,36 @@
+FROM rust:slim-bookworm AS rust-toolchain
+FROM golang:1.24-bookworm AS go-toolchain
+FROM python:3.13-slim-trixie
+
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/go/bin:/usr/local/cargo/bin:${PATH}"
+ENV CARGO_TARGET_DIR=/cargo-target
+ENV GOCACHE=/go-cache
+ENV GOMODCACHE=/go-mod-cache
+
+RUN echo 'deb http://deb.debian.org/debian sid main' >/etc/apt/sources.list.d/sid.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends -t sid \
+        bubblewrap \
+        build-essential \
+        ca-certificates \
+        hledger \
+        libssl-dev \
+        pkg-config \
+    && hledger --version | grep -E '^hledger 1\.52\.' \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-statement.txt /tmp/requirements-statement.txt
+RUN python3.13 -m pip install --no-cache-dir -r /tmp/requirements-statement.txt
+
+COPY sandbox-wrapper.sh /usr/local/bin/wat-sandbox
+COPY pond-entrypoint.sh /usr/local/bin/wat-pond-entrypoint
+RUN chmod 0755 /usr/local/bin/wat-sandbox /usr/local/bin/wat-pond-entrypoint
+
+WORKDIR /work
+ENTRYPOINT ["/usr/local/bin/wat-pond-entrypoint"]

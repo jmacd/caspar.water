@@ -1,4 +1,5 @@
 *.csv
+__pycache__/
 *~
 dead.code
 statements/*-Sep
@@ -12,3 +13,4 @@ statements/invoices
 
 # local preview / iteration scratch (regenerable)
 local/
+.DS_Store
