@@ -188,11 +188,14 @@ func (ui *terminal) quickBooksMappingAccount(
 	for _, account := range review.accounts {
 		account := account
 		description := fmt.Sprintf(
-			"%s:%s-%s",
+			"%s:%s:%s",
 			account.FormalCategory,
 			account.Number,
 			account.FormalName,
 		)
+		if account.FormalComment != "" {
+			description += " - " + account.FormalComment
+		}
 		list.AddItem(tview.Escape(account.Name), tview.Escape(description), 0, func() {
 			review.mappings[label] = account.Name
 			ui.quickBooksMappings(review)

@@ -22,8 +22,8 @@ directories on first use, builds a Linux accounting image, and initializes the
 persistent Pond at `local/wat-pond`. The first Pond run imports the complete
 existing `local/wat-test` workspace, so work from the earlier direct runner is
 preserved. Before every later run, the runner copies changed
-`local/wat-test/wat.yaml` and `local/wat-test/books/chart.journal` into Pond and
-refreshes the exec factory definition. These are the two host-editable inputs;
+`local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
+refreshes the exec factory definition. These are the host-editable inputs;
 manual/bank journals, generated files, and statement caches remain Pond-owned.
 Edit the YAML or chart while Wat is stopped, then restart it. Each run stages
 `/accounting/`, opens `wat` interactively, and commits all saved changes together
@@ -73,15 +73,16 @@ cp -R cmd/wat/example local/water-books
 go run ./cmd/wat --config local/water-books/wat.yaml
 ```
 
-`books/chart.journal` is the CPUC U-39-W master account chart. It maps each CPUC
-number to its formal category and designation. Wat parses it as reference data,
-but does not include it in hledger. Do not add vendors, banks, owners, or other
-instance names to the master chart. No opening balances, purchase price, or
-financial activity are fabricated.
+`reference/cpuc-u39w.yaml` is the example CPUC U-39-W master account chart.
+The workspace-relative `chart_defs` list selects it. The structured YAML
+is reference data, not an hledger journal. Do not add vendors, banks, owners, or
+other instance names to the master chart. No opening balances, purchase price,
+or financial activity are fabricated.
 
 ```yaml
 version: 3
 name: Caspar Water
+chart_defs: [reference/cpuc-u39w.yaml]
 accounts:
   - Asset:151:Admin-Supplies
   - Expense:615:Electricity
@@ -90,9 +91,12 @@ bank_accounts:
   - Bank:131.2:SBMC:0000
 ```
 
-The workspace layout is fixed and is not configuration:
+The live books layout is fixed; the reference chart path is configured:
 
-- `books/chart.journal` is the manually maintained CPUC reference chart.
+- `reference/cpuc-u39w.yaml` is the example manually maintained CPUC reference
+  chart.
+- additional reference YAML files may be added to `chart_defs`; account numbers
+  must remain unique across the merged definitions.
 - `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
 - `books/books.journal` is the generated hledger include file.
 - `books/manual.journal` receives ordinary entries.
@@ -108,11 +112,13 @@ directories must be nonsymlink paths. Unknown configuration keys and additional
 YAML documents are errors.
 
 An account must use `Category:CPUC-number:LocalName[:MoreNames...]`, and its CPUC
-number and category must agree with `books/chart.journal`. `Bank` accounts must
-map to an Asset number. Their final component is the unique statement identifier
-suffix: an extracted identifier ending in `0000` binds to the example account.
-A missing or ambiguous match is an error; Wat never guesses a journal. The bound
-account is stored in the private extraction cache.
+number and category must agree with the merged `chart_defs`. Every definition
+path must be relative to the workspace, and CPUC numbers must be unique across
+all files. `Bank` accounts must map to an Asset number. Their final component is
+the unique statement identifier suffix: an extracted identifier ending in
+`0000` binds to the example account. A missing or ambiguous match is an error;
+Wat never guesses a journal. The bound account is stored in the private
+extraction cache.
 
 Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
@@ -201,12 +207,21 @@ entries intended for the replacement journal.
 
 ## CPUC chart and local posting accounts
 
-The master chart uses the formal CPUC declarations:
+The master chart stores structured CPUC accounts:
 
-```journal
-account Asset:131.2-Cash-in-Bank
-account Expense:650.1-Contract-Water-Quality-and-Testing-Work
+```yaml
+version: 1
+accounts:
+  - category: Asset
+    number: "104"
+    name: Water-Plant-Purchased-or-Sold
+    comment: Optional operator-facing explainer text.
 ```
+
+The formal account identity is displayed as
+`Asset:104:Water-Plant-Purchased-or-Sold`. Category, number, name, and optional
+single-line comment are validated strictly. Wat prints the comment with account
+listings and mapping choices.
 
 Local posting accounts in `wat.yaml` use the shorter
 `Category:CPUC-number:LocalName[:MoreNames...]` form. Wat materializes them as
@@ -225,9 +240,9 @@ and `Income`. `Bank` is the special Asset category used for accounts that have
 statements. It needs the hledger `type: A` declaration shown above so standard
 balance-sheet reports classify it as an asset.
 
-`wat` resolves the number in each local account through `books/chart.journal`.
+`wat` resolves the number in each local account through the configured chart.
 `Expense:650.1:Feiner-Fixings`, for example, maps to formal CPUC designation
-`Expense:650.1-Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
+`Expense:650.1:Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
 category mismatches, and `Bank` accounts whose number is not an Asset are errors.
 The long formal name is therefore not repeated in every posting while remaining
 available whenever needed:

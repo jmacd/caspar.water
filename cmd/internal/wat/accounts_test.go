@@ -57,6 +57,7 @@ func TestPostingAccountsResolveThroughCPUCChart(t *testing.T) {
 	require.Equal(t, PostingAccount{
 		Name: "Bank:131.2:Checking", Category: "Bank", Number: "131.2",
 		FormalCategory: "Asset", FormalName: "Cash-in-Bank",
+		FormalComment: "Cash held in a financial institution.",
 	}, byName["Bank:131.2:Checking"])
 	require.Equal(t, "Power", byName["Expense:615:Utility"].FormalName)
 }
@@ -87,13 +88,116 @@ func TestPostingAccountsRejectUnknownAndMismatchedCPUCNumbers(t *testing.T) {
 	}
 }
 
-func TestAccountChartRejectsConflictingNumberMappings(t *testing.T) {
+func TestAccountChartValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, chart, message string
+	}{
+		{
+			name: "duplicate number",
+			chart: `version: 1
+accounts:
+  - category: Asset
+    number: "131.2"
+    name: Cash-in-Bank
+  - category: Expense
+    number: "131.2"
+    name: Conflicting-Expense
+`,
+			message: "duplicates CPUC account 131.2",
+		},
+		{
+			name: "unknown field",
+			chart: `version: 1
+accounts:
+  - category: Asset
+    number: "131.2"
+    name: Cash-in-Bank
+    explanation: invalid
+`,
+			message: "field explanation not found",
+		},
+		{
+			name: "multiline comment",
+			chart: `version: 1
+accounts:
+  - category: Asset
+    number: "131.2"
+    name: Cash-in-Bank
+    comment: |-
+      First line.
+      Second line.
+`,
+			message: "comment must be single-line",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "accounts.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.chart), 0600))
+			_, err := loadAccountChart(path)
+			require.ErrorContains(t, err, tc.message)
+		})
+	}
+}
+
+func TestLegacyAccountChartCompatibility(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.journal")
 	require.NoError(t, os.WriteFile(path, []byte(
-		"account Asset:131.2-Cash-in-Bank\naccount Expense:131.2-Conflicting-Expense\n",
+		"account Asset:131.2-Cash-in-Bank\n",
 	), 0600))
-	_, err := loadAccountChart(path)
-	require.ErrorContains(t, err, "conflicts with CPUC account 131.2")
+	chart, err := loadAccountChart(path)
+	require.NoError(t, err)
+	require.Equal(t, "Cash-in-Bank", chart.byNumber["131.2"].Name)
+}
+
+func TestMultipleChartDefinitionsMerge(t *testing.T) {
+	books, _ := fixture(t, "")
+	path := filepath.Join(books.Config.root, "reference", "supplemental.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`version: 1
+accounts:
+  - category: Expense
+    number: "999"
+    name: Supplemental-Expense
+    comment: Defined outside the primary CPUC chart.
+`), 0600))
+	cfg := books.Config
+	cfg.ChartDefPaths = append(cfg.ChartDefPaths, "reference/supplemental.yaml")
+	cfg.ChartDefs = append(cfg.ChartDefs, path)
+	cfg.Accounts = append(cfg.Accounts, "Expense:999:Local-Supplement")
+	merged, err := Open(cfg)
+	require.NoError(t, err)
+	accounts, err := merged.PostingAccounts()
+	require.NoError(t, err)
+	var supplemental PostingAccount
+	for _, account := range accounts {
+		if account.Name == "Expense:999:Local-Supplement" {
+			supplemental = account
+		}
+	}
+	require.Equal(t, "Supplemental-Expense", supplemental.FormalName)
+	require.Equal(
+		t,
+		"Defined outside the primary CPUC chart.",
+		supplemental.FormalComment,
+	)
+	draft, err := merged.NewDraft()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte(`version: 1
+accounts:
+  - category: Expense
+    number: "999"
+    name: Supplemental-Expense
+    comment: Changed while a transaction was open.
+`), 0600))
+	require.ErrorContains(t, draft.unchanged(), "account chart definition changed")
+
+	require.NoError(t, os.WriteFile(path, []byte(`version: 1
+accounts:
+  - category: Expense
+    number: "615"
+    name: Duplicate-Power
+`), 0600))
+	_, err = Open(cfg)
+	require.ErrorContains(t, err, "duplicates CPUC account 615")
 }
 
 func TestPostingChoicesRequireDepthNotLeaves(t *testing.T) {

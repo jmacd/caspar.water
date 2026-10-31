@@ -30,9 +30,10 @@ type Config struct {
 	Name               string              `yaml:"name"`
 	Accounts           []string            `yaml:"accounts"`
 	BankAccounts       []BankAccountConfig `yaml:"bank_accounts"`
+	ChartDefPaths      []string            `yaml:"chart_defs,omitempty"`
 	Statement          StatementConfig     `yaml:"statement"`
 	Journal            string              `yaml:"-"`
-	AccountChart       string              `yaml:"-"`
+	ChartDefs          []string            `yaml:"-"`
 	LocalAccounts      string              `yaml:"-"`
 	ManualJournal      string              `yaml:"-"`
 	Sources            string              `yaml:"-"`
@@ -96,11 +97,37 @@ func LoadConfig(path string) (Config, error) {
 	}
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)
-	cfg.AccountChart = filepath.Join(books, chartJournal)
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
 	cfg.ManualJournal = filepath.Join(books, manualJournal)
 	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
 	cfg.QuickBooksMappings = filepath.Join(cfg.root, "quickbooks-mappings.yaml")
+	if cfg.ChartDefPaths == nil {
+		cfg.ChartDefPaths = []string{filepath.Join(booksDirectory, chartJournal)}
+	}
+	if len(cfg.ChartDefPaths) == 0 {
+		return cfg, fmt.Errorf("chart_defs must contain at least one path")
+	}
+	chartDefs := make(map[string]bool, len(cfg.ChartDefPaths))
+	for index, path := range cfg.ChartDefPaths {
+		if strings.TrimSpace(path) != path ||
+			!filepath.IsLocal(path) ||
+			filepath.Clean(path) == "." {
+			return cfg, fmt.Errorf(
+				"chart_defs[%d] must be a workspace-relative file path",
+				index,
+			)
+		}
+		resolved := filepath.Join(cfg.root, filepath.Clean(path))
+		if chartDefs[resolved] {
+			return cfg, fmt.Errorf(
+				"chart_defs[%d] duplicates chart definition path %q",
+				index,
+				path,
+			)
+		}
+		chartDefs[resolved] = true
+		cfg.ChartDefs = append(cfg.ChartDefs, resolved)
+	}
 
 	accounts := make(map[string]bool)
 	identifiers := make(map[string]bool)
@@ -133,6 +160,21 @@ func LoadConfig(path string) (Config, error) {
 			return cfg, fmt.Errorf("bank accounts derive the same journal filename %s", bankJournalFilename(bank.Account))
 		}
 		accounts[bank.Account], identifiers[identifier], journals[bank.Journal] = true, true, true
+	}
+	reserved := append(
+		[]string{absolute, cfg.Journal, cfg.LocalAccounts, cfg.ManualJournal, cfg.QuickBooksMappings},
+		cfg.writableJournals()...,
+	)
+	for index, chartDef := range cfg.ChartDefs {
+		for _, path := range reserved {
+			if chartDef == path {
+				return cfg, fmt.Errorf(
+					"chart_defs[%d] conflicts with workspace file %s",
+					index,
+					cfg.ChartDefPaths[index],
+				)
+			}
+		}
 	}
 	return cfg, nil
 }

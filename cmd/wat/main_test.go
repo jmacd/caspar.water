@@ -11,6 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testAccountChart = `version: 1
+accounts:
+  - category: Asset
+    number: "131.2"
+    name: Cash-in-Bank
+    comment: Cash held in a financial institution.
+  - category: Equity
+    number: "218"
+    name: Proprietary-Capital
+`
+
 func TestHelpDoesNotRequireBooks(t *testing.T) {
 	root := command()
 	var output bytes.Buffer
@@ -37,15 +48,25 @@ func TestStatementFlagAndCache(t *testing.T) {
 	root := t.TempDir()
 	config := filepath.Join(root, "wat.yaml")
 	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "reference"), 0700))
 	for name, text := range map[string]string{
-		"wat.yaml":             "version: 3\nname: Test\naccounts:\n  - Equity:218:Owner\nbank_accounts:\n  - Bank:131.2:Checking\n",
-		"books/chart.journal":  "commodity $\naccount Asset:131.2-Cash-in-Bank\naccount Equity:218-Proprietary-Capital\n",
-		"books/manual.journal": "",
-		"statement.pdf":        "%PDF-1.7\nsynthetic\n",
-		"extract.json":         `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD","account_id":"Checking"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
+		"wat.yaml":                 "version: 3\nname: Test\nchart_defs:\n  - reference/cpuc-u39w.yaml\naccounts:\n  - Equity:218:Owner\nbank_accounts:\n  - Bank:131.2:Checking\n",
+		"reference/cpuc-u39w.yaml": testAccountChart,
+		"books/manual.journal":     "",
+		"statement.pdf":            "%PDF-1.7\nsynthetic\n",
+		"extract.json":             `{"transactions":[{"booking_date":"2021-11-10","description":"DEPOSIT","amount":"100.00","currency":"USD","account_id":"Checking"}],"verification":{"opening_balance":"0.00","closing_balance":"100.00"}}`,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
 	}
+	pathCommand := command()
+	var pathOutput bytes.Buffer
+	pathCommand.SetOut(&pathOutput)
+	pathCommand.SetArgs([]string{
+		"--config", config, "config-path", "chart-defs",
+	})
+	require.NoError(t, pathCommand.Execute())
+	require.Equal(t, "reference/cpuc-u39w.yaml\n", pathOutput.String())
+
 	for i := 0; i < 2; i++ {
 		cmd := command()
 		args := []string{"--config", config, "--statement", filepath.Join(root, "statement.pdf"), "--statement-check"}
@@ -63,7 +84,12 @@ func TestStatementFlagAndCache(t *testing.T) {
 	accounts.SetOut(&accountsOutput)
 	accounts.SetArgs([]string{"--config", config, "accounts"})
 	require.NoError(t, accounts.Execute())
-	require.Contains(t, accountsOutput.String(), "Bank:131.2:Checking\tAsset:131.2-Cash-in-Bank")
+	require.Contains(
+		t,
+		accountsOutput.String(),
+		"Bank:131.2:Checking\tAsset:131.2:Cash-in-Bank\t"+
+			"Cash held in a financial institution.",
+	)
 	override := command()
 	override.SetOut(&bytes.Buffer{})
 	override.SetArgs([]string{

@@ -48,7 +48,25 @@ sync_input() {
 }
 
 sync_input /work/local/wat-test/wat.yaml /accounting/wat.yaml
-sync_input /work/local/wat-test/books/chart.journal /accounting/books/chart.journal
+chart_paths_file="$(mktemp /tmp/wat-chart-defs.XXXXXX)"
+if ! /usr/local/bin/wat \
+    --config /work/local/wat-test/wat.yaml \
+    config-path chart-defs >"${chart_paths_file}"; then
+    rm -f "${chart_paths_file}"
+    exit 1
+fi
+mapfile -t chart_paths <"${chart_paths_file}"
+rm -f "${chart_paths_file}"
+if [[ ${#chart_paths[@]} -eq 0 ]]; then
+    echo "Wat configuration returned no chart_defs." >&2
+    exit 1
+fi
+for chart_path in "${chart_paths[@]}"; do
+    run mkdir -p "$(dirname "/accounting/${chart_path}")" >&2
+    sync_input \
+        "/work/local/wat-test/${chart_path}" \
+        "/accounting/${chart_path}"
+done
 run mknod exec /system/etc/wat --config-path /tmp/wat-exec.yaml --overwrite >&2
 
 exec "${pond_bin}" --pond /pond -d /wat-host-inbox run /system/etc/wat -- "$@"

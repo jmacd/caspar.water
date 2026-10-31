@@ -17,7 +17,7 @@ type fileState struct {
 type Draft struct {
 	books         *Books
 	files         map[string]fileState
-	chart         fileState
+	chartDefs     map[string]fileState
 	accounts      []string
 	accountSearch map[string]string
 	history       completionHistory
@@ -94,7 +94,15 @@ func (b *Books) newDraft(target string) (*Draft, error) {
 	accountSearch := make(map[string]string, len(postingAccounts))
 	for _, account := range postingAccounts {
 		accounts = append(accounts, account.Name)
-		accountSearch[account.Name] = account.FormalCategory + " " + account.Number + " " + strings.ReplaceAll(account.FormalName, "-", " ")
+		accountSearch[account.Name] = strings.Join(
+			[]string{
+				account.FormalCategory,
+				account.Number,
+				strings.ReplaceAll(account.FormalName, "-", " "),
+				account.FormalComment,
+			},
+			" ",
+		)
 	}
 	history, err := b.completionHistory()
 	if err != nil {
@@ -106,7 +114,7 @@ func (b *Books) newDraft(target string) (*Draft, error) {
 	}
 	return &Draft{
 		books: b, files: files, accounts: accounts, accountSearch: accountSearch,
-		history: history, id: id, target: target, chart: b.chartState,
+		history: history, id: id, target: target, chartDefs: b.chartStates,
 	}, nil
 }
 
@@ -129,12 +137,21 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 }
 
 func (d *Draft) unchanged() error {
-	chart, err := readNonsymlinkFileState(d.books.Config.AccountChart, "CPUC account chart")
-	if err != nil {
-		return err
-	}
-	if chart.mode != d.chart.mode || !bytes.Equal(chart.data, d.chart.data) {
-		return fmt.Errorf("CPUC account chart changed; cancel and reopen the transaction")
+	for _, path := range d.books.Config.ChartDefs {
+		current, err := readNonsymlinkFileState(path, "account chart definition")
+		if err != nil {
+			return err
+		}
+		original, ok := d.chartDefs[path]
+		if !ok ||
+			current.mode != original.mode ||
+			!bytes.Equal(current.data, original.data) {
+			return fmt.Errorf(
+				"account chart definition changed: %s; cancel and reopen "+
+					"the transaction",
+				path,
+			)
+		}
 	}
 	current, err := d.books.snapshot()
 	if err != nil {

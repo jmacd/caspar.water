@@ -12,11 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testChart = `commodity $
-account Asset:131.2-Cash-in-Bank
-account Equity:218-Proprietary-Capital
-account Expense:615-Power
-account Income:421-Non-Utility-income
+const testChart = `version: 1
+accounts:
+  - category: Asset
+    number: "131.2"
+    name: Cash-in-Bank
+    comment: Cash held in a financial institution.
+  - category: Equity
+    number: "218"
+    name: Proprietary-Capital
+  - category: Expense
+    number: "615"
+    name: Power
+  - category: Income
+    number: "421"
+    name: Non-Utility-income
 `
 
 func fixture(t *testing.T, journal string) (*Books, string) {
@@ -26,9 +36,12 @@ func fixture(t *testing.T, journal string) (*Books, string) {
 	}
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "reference"), 0700))
 	for name, text := range map[string]string{
 		"wat.yaml": `version: 3
 name: Test Water
+chart_defs:
+  - reference/cpuc-u39w.yaml
 accounts:
   - Equity:218:Owner
   - Expense:615:Utility
@@ -36,8 +49,8 @@ accounts:
 bank_accounts:
   - Bank:131.2:Checking
 `,
-		"books/chart.journal":  testChart,
-		"books/manual.journal": journal,
+		"reference/cpuc-u39w.yaml": testChart,
+		"books/manual.journal":     journal,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
 	}
@@ -84,31 +97,42 @@ func addBankAccount(t *testing.T, books *Books, account string) BankAccountConfi
 func TestConfig(t *testing.T) {
 	base := "version: 3\nname: Water\n"
 	for _, tc := range []struct {
-		name, yaml string
-		valid      bool
+		name, yaml, accountChart string
+		valid                    bool
 	}{
-		{"valid", base, true},
-		{"ordinary account", base + "accounts:\n  - Expense:615:Electricity\n", true},
-		{"unknown", base + "typo: true\n", false},
-		{"obsolete path", base + "journal: books/books.journal\n", false},
-		{"bank account", base + "bank_accounts:\n  - Bank:131.2:SBMC:1234\n", true},
-		{"duplicate account", base + "accounts:\n  - Expense:615:Electricity\n  - Expense:615:Electricity\n", false},
-		{"duplicate bank identifier", base + "bank_accounts:\n  - Bank:131.2:First:1234\n  - Bank:131.2:Second:1234\n", false},
-		{"duplicate bank filename", base + "bank_accounts:\n  - Bank:131.2:First.Account\n  - Bank:131.2:First-Account\n", false},
-		{"azure statement", base + "statement:\n  python: python3\n  api_base: https://example.openai.azure.com/\n  api_version: 2025-04-01-preview\n  model: azure/example\n", true},
-		{"duplicate statement endpoint", base + "statement:\n  api_base: https://example.openai.azure.com/\n  ollama_url: http://localhost:11434\n  model: azure/example\n", false},
-		{"blank bank account", base + "bank_accounts:\n  - ' '\n", false},
-		{"non-Bank statement account", base + "bank_accounts:\n  - Asset:131.2:Checking\n", false},
-		{"multiline bank account", base + "bank_accounts:\n  - \"Bank:131.2:Checking\\nEquity:218:Owner\"\n", false},
-		{"virtual bank account", base + "bank_accounts:\n  - '[Bank:131.2:Checking]'\n", false},
-		{"bank mapping object", base + "bank_accounts:\n  - account: Bank:131.2:Checking\n", false},
-		{"bank in ordinary accounts", base + "accounts:\n  - Bank:131.2:Checking\n", false},
-		{"path separator", base + "accounts:\n  - Expense:615:Power/Bill\n", false},
-		{"documents", base + "---\nname: other\n", false},
-		{"version", strings.Replace(base, "version: 3", "version: 2", 1), false},
-		{"missing name", strings.Replace(base, "name: Water\n", "", 1), false},
-		{"duplicate-key", base + "name: Other\n", false},
-		{"malformed-extra", base + "---\ninvalid: [\n", false},
+		{name: "valid", yaml: base, valid: true},
+		{
+			name:         "configured chart",
+			yaml:         base + "chart_defs:\n  - reference/cpuc-u39w.yaml\n",
+			accountChart: "reference/cpuc-u39w.yaml",
+			valid:        true,
+		},
+		{name: "absolute chart", yaml: base + "chart_defs:\n  - /tmp/chart.journal\n"},
+		{name: "escaping chart", yaml: base + "chart_defs:\n  - ../chart.journal\n"},
+		{name: "empty charts", yaml: base + "chart_defs: []\n"},
+		{name: "duplicate chart", yaml: base + "chart_defs:\n  - reference/chart.yaml\n  - reference/./chart.yaml\n"},
+		{name: "chart conflicts with manual journal", yaml: base + "chart_defs:\n  - books/manual.journal\n"},
+		{name: "ordinary account", yaml: base + "accounts:\n  - Expense:615:Electricity\n", valid: true},
+		{name: "unknown", yaml: base + "typo: true\n"},
+		{name: "obsolete path", yaml: base + "journal: books/books.journal\n"},
+		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.2:SBMC:1234\n", valid: true},
+		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615:Electricity\n  - Expense:615:Electricity\n"},
+		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.2:First:1234\n  - Bank:131.2:Second:1234\n"},
+		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.2:First.Account\n  - Bank:131.2:First-Account\n"},
+		{name: "azure statement", yaml: base + "statement:\n  python: python3\n  api_base: https://example.openai.azure.com/\n  api_version: 2025-04-01-preview\n  model: azure/example\n", valid: true},
+		{name: "duplicate statement endpoint", yaml: base + "statement:\n  api_base: https://example.openai.azure.com/\n  ollama_url: http://localhost:11434\n  model: azure/example\n"},
+		{name: "blank bank account", yaml: base + "bank_accounts:\n  - ' '\n"},
+		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.2:Checking\n"},
+		{name: "multiline bank account", yaml: base + "bank_accounts:\n  - \"Bank:131.2:Checking\\nEquity:218:Owner\"\n"},
+		{name: "virtual bank account", yaml: base + "bank_accounts:\n  - '[Bank:131.2:Checking]'\n"},
+		{name: "bank mapping object", yaml: base + "bank_accounts:\n  - account: Bank:131.2:Checking\n"},
+		{name: "bank in ordinary accounts", yaml: base + "accounts:\n  - Bank:131.2:Checking\n"},
+		{name: "path separator", yaml: base + "accounts:\n  - Expense:615:Power/Bill\n"},
+		{name: "documents", yaml: base + "---\nname: other\n"},
+		{name: "version", yaml: strings.Replace(base, "version: 3", "version: 2", 1)},
+		{name: "missing name", yaml: strings.Replace(base, "name: Water\n", "", 1)},
+		{name: "duplicate-key", yaml: base + "name: Other\n"},
+		{name: "malformed-extra", yaml: base + "---\ninvalid: [\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "wat.yaml")
@@ -122,7 +146,15 @@ func TestConfig(t *testing.T) {
 			directory, err := filepath.EvalSymlinks(filepath.Dir(path))
 			require.NoError(t, err)
 			require.Equal(t, filepath.Join(directory, "books", "books.journal"), cfg.Journal)
-			require.Equal(t, filepath.Join(directory, "books", "chart.journal"), cfg.AccountChart)
+			accountChart := tc.accountChart
+			if accountChart == "" {
+				accountChart = "books/chart.journal"
+			}
+			require.Equal(
+				t,
+				[]string{filepath.Join(directory, accountChart)},
+				cfg.ChartDefs,
+			)
 			require.Equal(t, filepath.Join(directory, "books", "accounts.journal"), cfg.LocalAccounts)
 			require.Equal(t, filepath.Join(directory, "books", "manual.journal"), cfg.ManualJournal)
 			require.Equal(t, filepath.Join(directory, "sources"), cfg.Sources)
@@ -144,7 +176,9 @@ func TestWorkspaceFilesAreGeneratedFromConfiguration(t *testing.T) {
 	require.Equal(t, string(generatedMaster(books.Config)), read(t, books.Config.Journal))
 	files, err := books.run(books.Config.Journal, "files")
 	require.NoError(t, err)
-	require.NotContains(t, files, books.Config.AccountChart)
+	for _, chartDef := range books.Config.ChartDefs {
+		require.NotContains(t, files, chartDef)
+	}
 	require.Contains(t, files, books.Config.LocalAccounts)
 	require.Contains(t, files, books.Config.ManualJournal)
 	require.Contains(t, files, books.Config.BankAccounts[0].Journal)
@@ -297,7 +331,7 @@ func TestSavePreservesBytesAndBackup(t *testing.T) {
 }
 
 func TestStaleDraftAndLock(t *testing.T) {
-	for _, changed := range []string{"books/manual.journal", "books/accounts.journal", "books/chart.journal", "include-set", "lock"} {
+	for _, changed := range []string{"books/manual.journal", "books/accounts.journal", "reference/cpuc-u39w.yaml", "include-set", "lock"} {
 		t.Run(changed, func(t *testing.T) {
 			books, root := fixture(t, "; original\n")
 			draft, err := books.NewDraft()

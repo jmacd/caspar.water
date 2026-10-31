@@ -13,6 +13,7 @@ import (
 
 func command() *cobra.Command {
 	var config string
+	var cfg wat.Config
 	var books *wat.Books
 	var statement, statementInbox, extraction string
 	var statements bool
@@ -32,9 +33,13 @@ func command() *cobra.Command {
 			return cobra.NoArgs(cmd, args)
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := wat.LoadConfig(config)
+			loaded, err := wat.LoadConfig(config)
 			if err != nil {
 				return err
+			}
+			cfg = loaded
+			if cmd.Name() == "config-path" {
+				return nil
 			}
 			books, err = wat.Open(cfg)
 			if err != nil {
@@ -108,6 +113,22 @@ func command() *cobra.Command {
 	root.Flags().StringVar(&extraction, "statement-extraction", "", "seed a new statement cache from reviewed bankstatementparser JSON")
 	root.Flags().BoolVar(&statementCheck, "statement-check", false, "extract/validate a statement and print progress without opening the terminal")
 	root.AddCommand(&cobra.Command{
+		Use:   "config-path chart-defs",
+		Short: "Print validated workspace-relative configuration paths",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] != "chart-defs" {
+				return fmt.Errorf("unknown configuration path %q", args[0])
+			}
+			for _, path := range cfg.ChartDefPaths {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), path); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	})
+	root.AddCommand(&cobra.Command{
 		Use:   "check",
 		Short: "Validate the complete books and posting account depth",
 		Args:  cobra.NoArgs,
@@ -128,7 +149,18 @@ func command() *cobra.Command {
 				return err
 			}
 			for _, account := range accounts {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s:%s-%s\n", account.Name, account.FormalCategory, account.Number, account.FormalName)
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"%s\t%s:%s:%s",
+					account.Name,
+					account.FormalCategory,
+					account.Number,
+					account.FormalName,
+				)
+				if account.FormalComment != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "\t%s", account.FormalComment)
+				}
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 			return nil
 		},

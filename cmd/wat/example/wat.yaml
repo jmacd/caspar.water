@@ -1,5 +1,6 @@
 version: 3
 name: Caspar Water
+chart_defs: [reference/cpuc-u39w.yaml]
 accounts:
   - Asset:151:Admin-Supplies
   - Expense:615:Electricity

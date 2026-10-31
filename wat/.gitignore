@@ -1,0 +1,7 @@
+# Deny by default. Only documentation and the master chart may be tracked.
+*
+!.gitignore
+!README.md
+!reference/
+reference/*
+!reference/*.yaml

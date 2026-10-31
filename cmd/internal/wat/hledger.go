@@ -12,10 +12,10 @@ import (
 )
 
 type Books struct {
-	Config     Config
-	binary     string
-	chart      accountChart
-	chartState fileState
+	Config      Config
+	binary      string
+	chart       accountChart
+	chartStates map[string]fileState
 }
 
 type journalTransaction struct {
@@ -73,13 +73,44 @@ func Open(cfg Config) (*Books, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wat requires hledger on PATH: %w", err)
 	}
-	chartState, err := readNonsymlinkFileState(cfg.AccountChart, "CPUC account chart")
-	if err != nil {
-		return nil, err
-	}
-	chart, err := parseAccountChart(chartState.data)
-	if err != nil {
-		return nil, err
+	chart := accountChart{byNumber: make(map[string]chartAccount)}
+	chartStates := make(map[string]fileState, len(cfg.ChartDefs))
+	origins := make(map[string]string)
+	for _, path := range cfg.ChartDefs {
+		state, err := readNonsymlinkFileState(path, "account chart definition")
+		if err != nil {
+			return nil, err
+		}
+		definition, err := parseAccountChartFile(path, state.data)
+		if err != nil {
+			return nil, fmt.Errorf("load chart definition %s: %w", path, err)
+		}
+		numbers := make([]string, 0, len(definition.byNumber))
+		for number := range definition.byNumber {
+			numbers = append(numbers, number)
+		}
+		slices.Sort(numbers)
+		for _, number := range numbers {
+			account := definition.byNumber[number]
+			if prior, exists := chart.byNumber[number]; exists {
+				return nil, fmt.Errorf(
+					"chart definition %s duplicates CPUC account %s "+
+						"from %s (%s:%s:%s and %s:%s:%s)",
+					path,
+					number,
+					origins[number],
+					prior.Category,
+					prior.Number,
+					prior.Name,
+					account.Category,
+					account.Number,
+					account.Name,
+				)
+			}
+			chart.byNumber[number] = account
+			origins[number] = path
+		}
+		chartStates[path] = state
 	}
 	for _, name := range cfg.Accounts {
 		account, _ := parsePostingAccount(name)
@@ -96,7 +127,9 @@ func Open(cfg Config) (*Books, error) {
 	if err := prepareWorkspace(cfg); err != nil {
 		return nil, err
 	}
-	books := &Books{Config: cfg, binary: binary, chart: chart, chartState: chartState}
+	books := &Books{
+		Config: cfg, binary: binary, chart: chart, chartStates: chartStates,
+	}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
 	}
