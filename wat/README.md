@@ -32,10 +32,10 @@ Authority should move in three deliberate stages.
 ### 1. Operate Wat on ordinary files
 
 First make the Wat program useful with `wat/` as its direct filesystem
-workspace. In this stage, `wat/books/*.journal` are the live books. Copy the
-existing master chart to `wat/reference/cpuc-u39w.yaml`, review it, and
-commit it. Add that workspace-relative path to `chart_defs` in the private
-`wat/wat.yaml`, alongside the real posting and bank accounts.
+workspace. In this stage, `wat/books/*.journal` are the live books. Review the
+tracked master chart at `wat/reference/cpuc-u39w.yaml`. Add that
+workspace-relative path to `chart_defs` in the private `wat/wat.yaml`, alongside
+the real posting and bank accounts.
 
 The direct launcher should:
 
@@ -57,9 +57,7 @@ chart:
 
 ```sh
 mkdir -p wat/books wat/reference wat/sources wat/review
-cp local/wat-test/wat.yaml wat/wat.yaml
-cp cmd/wat/example/reference/cpuc-u39w.yaml \
-  wat/reference/cpuc-u39w.yaml
+cp -n local/wat-test/wat.yaml wat/wat.yaml
 ```
 
 Before continuing, edit `wat/wat.yaml` and set:

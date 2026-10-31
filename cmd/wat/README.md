@@ -65,16 +65,11 @@ path in YAML without making that path meaningful inside the sandbox. Direct
 invocations continue to use `statement.python` unless the same explicit
 environment override is supplied.
 
-Copy the example into a private workspace; do not enter real books in the example:
-
-```sh
-mkdir -p local
-cp -R cmd/wat/example local/water-books
-go run ./cmd/wat --config local/water-books/wat.yaml
-```
-
-`reference/cpuc-u39w.yaml` is the example CPUC U-39-W master account chart.
-The workspace-relative `chart_defs` list selects it. The structured YAML
+For direct file-authoritative operation, use the private top-level `wat/`
+workspace and follow its [operational guide](../../wat/README.md). Keep
+`wat/wat.yaml`, journals, source documents, and review artifacts untracked.
+The committed `wat/reference/cpuc-u39w.yaml` is the CPUC U-39-W master account
+chart selected by the workspace-relative `chart_defs` list. The structured YAML
 is reference data, not an hledger journal. Do not add vendors, banks, owners, or
 other instance names to the master chart. No opening balances, purchase price,
 or financial activity are fabricated.
@@ -93,8 +88,7 @@ bank_accounts:
 
 The live books layout is fixed; the reference chart path is configured:
 
-- `reference/cpuc-u39w.yaml` is the example manually maintained CPUC reference
-  chart.
+- `reference/cpuc-u39w.yaml` is the manually maintained CPUC reference chart.
 - additional reference YAML files may be added to `chart_defs`; account numbers
   must remain unique across the merged definitions.
 - `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
@@ -116,7 +110,7 @@ number and category must agree with the merged `chart_defs`. Every definition
 path must be relative to the workspace, and CPUC numbers must be unique across
 all files. `Bank` accounts must map to an Asset number. Their final component is
 the unique statement identifier suffix: an extracted identifier ending in
-`0000` binds to the example account. A missing or ambiguous match is an error;
+`0000` binds to the configured account with that suffix. A missing or ambiguous match is an error;
 Wat never guesses a journal. The bound account is stored in the private
 extraction cache.
 
@@ -250,7 +244,7 @@ The long formal name is therefore not repeated in every posting while remaining
 available whenever needed:
 
 ```sh
-go run ./cmd/wat --config local/water-books/wat.yaml accounts
+go run ./cmd/wat --config wat/wat.yaml accounts
 ```
 
 Account completion and the F4 cheatsheet show only declared local accounts.
@@ -596,11 +590,11 @@ the tool does not round-trip or silently simplify manually edited journal text.
 The temporary file is removed after the editor exits.
 
 ```sh
-go run ./cmd/wat --config local/water-books/wat.yaml check
-go run ./cmd/wat --config local/water-books/wat.yaml report journal
-go run ./cmd/wat --config local/water-books/wat.yaml report trial-balance
-go run ./cmd/wat --config local/water-books/wat.yaml report balance-sheet
-go run ./cmd/wat --config local/water-books/wat.yaml report income-statement
+go run ./cmd/wat --config wat/wat.yaml check
+go run ./cmd/wat --config wat/wat.yaml report journal
+go run ./cmd/wat --config wat/wat.yaml report trial-balance
+go run ./cmd/wat --config wat/wat.yaml report balance-sheet
+go run ./cmd/wat --config wat/wat.yaml report income-statement
 ```
 
 Reports cover all dates currently in the books. The balance sheet uses hledger's
@@ -610,8 +604,8 @@ closing entry to equity.
 The journals remain usable directly:
 
 ```sh
-hledger -f local/water-books/books/books.journal
-hledger-ui -f local/water-books/books/books.journal
+hledger -f wat/books/books.journal
+hledger-ui -f wat/books/books.journal
 ```
 
 The structured revision workflow handles supported working entries. For
@@ -624,7 +618,7 @@ No entire journal is round-tripped through a parser or reformatted.
 
 Save validates private temporary copies, retains a synced `.wat-backup-*` recovery
 copy beside the writable journal, and atomically replaces the journal. Recovery
-copies are not included by the example's explicit includes; retain them according
+copies are not included by the books' explicit includes; retain them according
 to your backup policy. Local recovery copies are not off-device backups.
 
 A draft snapshots every included journal. Changes to their contents, permissions,

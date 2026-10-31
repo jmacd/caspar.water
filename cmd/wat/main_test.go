@@ -161,6 +161,23 @@ func TestCheckAndReports(t *testing.T) {
 	if _, err := exec.LookPath("hledger"); err != nil {
 		t.Skip("hledger integration tests require hledger on PATH")
 	}
+	workspace := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(workspace, "books"), 0700))
+	require.NoError(t, os.Mkdir(filepath.Join(workspace, "reference"), 0700))
+	for name, text := range map[string]string{
+		"wat.yaml": "version: 3\nname: Test\nchart_defs:\n" +
+			"  - reference/cpuc-u39w.yaml\naccounts:\n" +
+			"  - Equity:218:Owner\nbank_accounts:\n" +
+			"  - Bank:131.2:Checking\n",
+		"reference/cpuc-u39w.yaml": testAccountChart,
+		"books/manual.journal":     "",
+	} {
+		require.NoError(
+			t,
+			os.WriteFile(filepath.Join(workspace, name), []byte(text), 0600),
+		)
+	}
+	config := filepath.Join(workspace, "wat.yaml")
 	for _, args := range [][]string{
 		{"check"}, {"report", "trial-balance"}, {"report", "balance-sheet"}, {"report", "income-statement"}, {"report", "journal"},
 	} {
@@ -168,7 +185,7 @@ func TestCheckAndReports(t *testing.T) {
 			root := command()
 			var output bytes.Buffer
 			root.SetOut(&output)
-			root.SetArgs(append([]string{"--config", filepath.Join("example", "wat.yaml")}, args...))
+			root.SetArgs(append([]string{"--config", config}, args...))
 			require.NoError(t, root.Execute())
 			require.NotEmpty(t, output.String())
 		})
