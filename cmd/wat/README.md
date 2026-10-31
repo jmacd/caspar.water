@@ -138,9 +138,6 @@ syntax for text-editor highlighting without making it an accepted real entry.
 A reviewer must replace the placeholders and remove the brackets before moving
 the completed entry into the books.
 
-The staged 2021 recovery work and its required completeness gates are tracked in
-[QuickBooks 2021 reconstruction work list](quickbooks-2021-reconstruction.md).
-
 The local runner scans its read-only inbox when no filenames are supplied:
 
 ```sh
