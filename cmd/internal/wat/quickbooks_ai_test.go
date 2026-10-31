@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -297,7 +298,7 @@ func TestQuickBooksCandidatesAcceptCompleteSplitAmounts(t *testing.T) {
 	require.Contains(t, text, "Equity:Owner  $-100.00")
 }
 
-func TestQuickBooksUnresolvedRendersCommentedSkeleton(t *testing.T) {
+func TestQuickBooksUnresolvedRendersEditableTemplate(t *testing.T) {
 	text, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{},
 		Unresolved: []quickBooksAIUnresolved{{
@@ -324,16 +325,17 @@ func TestQuickBooksUnresolvedRendersCommentedSkeleton(t *testing.T) {
 		)},
 	})
 	require.NoError(t, err)
-	require.Contains(t, text, "; === UNRESOLVED QUICKBOOKS TRANSACTIONS ===")
-	require.Contains(t, text, "; 2021-01-02 Professional firm | Business service")
-	require.Contains(t, text, ";     [QuickBooks: Professional services]  $10.00")
-	require.Contains(t, text, ";     [TODO counterposting]  $-10.00")
-	require.Contains(t, text, "; Question: Was this due to the owner or contributed capital?")
-	for line := range strings.SplitSeq(text, "\n") {
-		if line != "" {
-			require.True(t, strings.HasPrefix(line, ";"), line)
-		}
-	}
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	require.Equal(t, []string{
+		"; Sources: report:2 | QuickBooks: Professional services | " +
+			"Missing: The personal cash-side record is unavailable. | " +
+			"Question: Was this due to the owner or contributed capital?",
+		";",
+		"2021-01-02 ! Professional firm | Business service",
+		"    [TODO:Account-1]  $10.00",
+		"    [TODO:Counterposting]  $-10.00",
+	}, lines)
+	requireHledgerParses(t, text)
 }
 
 func TestQuickBooksUnresolvedPreservesSplitPostings(t *testing.T) {
@@ -365,10 +367,23 @@ func TestQuickBooksUnresolvedPreservesSplitPostings(t *testing.T) {
 		)},
 	})
 	require.NoError(t, err)
-	require.Contains(t, text, "; Sources: expense:2, income:2")
-	require.Contains(t, text, ";     [QuickBooks: Maintenance]  $499.00")
-	require.Contains(t, text, ";     [QuickBooks: Invested labor]  $-299.00")
-	require.Contains(t, text, ";     [TODO counterposting]  $-200.00")
+	require.Contains(t, text, "; Sources: expense:2, income:2 | QuickBooks: Maintenance, Invested labor")
+	require.Contains(t, text, "    [TODO:Account-1]  $499.00")
+	require.Contains(t, text, "    [TODO:Account-2]  $-299.00")
+	require.Contains(t, text, "    [TODO:Counterposting]  $-200.00")
+	requireHledgerParses(t, text)
+}
+
+func requireHledgerParses(t *testing.T, text string) {
+	t.Helper()
+	hledger, err := exec.LookPath("hledger")
+	if err != nil {
+		t.Skip("hledger is required to validate unresolved journal syntax")
+	}
+	path := filepath.Join(t.TempDir(), "unresolved.journal")
+	require.NoError(t, os.WriteFile(path, []byte(text), 0600))
+	output, err := exec.Command(hledger, "-f", path, "print").CombinedOutput()
+	require.NoError(t, err, string(output))
 }
 
 func TestQuickBooksCandidatesRequireDispositionForEveryGroup(t *testing.T) {

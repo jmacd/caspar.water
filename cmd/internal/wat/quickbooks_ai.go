@@ -701,8 +701,6 @@ func renderQuickBooksCandidates(
 		if journal.Len() != 0 {
 			journal.WriteByte('\n')
 		}
-		journal.WriteString("; === UNRESOLVED QUICKBOOKS TRANSACTIONS ===\n")
-		journal.WriteString("; Complete these commented entry skeletons manually before importing them.\n")
 	}
 	for index, unresolved := range response.Unresolved {
 		disposition := fmt.Sprintf("unresolved item %d", index+1)
@@ -868,8 +866,38 @@ func renderQuickBooksUnresolved(
 	sourceIDs []string,
 ) string {
 	var output strings.Builder
-	fmt.Fprintf(&output, "; Sources: %s\n", strings.Join(sourceIDs, ", "))
-	fmt.Fprintf(&output, "; %s %s", unresolved.Date, unresolved.Payee)
+	quickBooksAccounts := make([]string, 0, len(unresolved.KnownPostings))
+	for _, posting := range unresolved.KnownPostings {
+		if posting.QuickBooksAccount != "" {
+			quickBooksAccounts = append(
+				quickBooksAccounts,
+				posting.QuickBooksAccount,
+			)
+		}
+	}
+	fmt.Fprintf(&output, "; Sources: %s", strings.Join(sourceIDs, ", "))
+	if len(quickBooksAccounts) != 0 {
+		fmt.Fprintf(
+			&output,
+			" | QuickBooks: %s",
+			strings.Join(quickBooksAccounts, ", "),
+		)
+	}
+	fmt.Fprintf(
+		&output,
+		" | Missing: %s | Question: %s\n;\n",
+		unresolved.MissingFact,
+		unresolved.Question,
+	)
+	fmt.Fprintf(&output, "%s !", unresolved.Date)
+	if unresolved.Payee == "" &&
+		unresolved.Description == "" &&
+		unresolved.Reference == "" {
+		output.WriteString(" TODO")
+	}
+	if unresolved.Payee != "" {
+		fmt.Fprintf(&output, " %s", unresolved.Payee)
+	}
 	if unresolved.Description != "" {
 		fmt.Fprintf(&output, " | %s", unresolved.Description)
 	}
@@ -880,15 +908,22 @@ func renderQuickBooksUnresolved(
 	for index, posting := range unresolved.KnownPostings {
 		account := posting.Account
 		if account == "" {
-			account = "[QuickBooks: " + posting.QuickBooksAccount + "]"
+			account = fmt.Sprintf("TODO:Account-%d", index+1)
 		}
-		fmt.Fprintf(&output, ";     %s  $%s\n", account, formatCents(knownCents[index]))
+		fmt.Fprintf(
+			&output,
+			"    [%s]  $%s\n",
+			account,
+			formatCents(knownCents[index]),
+		)
 	}
 	if knownTotal != 0 {
-		fmt.Fprintf(&output, ";     [TODO counterposting]  $%s\n", formatCents(-knownTotal))
+		fmt.Fprintf(
+			&output,
+			"    [TODO:Counterposting]  $%s\n",
+			formatCents(-knownTotal),
+		)
 	}
-	fmt.Fprintf(&output, "; Missing evidence: %s\n", unresolved.MissingFact)
-	fmt.Fprintf(&output, "; Question: %s\n", unresolved.Question)
 	return output.String()
 }
 

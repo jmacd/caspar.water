@@ -137,10 +137,12 @@ candidates, configured-bank postings without a cited cash-source row, incomplete
 group coverage, reused group IDs, omitted split amounts, and non-JSON responses.
 Every dated source row belongs to one immutable deterministic transaction
 group, and every group must become exactly one balanced candidate or unresolved
-item. Unresolved items preserve all known split postings and are rendered as
-fully commented, half-written entry skeletons with an explicit question;
-hledger ignores them until a reviewer supplies the missing counterposting and
-uncomments the completed entry.
+item. Unresolved items preserve all known split postings and render as one
+compact review comment, a `;` separator, and an uncommented pending transaction
+template. Balanced virtual placeholder postings make the template valid hledger
+syntax for text-editor highlighting without making it an accepted real entry.
+A reviewer must replace the placeholders and remove the brackets before moving
+the completed entry into the books.
 
 The staged 2021 recovery work and its required completeness gates are tracked in
 [QuickBooks 2021 reconstruction work list](quickbooks-2021-reconstruction.md).
@@ -199,11 +201,11 @@ the accounting sandbox:
 ```
 
 Progress and model warnings go to stderr; stdout contains only the candidate
-draft, including commented unresolved skeletons. The command does not add
+draft, including unresolved virtual-posting templates. The command does not add
 entries to `manual.journal` or a bank journal. Review and edit the generated file
 before incorporating any transaction. Temporary source row identifiers appear
-only in the commented unresolved review material, not in balanced candidate
-entries intended for the replacement journal.
+only in unresolved review comments, not in balanced candidate entries intended
+for the replacement journal.
 
 ## CPUC chart and local posting accounts
 

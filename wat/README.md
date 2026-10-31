@@ -10,6 +10,7 @@ The local `.gitignore` denies everything by default. Commit only:
 
 - `wat/README.md`;
 - `wat/.gitignore`; and
+- `wat/regenerate-review.sh`; and
 - generic, non-instance `wat/reference/*.yaml` definitions selected by
   `chart_defs`.
 
@@ -116,6 +117,20 @@ systems remain authoritative evidence and must stay recoverable independently.
 
 ## Resolve 2021 in the file-authoritative stage
 
+Generate a uniquely numbered private review set with the current integration
+runner:
+
+```sh
+./wat/regenerate-review.sh 0003
+```
+
+The script refuses to overwrite files and writes
+`2021-ai-original-NNNN.journal`, `2021-generation-NNNN.log`, and, only after a
+successful run, `2021-working-NNNN.journal` under `wat/review/`. Set
+`WAT_QUICKBOOKS_INBOX` to override the default `../caspar_water_bank` inbox.
+This command still uses the current persistent-Pond integration runner; it does
+not make the new file-backed workspace Pond-authoritative.
+
 1. **Inventory deterministically.** Run `quickbooks --inspect --year 2021`
    against the read-only source inbox. Retain the private report and explain
    every source file, zero-row workbook, duplicate appearance, and ambiguous
@@ -134,8 +149,10 @@ systems remain authoritative evidence and must stay recoverable independently.
    bank history or guess a balancing account.
 5. **Accept safely.** Preserve the generated draft, make a separate working
    copy under `wat/review/`, and edit it with Wat stopped. Keep unresolved
-   skeletons in that private working file. Copy only completed, reviewed entries
-   into `wat/books/manual.journal`, make a private backup first, and run
+   virtual-posting templates in that private working file. Replace their
+   placeholders and remove posting brackets only when the accounts are
+   supported. Copy only completed, reviewed entries into
+   `wat/books/manual.journal`, make a private backup first, and run
    `go run ./cmd/wat --config wat/wat.yaml check` after each small batch. Never
    edit generated `accounts.journal` or `books.journal`. A future bulk importer
    should reject unresolved markers and duplicate IDs, validate the exact

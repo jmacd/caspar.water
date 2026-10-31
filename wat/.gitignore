@@ -2,6 +2,7 @@
 *
 !.gitignore
 !README.md
+!regenerate-review.sh
 !reference/
 reference/*
 !reference/*.yaml

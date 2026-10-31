@@ -13,3 +13,4 @@ statements/invoices
 
 # local preview / iteration scratch (regenerable)
 local/
+.DS_Store

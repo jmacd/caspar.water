@@ -428,16 +428,16 @@ disposition coverage.
 One stdout journal and free-form stderr warnings are insufficient.
 
 - [x] Produce a candidate draft containing accepted balanced candidates while
-  leaving unresolved skeletons fully commented and therefore ignored by
-  hledger.
+  leaving unresolved templates as pending transactions with balanced virtual
+  placeholders rather than accepted real postings.
 - [x] Produce structured unresolved transactions in the model response.
 - [x] Produce open questions that can be answered incrementally
   without exposing personal-account records.
-- [x] Render unresolved transactions as editable, fully commented half-written
-  entry skeletons in the generated draft. Include the supported date, payee,
-  description, amount, and business-side posting, then mark the missing
-  counterposting and question explicitly. Because they remain comments, they
-  cannot be imported accidentally as postings.
+- [x] Render unresolved transactions with one compact evidence/question comment,
+  one `;` separator, and an uncommented pending hledger template. Include the
+  supported date, payee, description, amounts, and balanced virtual placeholder
+  postings. These parse and highlight as journal syntax but remain non-real
+  until a reviewer replaces the placeholders and removes the brackets.
 - [x] Expect manual work to complete those skeletons. An incomplete entry is not
   a reconstruction failure, but it must never appear balanced or resolved until
   a reviewer supplies the missing fact and account.
