@@ -12,21 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testChart = `version: 1
+const testChart = `version: 2
 accounts:
-  - category: Asset
-    number: "131.2"
-    name: Cash-in-Bank
-    comment: Cash held in a financial institution.
-  - category: Equity
-    number: "218"
-    name: Proprietary-Capital
-  - category: Expense
-    number: "615"
-    name: Power
-  - category: Income
-    number: "421"
-    name: Non-Utility-income
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+      comment: Cash held in a financial institution.
+  Equity:
+    - number: "218"
+      name: Proprietary-Capital
+  Expense:
+    - number: "615"
+      name: Power
+  Income:
+    - number: "421"
+      name: Non-Utility-income
 `
 
 func fixture(t *testing.T, journal string) (*Books, string) {

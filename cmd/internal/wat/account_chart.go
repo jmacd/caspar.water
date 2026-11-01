@@ -22,9 +22,25 @@ type chartAccount struct {
 	Comment  string `yaml:"comment,omitempty"`
 }
 
-type accountChartDocument struct {
+type chartAccountDefinition struct {
+	Number  string `yaml:"number"`
+	Name    string `yaml:"name"`
+	Comment string `yaml:"comment,omitempty"`
+}
+
+type accountChartDocumentV1 struct {
 	Version  int            `yaml:"version"`
 	Accounts []chartAccount `yaml:"accounts"`
+}
+
+type accountChartDocumentV2 struct {
+	Version  int                                 `yaml:"version"`
+	Accounts map[string][]chartAccountDefinition `yaml:"accounts"`
+}
+
+type chartAccountInput struct {
+	path    string
+	account chartAccount
 }
 
 type accountChart struct {
@@ -49,37 +65,76 @@ func loadAccountChart(path string) (accountChart, error) {
 }
 
 func parseAccountChart(data []byte) (accountChart, error) {
-	var document accountChartDocument
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&document); err != nil {
+	var header struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(data, &header); err != nil {
 		return accountChart{}, fmt.Errorf("decode account chart: %w", err)
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
+	var accounts []chartAccountInput
+	switch header.Version {
+	case 1:
+		var document accountChartDocumentV1
+		if err := decodeAccountChartDocument(data, &document); err != nil {
+			return accountChart{}, err
+		}
+		accounts = make([]chartAccountInput, len(document.Accounts))
+		for index, account := range document.Accounts {
+			accounts[index] = chartAccountInput{
+				path:    fmt.Sprintf("accounts[%d]", index),
+				account: account,
+			}
+		}
+	case 2:
+		var document accountChartDocumentV2
+		if err := decodeAccountChartDocument(data, &document); err != nil {
+			return accountChart{}, err
+		}
+		categories := make([]string, 0, len(document.Accounts))
+		for category := range document.Accounts {
+			categories = append(categories, category)
+		}
+		sort.Strings(categories)
+		for _, category := range categories {
+			if !baseCategory(category) {
+				return accountChart{}, fmt.Errorf(
+					"account chart accounts category %q must be Asset, Equity, "+
+						"Liability, Expense, or Income",
+					category,
+				)
+			}
+			for index, definition := range document.Accounts[category] {
+				accounts = append(accounts, chartAccountInput{
+					path: fmt.Sprintf("accounts.%s[%d]", category, index),
+					account: chartAccount{
+						Category: category,
+						Number:   definition.Number,
+						Name:     definition.Name,
+						Comment:  definition.Comment,
+					},
+				})
+			}
+		}
+	default:
 		return accountChart{}, fmt.Errorf(
-			"account chart must contain exactly one YAML document",
-		)
-	}
-	if document.Version != 1 {
-		return accountChart{}, fmt.Errorf(
-			"unsupported account chart version %d (expected 1)",
-			document.Version,
+			"unsupported account chart version %d (expected 1 or 2)",
+			header.Version,
 		)
 	}
 	chart := accountChart{byNumber: make(map[string]chartAccount)}
-	for index, account := range document.Accounts {
+	for _, input := range accounts {
+		account := input.account
 		if !baseCategory(account.Category) {
 			return accountChart{}, fmt.Errorf(
-				"account chart accounts[%d].category must be Asset, Equity, "+
+				"account chart %s.category must be Asset, Equity, "+
 					"Liability, Expense, or Income",
-				index,
+				input.path,
 			)
 		}
 		if !accountNumberPattern.MatchString(account.Number) {
 			return accountChart{}, fmt.Errorf(
-				"account chart accounts[%d].number is invalid: %q",
-				index,
+				"account chart %s.number is invalid: %q",
+				input.path,
 				account.Number,
 			)
 		}
@@ -88,24 +143,24 @@ func parseAccountChart(data []byte) (accountChart, error) {
 			!singleLine(account.Name) ||
 			strings.Contains(account.Name, ":") {
 			return accountChart{}, fmt.Errorf(
-				"account chart accounts[%d].name must be a nonempty "+
+				"account chart %s.name must be a nonempty "+
 					"single-line account component",
-				index,
+				input.path,
 			)
 		}
 		if strings.TrimSpace(account.Comment) != account.Comment ||
 			!singleLine(account.Comment) {
 			return accountChart{}, fmt.Errorf(
-				"account chart accounts[%d].comment must be single-line "+
+				"account chart %s.comment must be single-line "+
 					"without surrounding whitespace",
-				index,
+				input.path,
 			)
 		}
 		if prior, exists := chart.byNumber[account.Number]; exists {
 			return accountChart{}, fmt.Errorf(
-				"account chart accounts[%d] duplicates CPUC account %s "+
+				"account chart %s duplicates CPUC account %s "+
 					"(%s:%s:%s and %s:%s:%s)",
-				index,
+				input.path,
 				account.Number,
 				prior.Category,
 				prior.Number,
@@ -121,6 +176,21 @@ func parseAccountChart(data []byte) (accountChart, error) {
 		return accountChart{}, fmt.Errorf("account chart contains no CPUC accounts")
 	}
 	return chart, nil
+}
+
+func decodeAccountChartDocument(data []byte, document any) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(document); err != nil {
+		return fmt.Errorf("decode account chart: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf(
+			"account chart must contain exactly one YAML document",
+		)
+	}
+	return nil
 }
 
 func parseAccountChartFile(path string, data []byte) (accountChart, error) {

@@ -139,6 +139,56 @@ accounts:
 	}
 }
 
+func TestGroupedAccountChart(t *testing.T) {
+	chart, err := parseAccountChart([]byte(`version: 2
+accounts:
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+  Expense:
+    - number: "615"
+      name: Power
+      comment: Purchased electricity.
+`))
+	require.NoError(t, err)
+	require.Equal(t, "Asset", chart.byNumber["131.2"].Category)
+	require.Empty(t, chart.byNumber["131.2"].Comment)
+	require.Equal(t, "Purchased electricity.", chart.byNumber["615"].Comment)
+}
+
+func TestGroupedAccountChartRejectsInvalidCategoryAndField(t *testing.T) {
+	for _, tc := range []struct {
+		name, chart, message string
+	}{
+		{
+			name: "invalid category",
+			chart: `version: 2
+accounts:
+  Revenue:
+    - number: "421"
+      name: Non-Utility-Income
+`,
+			message: `accounts category "Revenue" must be Asset`,
+		},
+		{
+			name: "unknown account field",
+			chart: `version: 2
+accounts:
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+      explanation: invalid
+`,
+			message: "field explanation not found",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseAccountChart([]byte(tc.chart))
+			require.ErrorContains(t, err, tc.message)
+		})
+	}
+}
+
 func TestLegacyAccountChartCompatibility(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "accounts.journal")
 	require.NoError(t, os.WriteFile(path, []byte(

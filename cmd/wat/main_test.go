@@ -11,15 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testAccountChart = `version: 1
+const testAccountChart = `version: 2
 accounts:
-  - category: Asset
-    number: "131.2"
-    name: Cash-in-Bank
-    comment: Cash held in a financial institution.
-  - category: Equity
-    number: "218"
-    name: Proprietary-Capital
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+      comment: Cash held in a financial institution.
+  Equity:
+    - number: "218"
+      name: Proprietary-Capital
 `
 
 func TestHelpDoesNotRequireBooks(t *testing.T) {

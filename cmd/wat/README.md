@@ -203,17 +203,21 @@ for the replacement journal.
 The master chart stores structured CPUC accounts:
 
 ```yaml
-version: 1
+version: 2
 accounts:
-  - category: Asset
-    number: "104"
-    name: Water-Plant-Purchased-or-Sold
-    comment: Optional operator-facing explainer text.
+  Asset:
+    - number: "104"
+      name: Water-Plant-Purchased-or-Sold
+      comment: Optional operator-facing explainer text.
+  Expense:
+    - number: "615"
+      name: Electricity
 ```
 
 The formal account identity is displayed as
-`Asset:104:Water-Plant-Purchased-or-Sold`. Category, number, name, and optional
-single-line comment are validated strictly. Wat prints the comment with account
+`Asset:104:Water-Plant-Purchased-or-Sold`. Category sections, number, name, and
+optional single-line comment are validated strictly. Wat prints the comment with
+account
 listings and mapping choices.
 
 Local posting accounts in `wat.yaml` use the shorter
