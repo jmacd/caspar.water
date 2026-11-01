@@ -670,16 +670,21 @@ func renderQuickBooksCandidates(
 		}
 		if len(sourceAmounts) == 1 && !sourceAmounts[positiveTotal] {
 			return "", fmt.Errorf(
-				"%s total %s is not present in its cited QuickBooks transaction amounts",
-				disposition, formatCents(positiveTotal),
+				"%s total %s is not present in cited transaction group %q; "+
+					"source amounts: %s",
+				disposition,
+				formatCents(positiveTotal),
+				group.ID,
+				formatQuickBooksAmountSet(sourceAmounts),
 			)
 		}
 		for sourceAmount := range sourceAmounts {
 			if !postingAmounts[sourceAmount] {
 				return "", fmt.Errorf(
-					"%s omits cited QuickBooks transaction amount %s",
+					"%s omits QuickBooks transaction amount %s from cited group %q",
 					disposition,
 					formatCents(sourceAmount),
+					group.ID,
 				)
 			}
 		}
@@ -806,8 +811,12 @@ func renderQuickBooksCandidates(
 			for knownAmount := range knownAmounts {
 				if !sourceAmounts[knownAmount] {
 					return "", fmt.Errorf(
-						"%s amount %s is not present in its cited QuickBooks transaction amounts",
-						disposition, formatCents(knownAmount),
+						"%s amount %s is not present in cited transaction group %q; "+
+							"source amounts: %s",
+						disposition,
+						formatCents(knownAmount),
+						group.ID,
+						formatQuickBooksAmountSet(sourceAmounts),
 					)
 				}
 			}
@@ -823,9 +832,10 @@ func renderQuickBooksCandidates(
 			for sourceAmount := range sourceAmounts {
 				if !knownAmounts[sourceAmount] {
 					return "", fmt.Errorf(
-						"%s omits cited QuickBooks transaction amount %s",
+						"%s omits QuickBooks transaction amount %s from cited group %q",
 						disposition,
 						formatCents(sourceAmount),
+						group.ID,
 					)
 				}
 			}
@@ -941,7 +951,8 @@ func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error)
 	for _, record := range records {
 		for name, value := range record.Fields {
 			switch normalizeQuickBooksHeader(name) {
-			case "amount", "payment", "deposit", "debit", "credit":
+			case "amount", "payment", "deposit", "debit", "credit",
+				"decrease", "increase":
 			default:
 				continue
 			}
@@ -961,6 +972,22 @@ func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error)
 		}
 	}
 	return amounts, nil
+}
+
+func formatQuickBooksAmountSet(amounts map[int64]bool) string {
+	values := make([]int64, 0, len(amounts))
+	for amount := range amounts {
+		values = append(values, amount)
+	}
+	slices.Sort(values)
+	formatted := make([]string, len(values))
+	for index, amount := range values {
+		formatted[index] = formatCents(amount)
+	}
+	if len(formatted) == 0 {
+		return "none"
+	}
+	return strings.Join(formatted, ", ")
 }
 
 func parseQuickBooksCents(value string) (int64, error) {

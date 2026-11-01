@@ -46,6 +46,17 @@ func TestParseQuickBooksCSVRegister(t *testing.T) {
 	require.True(t, records[0].CashSource)
 }
 
+func TestParseQuickBooksCSVAccountRegister(t *testing.T) {
+	data := []byte("Date,Type,Ref No.,Payee,Decrease,Increase\n" +
+		"1/15/2021,Journal,13,Land,,150000.00\n")
+	records, err := parseQuickBooksCSV("assets-register.xls", data, 2021)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, "2021-01-15", records[0].Date)
+	require.Equal(t, "150000.00", records[0].Fields["Increase"])
+	require.False(t, records[0].CashSource)
+}
+
 func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	root := t.TempDir()
 	input := filepath.Join(root, "register.csv")

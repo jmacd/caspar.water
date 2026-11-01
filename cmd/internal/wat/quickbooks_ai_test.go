@@ -232,7 +232,12 @@ func TestQuickBooksCandidatesRejectAmountAbsentFromSource(t *testing.T) {
 			},
 		)},
 	})
-	require.ErrorContains(t, err, "total 11.00 is not present")
+	require.ErrorContains(
+		t,
+		err,
+		`total 11.00 is not present in cited transaction group "group-1"; `+
+			`source amounts: 10.00`,
+	)
 }
 
 func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
@@ -262,7 +267,11 @@ func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
 			},
 		)},
 	})
-	require.ErrorContains(t, err, "omits cited QuickBooks transaction amount 4.00")
+	require.ErrorContains(
+		t,
+		err,
+		`omits QuickBooks transaction amount 4.00 from cited group "group-1"`,
+	)
 }
 
 func TestQuickBooksCandidatesAcceptCompleteSplitAmounts(t *testing.T) {
@@ -372,6 +381,41 @@ func TestQuickBooksUnresolvedPreservesSplitPostings(t *testing.T) {
 	require.Contains(t, text, "    [TODO:Account-2]  $-299.00")
 	require.Contains(t, text, "    [TODO:Counterposting]  $-200.00")
 	requireHledgerParses(t, text)
+}
+
+func TestQuickBooksUnresolvedWrongGroupAmountReportsAllowedAmounts(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Unresolved: []quickBooksAIUnresolved{{
+			GroupID: "group-1",
+			Date:    "2021-01-15",
+			KnownPostings: []quickBooksAIKnownPosting{{
+				QuickBooksAccount: "Land",
+				Amount:            "150000.00",
+			}},
+			MissingFact: "The remaining transaction lines are unavailable.",
+			Question:    "Which transaction group contains this split line?",
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
+			"group-1",
+			quickBooksRecord{
+				ID: "assets:2", Date: "2021-01-15",
+				Fields: map[string]string{"Amount": "25000.00"},
+			},
+			quickBooksRecord{
+				ID: "assets:3", Date: "2021-01-15",
+				Fields: map[string]string{"Amount": "400000.00"},
+			},
+		)},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`unresolved item 1 amount 150000.00 is not present in cited transaction `+
+			`group "group-1"; source amounts: 25000.00, 400000.00`,
+	)
 }
 
 func requireHledgerParses(t *testing.T, text string) {
@@ -635,6 +679,18 @@ func TestParseQuickBooksCents(t *testing.T) {
 		require.NoError(t, err, value)
 		require.Equal(t, expected, actual, value)
 	}
+}
+
+func TestQuickBooksSourceAmountsIncludesDecreaseAndIncrease(t *testing.T) {
+	amounts, err := quickBooksSourceAmounts([]quickBooksRecord{
+		{ID: "assets:2", Fields: map[string]string{"Decrease": "25000.00"}},
+		{ID: "assets:3", Fields: map[string]string{"Increase": "150000.00"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[int64]bool{
+		2500000:  true,
+		15000000: true,
+	}, amounts)
 }
 
 func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {

@@ -74,9 +74,10 @@ type quickBooksParseResult struct {
 var quickBooksKnownHeaders = map[string]bool{
 	"account": true, "account name": true, "amount": true, "balance": true,
 	"cleared": true, "credit": true, "date": true, "debit": true,
-	"deposit": true, "description": true,
+	"decrease": true, "deposit": true, "description": true,
 	"distribution account": true, "memo": true, "name": true, "num": true,
-	"number": true, "payee": true, "payment": true, "transaction date": true,
+	"increase": true, "number": true, "payee": true, "payment": true,
+	"transaction date": true,
 	"transaction type": true, "type": true,
 }
 
@@ -361,7 +362,8 @@ func quickBooksTotalRow(headers, values []string) bool {
 		switch normalizeQuickBooksHeader(headers[index]) {
 		case "column_1":
 			label = strings.ToLower(strings.TrimSpace(value))
-		case "amount", "balance", "payment", "deposit", "debit", "credit":
+		case "amount", "balance", "payment", "deposit", "debit", "credit",
+			"decrease", "increase":
 		default:
 			return false
 		}
@@ -618,7 +620,8 @@ func quickBooksHeaderRow(rows [][]string) (int, error) {
 		hasDate := headers["transaction date"] || headers["date"]
 		hasMoney := headers["amount"] || headers["balance"] ||
 			headers["deposit"] || headers["payment"] ||
-			headers["debit"] || headers["credit"]
+			headers["debit"] || headers["credit"] ||
+			headers["decrease"] || headers["increase"]
 		if !hasDate || !hasMoney {
 			continue
 		}
