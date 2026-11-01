@@ -1,0 +1,201 @@
+
+2021-01-15 ! Purchase of Caspar Water Company
+    Asset:104.000:Company:Purchase   $500000.00
+    Equity:218.000:Owner:Equity       $-500000.00
+
+2021-01-13 ! Momsen Law Offices | Easements for Caspar purchase
+    Expense:650.201:Operations:Legal  $1280.00
+    Equity:218.000:Owner:Equity         $-1280.00
+
+2021-01-15 ! CA SoS | Rename Caspar Water Company
+    Expense:689.000:General:Admin      $30.00
+    Equity:218.000:Owner:Equity  $-30.00
+
+2021-01-26 ! CA SoS | Secretary Of State certificate
+    Expense:689.000:General:Admin      $5.00
+    Equity:218.000:Owner:Equity  $-5.00
+
+2021-01-26 ! CA SoS | Secretary Of State business filing
+    Expense:689.000:General:Admin      $35.00
+    Equity:218.000:Owner:Equity  $-35.00
+
+2021-02-05 ! Momsen Law Offices | Easements for Caspar purchase
+    Expense:650.201:Operations:Legal  $870.00
+    Equity:218.000:Owner:Equity         $-870.00
+
+2021-02-19 ! Alarcon Insurance | 2021 liability insurance
+    Expense:684:Insurance    $1989.76
+    Equity:218.000:Owner:Equity  $-1989.76
+
+2021-02-26 ! PG&E | Electricity
+    Expense:615.000:Electricity  $207.63
+    Equity:218.000:Owner:Equity  $-207.63
+
+2021-03-09 ! Feiner Fixings | Water treatment
+    Expense:650.200:Operations:Treatment  $248.00
+    Expense:640.000:Chemical:Chlorine  $30.00
+    Equity:218.000:Owner:Equity  $-278.00
+
+2021-03-30 ! PG&E | Electricity
+    Expense:615.000:Electricity  $102.03
+    Equity:218.000:Owner:Equity  $-102.03
+
+2021-04-02 ! Feiner Fixings | Water treatment
+    Expense:650.200:Operations:Treatment  $200.00
+    Expense:640.000:Chemical:Chlorine  $15.00
+    Equity:218.000:Owner:Equity  $-215.00
+
+2021-04-22 ! Alpha Labs | Standard raw water testing
+    Expense:650.100:Testing:Lab  $1630.00
+    Equity:218.000:Owner:Equity  $-1630.00
+
+2021-04-26 ! PG&E | Electricity
+    Expense:615.000:Electricity  $109.67
+    Equity:218.000:Owner:Equity  $-109.67
+
+2021-04-30 ! Eeger Beever | Tree clearing near tanks
+    Expense:650.212:Maintenance:Vegetation  $1670.00
+    Equity:218.000:Owner:Equity  $-1670.00
+
+2021-05-09 ! Journal | Paint over graffiti, fire extinguisher, roof on pump house
+    ; roofing material, paint
+    Expense:640.000:Material:Building    $200.00
+    ; fire extinguisher
+    Expense:689.001:General:Equipment    $80.00
+    Expense:671.000:Salary:Manager       $240.000
+    Equity:218.000:Owner:Equity          $-280.00
+    Equity:218.001:Owner:Unpaid          $-240.00
+
+2021-05-25 ! PG&E | Electricity
+    Expense:615.000:Electricity  $111.88
+    Equity:218.000:Owner:Equity  $-111.88
+
+2021-06-01 ! Scotty Gingell | Electrical service at pump house
+    Expense:650.213:Maintenance:Building  $234.93
+    Equity:218.000:Owner:Equity  $-234.93
+
+2021-06-10 ! Feiner Fixings | Water treatment
+    Expense:640.000:Chemical:Chlorine  $40.00
+    Expense:650.200:Operations:Treatment  $400.00
+    Equity:218.000:Owner:Equity  $-440.00
+
+2021-06-18 ! Coast Cinemas | Gift for Steve Horne
+    Expense:426.010:Non-Utility:Misc  $80.00
+    Equity:218.000:Owner:Equity  $-80.00
+
+2021-06-24 ! PG&E | Electricity
+    Expense:615.000:Electricity  $155.41
+    Equity:218.000:Owner:Equity  $-155.41
+
+2021-06-25 ! Superior Pump and Drilling | Leak repair at upper well
+    Expense:650.211:Maintenance:Plumbing  $212.60
+    Equity:218.000:Owner:Equity  $-212.60
+
+2021-07-13 ! Feiner Fixings | Water treatment
+    Expense:640.000:Chemical:Chlorine  $30.00
+    Expense:650.200:Operations:Treatment  $200.00
+    Equity:218.000:Owner:Equity  $-230.00
+
+2021-07-26 ! PG&E | Electricity
+    Expense:615.000:Electricity  $158.22
+    Equity:218.000:Owner:Equity  $-158.22
+
+2021-07-30 ! Journal | Digging for new flush valve, sand backfill
+    Expense:640.002:Material:Pipeline       $100.00
+    Expense:671.000:Salary:Manager          $300.00
+    Equity:218.000:Owner:Equity             $-100.00
+    Equity:218.001:Owner:Unpaid             $-300.00
+
+2021-08-13 ! Feiner Fixings | Water treatment
+    Expense:650.200:Operations:Treatment  $160.00
+    Equity:218.000:Owner:Equity  $-160.00
+
+2021-08-25 ! PG&E | Electricity
+    Expense:615.000:Electricity  $62.91
+    Equity:218.000:Owner:Equity  $-62.91
+
+2021-09-09 ! Kibesilah Rock Co | Rock for the driveway
+    Expense:640.001:Material:Building  $-783.41
+    Equity:218.000:Owner:Equity  $783.41
+
+2021-09-10 ! Terry Casey | Driveway clearing & rock spreading / leveling
+    Expense:650.213:Maintenance:Building  $900.00
+    Equity:218.000:Owner:Equity  $-900.00
+
+2021-09-14 ! Feiner Fixings | Water treatment
+    Expense:640.000:Chemical:Chlorine  $40.00
+    Expense:650.200:Operations:Treatment  $200.00
+    Equity:218.000:Owner:Equity  $-240.00
+
+2021-09-20 ! Plastic Mart | Six emergency water tanks
+    Asset:151.000:Equipment:Stored  $-2222.14
+    Equity:218.000:Owner:Equity  $2222.14
+
+2021-09-23 ! Saul Uitz | For cement slab water of new treatment facility
+    Asset:105.001:Plant:Construction  $-4227.00
+    Equity:218.000:Owner:Equity  $4227.00
+
+2021-09-23 ! PG&E | Electricity
+    Expense:615.000:Electricity  $61.42
+    Equity:218.000:Owner:Equity  $-61.42
+
+2021-09-24 ! California Water Board | Water operator test
+    Expense:688.001:Regulatory:Certification:Owner  $50.00
+    Equity:218.000:Owner:Equity  $-50.00
+
+2021-09-30 ! Superior Pump and Drilling | Major repair at Caspar Road flush valve
+    Asset:105.002:Pipeline:Construction  $12213.52
+    Equity:218.000:Owner:Equity  $-12213.52
+
+2021-10-17 ! U-Line | Water transfer tank
+    Asset:151.000:Equipment:Stored  $126.42
+    Asset:151.000:Equipment:Stored  $525.00
+    Equity:218.000:Owner:Equity  $-126.42
+    Equity:218.000:Owner:Equity  $-525.00
+
+2021-10-25 ! PG&E | Electricity
+    Expense:615.000:Electricity  $51.25
+    Equity:218.000:Owner:Equity  $-51.25
+
+2021-10-30 ! Covers and All | Water transfer tank cover
+    Asset:151.000:Equipment:Stored  $165.07
+    Asset:151.000:Equipment:Stored  $13.00
+    Equity:218.000:Owner:Equity  $-178.07
+
+2021-11-09 ! Alpha Labs | Asbestos, copper and lead tests
+    Expense:650.100:Testing:Lab    $625.00
+    Equity:218.000:Owner:Equity  $-625.00
+
+2021-11-10 ! Savings Bank of Mendocino | Opening balance
+    Bank:131.001:SBMC:4660  $10000.00
+    Equity:218.000:Owner:Equity  $-10000.00
+
+2021-11-15 ! Feiner Fixings | Water treatment
+    Expense:640.000:Chemical:Chlorine  $30.00
+    Expense:650.200:Operations:Treatment  $320.00
+    Equity:218.000:Owner:Equity  $-350.00
+
+2021-11-17 ! Deluxe Business | Bank checks
+    Expense:682:Office:Supplies  $-132.97
+    Equity:218.000:Owner:Equity  $132.97
+
+2021-11-19 ! Mendocino County Tax Collector | 2021-2022 parcel 118-090-12
+    Expense:408.101:Tax:Property:Plant:118-090-13  $1946.70
+    Equity:218.000:Owner:Equity  $-1946.70
+
+2021-11-24 PG&E | Electricity
+    ; id: 999172a757a02230a48a327f476632dc
+    Expense:615.000:Electricity  $43.07
+    Bank:131.2:SBMC:4660  $-43.07
+
+2021-12-15 Feiner Fixings | Water treatment
+    ; id: 6d544aef876633158c107c56aaba16bb
+    ; reference: 1001
+    Expense:640.000:Chemical:Chlorine  $40.00
+    Expense:650.200:Operations:Treatment  $200.00
+    Bank:131.2:SBMC:4660  $-240.00
+
+2021-12-23 PG&E | Electricity
+    ; id: 0723deb22461d7647d1bfd861c0527c7
+    Expense:615.000:Electricity  $43.95
+    Bank:131.2:SBMC:4660  $-43.95

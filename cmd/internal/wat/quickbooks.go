@@ -492,6 +492,7 @@ func (b *Books) InspectQuickBooks(
 	basisCounts := make(map[string]int)
 	monthCounts := make(map[string]int)
 	ambiguousCount := 0
+	sourceOverlapCount := 0
 	for _, group := range groups {
 		basisCounts[group.MatchBasis]++
 		if len(group.Date) >= 7 {
@@ -499,6 +500,9 @@ func (b *Books) InspectQuickBooks(
 		}
 		if group.Ambiguous {
 			ambiguousCount++
+		}
+		if group.SourceAmountsMayOverlap {
+			sourceOverlapCount++
 		}
 	}
 	bases := make([]string, 0, len(basisCounts))
@@ -528,6 +532,7 @@ func (b *Books) InspectQuickBooks(
 	}
 	fmt.Fprintln(output)
 	fmt.Fprintf(output, "  ambiguous groups: %d\n", ambiguousCount)
+	fmt.Fprintf(output, "  source-amount-overlap groups: %d\n", sourceOverlapCount)
 	for _, group := range groups {
 		if len(group.Records) == 1 {
 			continue
@@ -535,6 +540,8 @@ func (b *Books) InspectQuickBooks(
 		label := "matched"
 		if group.Ambiguous {
 			label = "ambiguous"
+		} else if group.SourceAmountsMayOverlap {
+			label = "source-amount-overlap"
 		}
 		fmt.Fprintf(
 			output,

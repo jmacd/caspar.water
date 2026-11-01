@@ -147,9 +147,13 @@ not make the new file-backed workspace Pond-authoritative.
    bank history or guess a balancing account.
 5. **Accept safely.** Preserve the generated draft, make a separate working
    copy under `wat/review/`, and edit it with Wat stopped. Keep unresolved
-   virtual-posting templates in that private working file. Replace their
-   placeholders and remove posting brackets only when the accounts are
-   supported. Copy only completed, reviewed entries into
+   virtual-posting templates in that private working file. Square-bracketed
+   postings preserve the supported signed account side and supply an explicit
+   TODO counterposting. Parenthesized `TODO:Source-Magnitude` postings are used
+   only when cross-report amounts may overlap; do not add or balance those
+   magnitudes automatically. Replace the complete template with supported
+   accounts, directions, and any missing amounts. Copy only completed, reviewed
+   entries into
    `wat/books/manual.journal`, make a private backup first, and run
    `go run ./cmd/wat --config wat/wat.yaml check` after each small batch. Never
    edit generated `accounts.journal` or `books.journal`. A future bulk importer

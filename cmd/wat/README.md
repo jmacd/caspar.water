@@ -127,16 +127,17 @@ processed one month at a time by the configured Azure or Ollama model. Existing
 transactions after that year are supplied as account-classification examples.
 The model must use exact configured Wat accounts and produce balanced entries;
 Wat rejects invented accounts, unbalanced postings, malformed dates, duplicate
-candidates, configured-bank postings without a cited cash-source row, incomplete
-group coverage, reused group IDs, omitted split amounts, and non-JSON responses.
-Every dated source row belongs to one immutable deterministic transaction
-group, and every group must become exactly one balanced candidate or unresolved
-item. Unresolved items preserve all known split postings and render as one
-compact review comment, a `;` separator, and an uncommented pending transaction
-template. Balanced virtual placeholder postings make the template valid hledger
-syntax for text-editor highlighting without making it an accepted real entry.
-A reviewer must replace the placeholders and remove the brackets before moving
-the completed entry into the books.
+candidates that post to a configured bank without a cited cash-source row,
+incomplete group coverage, reused group IDs, omitted split amounts, and non-JSON
+responses. Every dated source row belongs to one immutable deterministic
+transaction group, and every group must become exactly one balanced candidate
+or unresolved item. Ordinary unresolved items preserve signed account-side
+postings and use balanced virtual placeholders for an editable hledger
+template. When one transaction group spans multiple non-cash report files, Wat
+marks that its source amounts may overlap as aggregate and component views,
+renders only unbalanced `(TODO:Source-Magnitude:...)` evidence, and refuses to
+manufacture a counterposting. A reviewer must replace all placeholders with
+complete supported postings before moving an entry into the books.
 
 The local runner scans its read-only inbox when no filenames are supplied:
 
@@ -156,9 +157,10 @@ model:
 Inspection reports content hashes, normalized headers and row classes, date
 coverage, annual counts, report sections, totals, and selected-year transaction
 types. It also groups selected-year rows conservatively before any model call,
-reports group counts by month and match basis, and lists every multi-row or
-ambiguous group with its contributing source rows. Finally, it inventories
-report sections and account, account-name, and distribution-account labels for
+reports group counts by month and match basis, counts groups whose cross-report
+source amounts may overlap, and lists every multi-row group with its
+classification and contributing source rows. Finally, it inventories report
+sections and account, account-name, and distribution-account labels for
 deterministic mapping review. It does not call a model or modify the books.
 
 Review those source categories in Wat instead of deciding mappings in a prompt:

@@ -17,7 +17,9 @@ import (
 
 func testQuickBooksGroup(id string, records ...quickBooksRecord) quickBooksTransactionGroup {
 	return quickBooksTransactionGroup{
-		ID: id, Date: records[0].Date, MatchBasis: "single", Records: records,
+		ID: id, Date: records[0].Date, MatchBasis: "single",
+		SourceAmountsMayOverlap: quickBooksSourceAmountsMayOverlap(records),
+		Records:                 records,
 	}
 }
 
@@ -347,40 +349,78 @@ func TestQuickBooksUnresolvedRendersEditableTemplate(t *testing.T) {
 	requireHledgerParses(t, text)
 }
 
-func TestQuickBooksUnresolvedPreservesSplitPostings(t *testing.T) {
+func TestQuickBooksUnresolvedMayEntryRendersUnsignedSourceEvidence(t *testing.T) {
 	text, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{},
 		Unresolved: []quickBooksAIUnresolved{{
-			GroupID: "group-1", Date: "2021-07-30",
-			Description: "Incomplete journal entry",
+			GroupID: "group-1", Date: "2021-05-09",
+			Description: "Paint over graffiti, fire extinguisher, roof on pump house",
 			KnownPostings: []quickBooksAIKnownPosting{
+				{QuickBooksAccount: "Labor invested", Amount: "-299.00"},
 				{QuickBooksAccount: "Maintenance", Amount: "499.00"},
-				{QuickBooksAccount: "Invested labor", Amount: "-299.00"},
 			},
-			MissingFact: "The remaining journal line is unavailable.",
-			Question:    "What account received the remaining 200.00 credit?",
+			MissingFact: "Posting directions and the materials component are unavailable.",
+			Question:    "What are the complete postings for this transaction?",
 		}},
 		Warnings: []string{},
 	}, quickBooksAIInput{
-		Year: 2021, Month: "2021-07",
+		Year: 2021, Month: "2021-05",
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
 			quickBooksRecord{
-				ID: "expense:2", Date: "2021-07-30",
-				Fields: map[string]string{"Amount": "499.00"},
+				ID: "income:4", Source: "income.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "299.00"},
 			},
 			quickBooksRecord{
-				ID: "income:2", Date: "2021-07-30",
-				Fields: map[string]string{"Amount": "-299.00"},
+				ID: "expense:5", Source: "expenses.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "499.00"},
 			},
 		)},
 	})
 	require.NoError(t, err)
-	require.Contains(t, text, "; Sources: expense:2, income:2 | QuickBooks: Maintenance, Invested labor")
-	require.Contains(t, text, "    [TODO:Account-1]  $499.00")
-	require.Contains(t, text, "    [TODO:Account-2]  $-299.00")
-	require.Contains(t, text, "    [TODO:Counterposting]  $-200.00")
+	require.Contains(t, text, "; UNCERTAIN: cross-report source amounts may overlap")
+	require.Contains(t, text, "; Sources: income:4, expense:5 | QuickBooks: Labor invested, Maintenance")
+	require.Contains(t, text, "    (TODO:Source-Magnitude:Account-1)  $299.00")
+	require.Contains(t, text, "    (TODO:Source-Magnitude:Account-2)  $499.00")
+	require.NotContains(t, text, "798.00")
+	require.NotContains(t, text, "TODO:Counterposting")
 	requireHledgerParses(t, text)
+}
+
+func TestQuickBooksCandidatesRejectOverlappingCrossReportAmounts(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{{
+			GroupID: "group-1",
+			Date:    "2021-05-09", Payee: "Owner", Confidence: "low",
+			Postings: []quickBooksAIPosting{
+				{Account: "Equity:Labor", Amount: "299.00"},
+				{Account: "Expense:Maintenance", Amount: "499.00"},
+				{Account: "Equity:Owner", Amount: "-798.00"},
+			},
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-05",
+		ConfiguredAccounts: []string{
+			"Equity:Labor", "Expense:Maintenance", "Equity:Owner",
+		},
+		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
+			"group-1",
+			quickBooksRecord{
+				ID: "income:4", Source: "income.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "299.00"},
+			},
+			quickBooksRecord{
+				ID: "expense:5", Source: "expenses.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "499.00"},
+			},
+		)},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`cross-report source amounts may overlap; it must remain unresolved`,
+	)
 }
 
 func TestQuickBooksUnresolvedWrongGroupAmountReportsAllowedAmounts(t *testing.T) {

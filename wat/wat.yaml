@@ -1,0 +1,48 @@
+version: 3
+name: Caspar Water
+accounts:
+  - Asset:104.000:Company:Purchase
+  - Asset:105.001:Plant:Construction
+  - Asset:105.002:Pipeline:Construction
+  - Asset:151.000:Equipment:Stored
+
+  - Equity:218.000:Owner:Equity
+  - Equity:218.001:Owner:Unpaid
+
+  - Expense:408.101:Tax:Property:Plant:118-090-13
+  - Expense:408.102:Tax:Property:Pasture:118-090-12
+  - Expense:426.010:Non-Utility:Misc
+
+  - Expense:615.000:Electricity
+
+  - Expense:640.000:Chemical:Chlorine
+  - Expense:640.001:Material:Building
+  - Expense:640.002:Material:Pipeline
+
+  - Expense:650.100:Testing:Lab
+  - Expense:650.200:Operations:Treatment
+  - Expense:650.201:Operations:Legal
+
+  - Expense:650.211:Maintenance:Plumbing
+  - Expense:650.212:Maintenance:Vegetation
+  - Expense:650.213:Maintenance:Building
+
+  - Expense:671.000:Salary:Manager
+
+  - Expense:682:Office:Supplies
+  - Expense:682:Legal:Business
+  - Expense:688.001:Regulatory:Certification:Owner
+  - Expense:689.000:General:Admin
+  - Expense:689.001:General:Equipment
+
+bank_accounts:
+  - Bank:131.001:SBMC:4660
+
+chart_defs:
+  - reference/cpuc-u39w.yaml
+
+statement:
+  python: python3.13
+  api_base: https://caspar-wat-ai.cognitiveservices.azure.com/
+  api_version: 2025-04-01-preview
+  model: azure/gpt-5-mini-statements

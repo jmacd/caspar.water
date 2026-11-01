@@ -104,6 +104,7 @@ func TestInspectQuickBooksReportsEveryUndatedNonemptyRow(t *testing.T) {
 	require.Contains(t, output.String(), "match basis: single=1")
 	require.Contains(t, output.String(), "groups by month: 2021-03=1")
 	require.Contains(t, output.String(), "ambiguous groups: 0")
+	require.Contains(t, output.String(), "source-amount-overlap groups: 0")
 	require.Contains(t, output.String(), "QuickBooks selected-year account labels (2021):")
 	require.Contains(t, output.String(), `account "Insurance": 1 source rows`)
 }
