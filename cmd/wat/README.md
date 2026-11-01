@@ -206,12 +206,13 @@ The master chart stores structured CPUC accounts:
 version: 2
 accounts:
   Asset:
-    - number: "104"
-      name: Water-Plant-Purchased-or-Sold
+    - name: Water-Plant-Purchased-or-Sold
+      number: "104"
       comment: Optional operator-facing explainer text.
+
   Expense:
-    - number: "615"
-      name: Electricity
+    - name: Electricity
+      number: "615"
 ```
 
 The formal account identity is displayed as

@@ -2,278 +2,406 @@
 # FOR CLASS B, C, AND D WATER UTILITIES
 # California Public Utilities Commission, Standard Practice U-39-W
 #
-# Add an optional single-line comment to any account. Wat prints it as
-# operator-facing explainer text.
+# https://www.cpuc.ca.gov/-/media/cpuc-website/divisions/water-division/reports/standard-practice/sp-u-39-w.pdf
+
 version: 2
 accounts:
   Asset:
-    - number: "101"
-      name: "Water-Plant-in-Service"
-    - number: "101.1"
-      name: "Water-Plant-in-Service-SDWBA"
-    - number: "101.2"
-      name: "Water-Plant-in-Service-Grant-Funds"
-    - number: "101.3"
-      name: "Water-Plant-in-Service-Other"
-    - number: "103"
-      name: "Water-Plant-Held-for-Future-Use"
-    - number: "104"
-      name: "Water-Plant-Purchased-or-Sold"
-    - number: "105"
-      name: "Construction-Work-in-Progress-Water-Plant"
-    - number: "105.1"
-      name: "Construction-Work-in-Progress-SDWBA"
-    - number: "105.2"
-      name: "Construction-Work-in-Progress-Grant-Funds"
-    - number: "105.3"
-      name: "Construction-Work-in-Progress-Other"
-    - number: "108"
-      name: "Accumulated-Depreciation-of-Water-Plant"
-    - number: "108.1"
-      name: "Accumulated-Amortization-of-SDWBA"
-    - number: "108.2"
-      name: "Accumulated-Depreciation-of-Water-Plant-Grant-Funds"
-    - number: "108.3"
-      name: "Accumulated-Depreciation-of-Water-Plant-Other"
-    - number: "114"
-      name: "Water-Plant-Acquisition-Adjustments"
-    - number: "121"
-      name: "Non-Water-Utility-Property-and-Other-Assets"
-    - number: "122"
-      name: "Accumulated-Depreciation-of-Non-Water-Utility-Property"
-    - number: "123"
-      name: "Investments-in-Affiliated-Companies"
-    - number: "124"
-      name: "Other-Investments"
-    - number: "131"
-      name: "Cash"
-    - number: "131.1"
-      name: "Cash-on-Hand"
-    - number: "131.2"
-      name: "Cash-in-Bank"
-    - number: "132"
-      name: "Cash-Special-Deposits"
-    - number: "141"
-      name: "Accounts-Receivable-Customers"
-    - number: "142"
-      name: "Receivables-from-Affiliated-Companies"
-    - number: "143"
-      name: "Accumulated-Provision-for-Uncollectible-Accounts"
-    - number: "151"
-      name: "Materials-and-Supplies"
-    - number: "174"
-      name: "Other-Current-Assets"
-    - number: "180"
-      name: "Deferred-Charges"
-    - number: "181"
-      name: "Accumulated-Deferred-Income-Tax-Assets"
-    - number: "301"
-      name: "Intangible-Plant"
-    - number: "303"
-      name: "Land"
-    - number: "304"
-      name: "Structures"
-    - number: "307"
-      name: "Wells"
-    - number: "311"
-      name: "Pumping-Equipment"
-    - number: "317"
-      name: "Other-Water-Source-Plant"
-    - number: "320"
-      name: "Water-Treatment-Plant"
-    - number: "330"
-      name: "Reservoirs,-Tanks-and-Standpipes"
-    - number: "331"
-      name: "Water-Mains"
-    - number: "333"
-      name: "Services-and-Meter-Installations"
-    - number: "334"
-      name: "Meters"
-    - number: "335"
-      name: "Hydrants"
-    - number: "339"
-      name: "Other-Equipment"
-    - number: "340"
-      name: "Office-Furniture-and-Equipment"
-    - number: "341"
-      name: "Transportation-Equipment"
+    - name: "Water-Plant-in-Service"
+      number: "101"
+
+    - name: "Water-Plant-in-Service-SDWBA"
+      number: "101.1"
+
+    - name: "Water-Plant-in-Service-Grant-Funds"
+      number: "101.2"
+
+    - name: "Water-Plant-in-Service-Other"
+      number: "101.3"
+
+    - name: "Water-Plant-Held-for-Future-Use"
+      number: "103"
+
+    - name: "Water-Plant-Purchased-or-Sold"
+      number: "104"
+
+    - name: "Construction-Work-in-Progress-Water-Plant"
+      number: "105"
+
+    - name: "Construction-Work-in-Progress-SDWBA"
+      number: "105.1"
+
+    - name: "Construction-Work-in-Progress-Grant-Funds"
+      number: "105.2"
+
+    - name: "Construction-Work-in-Progress-Other"
+      number: "105.3"
+
+    - name: "Accumulated-Depreciation-of-Water-Plant"
+      number: "108"
+
+    - name: "Accumulated-Amortization-of-SDWBA"
+      number: "108.1"
+
+    - name: "Accumulated-Depreciation-of-Water-Plant-Grant-Funds"
+      number: "108.2"
+
+    - name: "Accumulated-Depreciation-of-Water-Plant-Other"
+      number: "108.3"
+
+    - name: "Water-Plant-Acquisition-Adjustments"
+      number: "114"
+
+    - name: "Non-Water-Utility-Property-and-Other-Assets"
+      number: "121"
+
+    - name: "Accumulated-Depreciation-of-Non-Water-Utility-Property"
+      number: "122"
+
+    - name: "Investments-in-Affiliated-Companies"
+      number: "123"
+
+    - name: "Other-Investments"
+      number: "124"
+
+    - name: "Cash"
+      number: "131"
+
+    - name: "Cash-on-Hand"
+      number: "131.1"
+
+    - name: "Cash-in-Bank"
+      number: "131.2"
+
+    - name: "Cash-Special-Deposits"
+      number: "132"
+
+    - name: "Accounts-Receivable-Customers"
+      number: "141"
+
+    - name: "Receivables-from-Affiliated-Companies"
+      number: "142"
+
+    - name: "Accumulated-Provision-for-Uncollectible-Accounts"
+      number: "143"
+
+    - name: "Materials-and-Supplies"
+      number: "151"
+
+    - name: "Other-Current-Assets"
+      number: "174"
+
+    - name: "Deferred-Charges"
+      number: "180"
+
+    - name: "Accumulated-Deferred-Income-Tax-Assets"
+      number: "181"
+
+    - name: "Intangible-Plant"
+      number: "301"
+
+    - name: "Land"
+      number: "303"
+
+    - name: "Structures"
+      number: "304"
+
+    - name: "Wells"
+      number: "307"
+
+    - name: "Pumping-Equipment"
+      number: "311"
+
+    - name: "Other-Water-Source-Plant"
+      number: "317"
+
+    - name: "Water-Treatment-Plant"
+      number: "320"
+
+    - name: "Reservoirs,-Tanks-and-Standpipes"
+      number: "330"
+
+    - name: "Water-Mains"
+      number: "331"
+
+    - name: "Services-and-Meter-Installations"
+      number: "333"
+
+    - name: "Meters"
+      number: "334"
+
+    - name: "Hydrants"
+      number: "335"
+
+    - name: "Other-Equipment"
+      number: "339"
+
+    - name: "Office-Furniture-and-Equipment"
+      number: "340"
+
+    - name: "Transportation-Equipment"
+      number: "341"
 
   Liability:
-    - number: "224"
-      name: "Long-Term-Debt"
-    - number: "230"
-      name: "Payables-to-Affiliated-Companies"
-    - number: "231"
-      name: "Accounts-Payable"
-    - number: "232"
-      name: "Short-Term-Notes-Payable"
-    - number: "233"
-      name: "Customer-Deposits"
-    - number: "236"
-      name: "Taxes-Accrued"
-    - number: "237"
-      name: "Interest-Accrued"
-    - number: "237.1"
-      name: "Interest-Accrued-on-Long-Term-Debt"
-    - number: "237.2"
-      name: "Interest-Accrued-on-SDWBA-Loan"
-    - number: "237.3"
-      name: "Interest-Accrued-on-Other-Liabilities"
-    - number: "241"
-      name: "Other-Current-Liabilities"
-    - number: "252"
-      name: "Advances-for-Construction"
-    - number: "253"
-      name: "Other-Credits"
-    - number: "255"
-      name: "Accumulated-Deferred-Investment-Tax-Credits"
-    - number: "265"
-      name: "Contributions-in-Aid-of-Construction"
-    - number: "265.1"
-      name: "Government-Grant-and-Government-Grant-Contamination-Proceeds"
-    - number: "265.2"
-      name: "Government-Loan-Contamination-Proceeds"
-    - number: "265.3"
-      name: "Damage-Award-Contamination-Proceeds"
-    - number: "265.4"
-      name: "Settlement-Contamination-Proceeds"
-    - number: "265.5.1"
-      name: "Government-Order-Contamination-Proceeds-from-Private-Funds"
-    - number: "265.5.2"
-      name: "Government-Order-Contamination-Proceeds-from-Public-Funds"
-    - number: "265.6"
-      name: "Insurance-Contamination-Proceeds"
-    - number: "265.7"
-      name: "All-Other-Contributions-in-Aid-of-Construction"
-    - number: "272"
-      name: "Accumulated-Amortization-of-Contributions-Debit"
-    - number: "282"
-      name: "Accumulated-Deferred-Income-Taxes-Accelerated-Tax-Depreciation"
-    - number: "283"
-      name: "Accumulated-Deferred-Income-Tax-Liabilities"
+    - name: "Long-Term-Debt"
+      number: "224"
+
+    - name: "Payables-to-Affiliated-Companies"
+      number: "230"
+
+    - name: "Accounts-Payable"
+      number: "231"
+
+    - name: "Short-Term-Notes-Payable"
+      number: "232"
+
+    - name: "Customer-Deposits"
+      number: "233"
+
+    - name: "Taxes-Accrued"
+      number: "236"
+
+    - name: "Interest-Accrued"
+      number: "237"
+
+    - name: "Interest-Accrued-on-Long-Term-Debt"
+      number: "237.1"
+
+    - name: "Interest-Accrued-on-SDWBA-Loan"
+      number: "237.2"
+
+    - name: "Interest-Accrued-on-Other-Liabilities"
+      number: "237.3"
+
+    - name: "Other-Current-Liabilities"
+      number: "241"
+
+    - name: "Advances-for-Construction"
+      number: "252"
+
+    - name: "Other-Credits"
+      number: "253"
+
+    - name: "Accumulated-Deferred-Investment-Tax-Credits"
+      number: "255"
+
+    - name: "Contributions-in-Aid-of-Construction"
+      number: "265"
+
+    - name: "Government-Grant-and-Government-Grant-Contamination-Proceeds"
+      number: "265.1"
+
+    - name: "Government-Loan-Contamination-Proceeds"
+      number: "265.2"
+
+    - name: "Damage-Award-Contamination-Proceeds"
+      number: "265.3"
+
+    - name: "Settlement-Contamination-Proceeds"
+      number: "265.4"
+
+    - name: "Government-Order-Contamination-Proceeds-from-Private-Funds"
+      number: "265.5.1"
+
+    - name: "Government-Order-Contamination-Proceeds-from-Public-Funds"
+      number: "265.5.2"
+
+    - name: "Insurance-Contamination-Proceeds"
+      number: "265.6"
+
+    - name: "All-Other-Contributions-in-Aid-of-Construction"
+      number: "265.7"
+
+    - name: "Accumulated-Amortization-of-Contributions-Debit"
+      number: "272"
+
+    - name: "Accumulated-Deferred-Income-Taxes-Accelerated-Tax-Depreciation"
+      number: "282"
+
+    - name: "Accumulated-Deferred-Income-Tax-Liabilities"
+      number: "283"
 
   Equity:
-    - number: "201"
-      name: "Common-Stock"
-    - number: "204"
-      name: "Preferred-Stock"
-    - number: "206"
-      name: "Subchapter-S-Corporation-Accumulated-Adjustments-Account"
-    - number: "211"
-      name: "Other-Paid-in-Capital"
-    - number: "215"
-      name: "Retained-Earnings"
-    - number: "218"
-      name: "Proprietary-Capital"
-    - number: "218.1"
-      name: "Proprietary-Drawings"
+    - name: "Common-Stock"
+      number: "201"
+
+    - name: "Preferred-Stock"
+      number: "204"
+
+    - name: "Subchapter-S-Corporation-Accumulated-Adjustments-Account"
+      number: "206"
+
+    - name: "Other-Paid-in-Capital"
+      number: "211"
+
+    - name: "Retained-Earnings"
+      number: "215"
+
+    - name: "Proprietary-Capital"
+      number: "218"
+
+    - name: "Proprietary-Drawings"
+      number: "218.1"
 
   Income:
-    - number: "400"
-      name: "Operating-Revenues"
-    - number: "421"
-      name: "Non-Utility-income"
-    - number: "460"
-      name: "Unmetered-Water-Revenue"
-    - number: "460.1"
-      name: "Unmetered-Units-Billed-Individually"
-    - number: "460.2"
-      name: "Unmetered-Commercial-and-Multi-Residential"
-    - number: "460.3"
-      name: "Unmetered-Large-Water-Users"
-    - number: "460.4"
-      name: "Unmetered-Safe-Drinking-Water-Bond-Surcharge"
-    - number: "460.5"
-      name: "Unmetered-Other-Revenue"
-    - number: "462"
-      name: "Unmetered-Fire-Protection-Revenue"
-    - number: "462.1"
-      name: "Unmetered-Public-Fire-Protection"
-    - number: "462.2"
-      name: "Unmetered-Private-Fire-Protection"
-    - number: "465"
-      name: "Unmetered-Irrigation-Revenue"
-    - number: "470"
-      name: "Metered-Water-Revenue"
-    - number: "470.1"
-      name: "Metered-Units-Billed-Individually"
-    - number: "470.2"
-      name: "Metered-Commercial-and-Multi-Residential"
-    - number: "470.3"
-      name: "Metered-Large-Water-Users"
-    - number: "470.4"
-      name: "Metered-Safe-Drinking-Water-Bond-Surcharge"
-    - number: "470.5"
-      name: "Metered-Other-Revenue"
-    - number: "480"
-      name: "Other-Water-Revenue"
+    - name: "Operating-Revenues"
+      number: "400"
+
+    - name: "Non-Utility-income"
+      number: "421"
+
+    - name: "Unmetered-Water-Revenue"
+      number: "460"
+
+    - name: "Unmetered-Units-Billed-Individually"
+      number: "460.1"
+
+    - name: "Unmetered-Commercial-and-Multi-Residential"
+      number: "460.2"
+
+    - name: "Unmetered-Large-Water-Users"
+      number: "460.3"
+
+    - name: "Unmetered-Safe-Drinking-Water-Bond-Surcharge"
+      number: "460.4"
+
+    - name: "Unmetered-Other-Revenue"
+      number: "460.5"
+
+    - name: "Unmetered-Fire-Protection-Revenue"
+      number: "462"
+
+    - name: "Unmetered-Public-Fire-Protection"
+      number: "462.1"
+
+    - name: "Unmetered-Private-Fire-Protection"
+      number: "462.2"
+
+    - name: "Unmetered-Irrigation-Revenue"
+      number: "465"
+
+    - name: "Metered-Water-Revenue"
+      number: "470"
+
+    - name: "Metered-Units-Billed-Individually"
+      number: "470.1"
+
+    - name: "Metered-Commercial-and-Multi-Residential"
+      number: "470.2"
+
+    - name: "Metered-Large-Water-Users"
+      number: "470.3"
+
+    - name: "Metered-Safe-Drinking-Water-Bond-Surcharge"
+      number: "470.4"
+
+    - name: "Metered-Other-Revenue"
+      number: "470.5"
+
+    - name: "Other-Water-Revenue"
+      number: "480"
 
   Expense:
-    - number: "401"
-      name: "Operating-Expenses"
-    - number: "403"
-      name: "Depreciation-Expense"
-    - number: "407"
-      name: "SDWBA-Loan-Amortization-Expense"
-    - number: "408"
-      name: "Taxes-Other-than-Income-Taxes"
-    - number: "408.1"
-      name: "Property-Taxes"
-    - number: "408.2"
-      name: "Payroll-Taxes"
-    - number: "408.3"
-      name: "Other-Taxes-and-Licenses"
-    - number: "409"
-      name: "State-Corporate-Income-Tax-Expense"
-    - number: "410"
-      name: "Federal-Corporate-Income-Tax-Expense"
-    - number: "426"
-      name: "Miscellaneous-Non-Utility-Expense"
-    - number: "427"
-      name: "Interest-Expense"
-    - number: "610"
-      name: "Purchased-Water"
-    - number: "615"
-      name: "Power"
-    - number: "618"
-      name: "Other-Volume-Related-Expenses"
-    - number: "630"
-      name: "Employee-Labor"
-    - number: "640"
-      name: "Materials"
-    - number: "650"
-      name: "Contract-Work"
-    - number: "650.1"
-      name: "Contract-Water-Quality-and-Testing-Work"
-    - number: "650.2"
-      name: "Other-Contract-Work"
-    - number: "660"
-      name: "Transportation-Expense"
-    - number: "664"
-      name: "Other-Plant-Maintenance-Expenses"
-    - number: "670"
-      name: "Office-Salaries"
-    - number: "671"
-      name: "Management-Salaries"
-    - number: "674"
-      name: "Employee-Pensions-and-Benefits"
-    - number: "676"
-      name: "Uncollectible-Accounts-Expense"
-    - number: "678"
-      name: "Office-Services-and-Rentals"
-    - number: "681"
-      name: "Office-Supplies-and-Expenses"
-    - number: "682"
-      name: "Professional-Services"
-    - number: "684"
-      name: "Insurance"
-    - number: "688"
-      name: "Regulatory-Compliance-Expense"
-    - number: "689"
-      name: "General-Expenses"
-    - number: "800"
-      name: "Expenses-Capitalized"
-    - number: "900"
-      name: "Clearing-Accounts"
-    - number: "900.1"
-      name: "Payroll-Clearing"
+    - name: "Operating-Expenses"
+      number: "401"
+
+    - name: "Depreciation-Expense"
+      number: "403"
+
+    - name: "SDWBA-Loan-Amortization-Expense"
+      number: "407"
+
+    - name: "Taxes-Other-than-Income-Taxes"
+      number: "408"
+
+    - name: "Property-Taxes"
+      number: "408.1"
+
+    - name: "Payroll-Taxes"
+      number: "408.2"
+
+    - name: "Other-Taxes-and-Licenses"
+      number: "408.3"
+
+    - name: "State-Corporate-Income-Tax-Expense"
+      number: "409"
+
+    - name: "Federal-Corporate-Income-Tax-Expense"
+      number: "410"
+
+    - name: "Miscellaneous-Non-Utility-Expense"
+      number: "426"
+
+    - name: "Interest-Expense"
+      number: "427"
+
+    - name: "Purchased-Water"
+      number: "610"
+
+    - name: "Power"
+      number: "615"
+
+    - name: "Other-Volume-Related-Expenses"
+      number: "618"
+
+    - name: "Employee-Labor"
+      number: "630"
+
+    - name: "Materials"
+      number: "640"
+
+    - name: "Contract-Work"
+      number: "650"
+
+    - name: "Contract-Water-Quality-and-Testing-Work"
+      number: "650.1"
+
+    - name: "Other-Contract-Work"
+      number: "650.2"
+      comment: "Contract work tied to operations, including work on easements."
+
+    - name: "Transportation-Expense"
+      number: "660"
+
+    - name: "Other-Plant-Maintenance-Expenses"
+      number: "664"
+
+    - name: "Office-Salaries"
+      number: "670"
+
+    - name: "Management-Salaries"
+      number: "671"
+
+    - name: "Employee-Pensions-and-Benefits"
+      number: "674"
+
+    - name: "Uncollectible-Accounts-Expense"
+      number: "676"
+
+    - name: "Office-Services-and-Rentals"
+      number: "678"
+
+    - name: "Office-Supplies-and-Expenses"
+      number: "681"
+
+    - name: "Professional-Services"
+      number: "682"
+      comment: "Legal services not tied to operations, e.g., becoming a district"
+
+    - name: "Insurance"
+      number: "684"
+
+    - name: "Regulatory-Compliance-Expense"
+      number: "688"
+
+    - name: "General-Expenses"
+      number: "689"
+
+    - name: "Expenses-Capitalized"
+      number: "800"
+
+    - name: "Clearing-Accounts"
+      number: "900"
+
+    - name: "Payroll-Clearing"
+      number: "900.1"
