@@ -1,5 +1,8 @@
 version: 3
 name: Caspar Water
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
 accounts:
   - Asset:104.000:Company:Purchase
   - Asset:105.401:Plant:Construction
@@ -9,9 +12,13 @@ accounts:
   - Equity:218.400:Owner:Equity
   - Equity:218.401:Owner:Unpaid
 
+  - Liability:236.001:Tax:Accrued:Plant:118-090-13
+  - Liability:236.002:Tax:Accrued:Pasture:118-090-12
+
   - Expense:408.101:Tax:Property:Plant:118-090-13
   - Expense:408.102:Tax:Property:Pasture:118-090-12
   - Expense:426.010:Non-Utility:Misc
+  - Expense:426.011:Non-Utility:Penalty
 
   - Expense:615.000:Electricity
 

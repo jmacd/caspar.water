@@ -179,22 +179,26 @@
     Equity:218.400:Owner:Equity  $-132.97
 
 2021-11-19 ! Mendocino County Tax Collector | 2021-2022 parcel 118-090-12
-    Expense:408.101:Tax:Property:Plant:118-090-13  $1946.70
+    Expense:408.102:Tax:Property:Pasture:118-090-12  $1946.70
     Equity:218.400:Owner:Equity  $-1946.70
 
-2021-11-24 PG&E | Electricity
+2021-11-24 ! PG&E | Electricity
     ; id: 999172a757a02230a48a327f476632dc
     Expense:615.000:Electricity  $43.07
     Bank:131.401:SBMC:4660  $-43.07
 
-2021-12-15 Feiner Fixings | Water treatment
+2021-12-15 ! Feiner Fixings | Water treatment
     ; id: 6d544aef876633158c107c56aaba16bb
     ; reference: 1001
     Expense:640.000:Chemical:Chlorine  $40.00
     Expense:650.200:Operations:Treatment  $200.00
     Bank:131.401:SBMC:4660  $-240.00
 
-2021-12-23 PG&E | Electricity
+2021-12-23 ! PG&E | Electricity
     ; id: 0723deb22461d7647d1bfd861c0527c7
     Expense:615.000:Electricity  $43.95
     Bank:131.401:SBMC:4660  $-43.95
+
+2021-12-31 ! Mendocino County Tax Collector | 2021-2022 parcel 118-090-13 (paid 1/25/2022)
+    Expense:408.101:Tax:Property:Plant:118-090-13   $1271.37
+    Liability:236.001:Tax:Accrued:Plant:118-090-13  $-1271.37

@@ -26,19 +26,22 @@ var (
 )
 
 type Config struct {
-	Version            int                 `yaml:"version"`
-	Name               string              `yaml:"name"`
-	Accounts           []string            `yaml:"accounts"`
-	BankAccounts       []BankAccountConfig `yaml:"bank_accounts"`
-	ChartDefPaths      []string            `yaml:"chart_defs,omitempty"`
-	Statement          StatementConfig     `yaml:"statement"`
-	Journal            string              `yaml:"-"`
-	ChartDefs          []string            `yaml:"-"`
-	LocalAccounts      string              `yaml:"-"`
-	ManualJournal      string              `yaml:"-"`
-	Sources            string              `yaml:"-"`
-	QuickBooksMappings string              `yaml:"-"`
-	root               string
+	Version                int                 `yaml:"version"`
+	Name                   string              `yaml:"name"`
+	Accounts               []string            `yaml:"accounts"`
+	BankAccounts           []BankAccountConfig `yaml:"bank_accounts"`
+	ChartDefPaths          []string            `yaml:"chart_defs,omitempty"`
+	ManualJournalPath      string              `yaml:"manual_journal,omitempty"`
+	HistoricalJournalPaths []string            `yaml:"historical_journals,omitempty"`
+	Statement              StatementConfig     `yaml:"statement"`
+	Journal                string              `yaml:"-"`
+	ChartDefs              []string            `yaml:"-"`
+	LocalAccounts          string              `yaml:"-"`
+	ManualJournal          string              `yaml:"-"`
+	HistoricalJournals     []string            `yaml:"-"`
+	Sources                string              `yaml:"-"`
+	QuickBooksMappings     string              `yaml:"-"`
+	root                   string
 }
 
 type BankAccountConfig struct {
@@ -98,7 +101,25 @@ func LoadConfig(path string) (Config, error) {
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
-	cfg.ManualJournal = filepath.Join(books, manualJournal)
+	manualPath := cfg.ManualJournalPath
+	if manualPath == "" {
+		manualPath = filepath.Join(booksDirectory, manualJournal)
+	}
+	cfg.ManualJournal, err = resolveBookJournalPath(cfg.root, "manual_journal", manualPath)
+	if err != nil {
+		return cfg, err
+	}
+	for index, path := range cfg.HistoricalJournalPaths {
+		resolved, err := resolveBookJournalPath(
+			cfg.root,
+			fmt.Sprintf("historical_journals[%d]", index),
+			path,
+		)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.HistoricalJournals = append(cfg.HistoricalJournals, resolved)
+	}
 	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
 	cfg.QuickBooksMappings = filepath.Join(cfg.root, "quickbooks-mappings.yaml")
 	if cfg.ChartDefPaths == nil {
@@ -131,7 +152,23 @@ func LoadConfig(path string) (Config, error) {
 
 	accounts := make(map[string]bool)
 	identifiers := make(map[string]bool)
-	journals := make(map[string]bool)
+	journals := map[string]bool{
+		cfg.Journal:       true,
+		cfg.LocalAccounts: true,
+	}
+	if journals[cfg.ManualJournal] {
+		return cfg, fmt.Errorf("manual_journal conflicts with a generated workspace journal")
+	}
+	journals[cfg.ManualJournal] = true
+	for index, journal := range cfg.HistoricalJournals {
+		if journals[journal] {
+			return cfg, fmt.Errorf(
+				"historical_journals[%d] conflicts with another configured journal",
+				index,
+			)
+		}
+		journals[journal] = true
+	}
 	for index, name := range cfg.Accounts {
 		account, valid := parsePostingAccount(name)
 		if !valid || account.Category == "Bank" {
@@ -166,12 +203,19 @@ func LoadConfig(path string) (Config, error) {
 		}
 		bank.Journal = filepath.Join(books, bankJournalFilename(bank.Account))
 		if journals[bank.Journal] {
-			return cfg, fmt.Errorf("bank accounts derive the same journal filename %s", bankJournalFilename(bank.Account))
+			return cfg, fmt.Errorf(
+				"bank account %q journal conflicts with another configured journal",
+				bank.Account,
+			)
 		}
 		accounts[bank.Account], identifiers[identifier], journals[bank.Journal] = true, true, true
 	}
 	reserved := append(
 		[]string{absolute, cfg.Journal, cfg.LocalAccounts, cfg.ManualJournal, cfg.QuickBooksMappings},
+		cfg.HistoricalJournals...,
+	)
+	reserved = append(
+		reserved,
 		cfg.writableJournals()...,
 	)
 	for index, chartDef := range cfg.ChartDefs {
@@ -193,6 +237,24 @@ func bankJournalFilename(account string) string {
 	tail := strings.ToLower(strings.Join(parts[2:], "-"))
 	tail = filenameSeparatorPattern.ReplaceAllString(tail, "-")
 	return "bank-" + tail + ".journal"
+}
+
+func resolveBookJournalPath(root, label, path string) (string, error) {
+	if strings.TrimSpace(path) != path ||
+		!singleLine(path) ||
+		!filepath.IsLocal(path) ||
+		filepath.Clean(path) == "." {
+		return "", fmt.Errorf("%s must be a workspace-relative journal path inside books", label)
+	}
+	clean := filepath.Clean(path)
+	if ext := filepath.Ext(clean); ext != ".journal" && ext != ".ledger" {
+		return "", fmt.Errorf("%s must name a .journal or .ledger file inside books", label)
+	}
+	resolved := filepath.Join(root, clean)
+	if !within(filepath.Join(root, booksDirectory), resolved) {
+		return "", fmt.Errorf("%s must name a journal inside books", label)
+	}
+	return resolved, nil
 }
 
 func validLocalAccountName(name string) bool {

@@ -170,6 +170,112 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestYearlyManualJournalConfiguration(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "wat.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`version: 3
+name: Water
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
+`), 0600))
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(cfg.root, "books", "manual-2022.journal"), cfg.ManualJournal)
+	require.Equal(
+		t,
+		[]string{filepath.Join(cfg.root, "books", "manual-2021.journal")},
+		cfg.HistoricalJournals,
+	)
+	require.True(t, cfg.writableJournal(cfg.ManualJournal))
+	require.False(t, cfg.writableJournal(cfg.HistoricalJournals[0]))
+}
+
+func TestManualJournalPathValidation(t *testing.T) {
+	base := "version: 3\nname: Water\n"
+	for _, tc := range []struct {
+		name, yaml, message string
+	}{
+		{
+			name:    "manual outside books",
+			yaml:    "manual_journal: manual-2022.journal\n",
+			message: "must name a journal inside books",
+		},
+		{
+			name:    "manual wrong extension",
+			yaml:    "manual_journal: books/manual-2022.txt\n",
+			message: "must name a .journal or .ledger file",
+		},
+		{
+			name: "active also historical",
+			yaml: "manual_journal: books/manual-2022.journal\n" +
+				"historical_journals:\n  - books/manual-2022.journal\n",
+			message: "conflicts with another configured journal",
+		},
+		{
+			name: "normalized historical duplicate",
+			yaml: "historical_journals:\n" +
+				"  - books/manual-2021.journal\n" +
+				"  - books/archive/../manual-2021.journal\n",
+			message: "conflicts with another configured journal",
+		},
+		{
+			name:    "generated journal",
+			yaml:    "manual_journal: books/accounts.journal\n",
+			message: "conflicts with a generated workspace journal",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "wat.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(base+tc.yaml), 0600))
+			_, err := LoadConfig(path)
+			require.ErrorContains(t, err, tc.message)
+		})
+	}
+}
+
+func TestYearlyManualJournalWorkspace(t *testing.T) {
+	if _, err := exec.LookPath("hledger"); err != nil {
+		t.Skip("hledger integration tests require hledger on PATH")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "reference"), 0700))
+	for name, text := range map[string]string{
+		"wat.yaml": `version: 3
+name: Test Water
+chart_defs:
+  - reference/cpuc-u39w.yaml
+accounts:
+  - Equity:218.000:Owner
+  - Expense:615.000:Utility
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
+`,
+		"reference/cpuc-u39w.yaml": testChart,
+		"books/manual-2021.journal": `2021-04-05 Electric company
+    ; id: historical-entry
+    Expense:615.000:Utility  $12.34
+    Equity:218.000:Owner  $-12.34
+`,
+		"books/manual-2022.journal": "",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
+	}
+	cfg, err := LoadConfig(filepath.Join(root, "wat.yaml"))
+	require.NoError(t, err)
+	books, err := Open(cfg)
+	require.NoError(t, err)
+	require.Contains(t, read(t, cfg.Journal), "include manual-2021.journal\n")
+	require.Contains(t, read(t, cfg.Journal), "include manual-2022.journal\n")
+	draft, err := books.NewDraft()
+	require.NoError(t, err)
+	require.Equal(t, cfg.ManualJournal, draft.target)
+	_, _, err = books.EditDraft("historical-entry")
+	require.ErrorContains(t, err, "other included journals are read-only")
+}
+
 func TestWorkspaceFilesAreGeneratedFromConfiguration(t *testing.T) {
 	books, _ := fixture(t, "")
 	require.Equal(t, string(generatedAccounts(books.Config)), read(t, books.Config.LocalAccounts))

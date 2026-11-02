@@ -78,6 +78,9 @@ or financial activity are fabricated.
 version: 3
 name: Caspar Water
 chart_defs: [reference/cpuc-u39w.yaml]
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
 accounts:
   - Asset:151.000:Admin-Supplies
   - Expense:615.000:Electricity
@@ -93,7 +96,11 @@ The live books layout is fixed; the reference chart path is configured:
   must remain unique across the merged definitions.
 - `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
 - `books/books.journal` is the generated hledger include file.
-- `books/manual.journal` receives ordinary entries.
+- `manual_journal` names the active writable journal that receives ordinary
+  entries; it defaults to `books/manual.journal`.
+- `historical_journals` names fixed, read-only journals included in every check
+  and report. At year rollover, move the previous `manual_journal` path into
+  this list and configure a new active yearly file.
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
@@ -506,9 +513,10 @@ contributes to the running balances. Up/Down selects a row, Enter revises it, an
 to the menu. These key instructions appear once in the footer rather than on
 every transaction.
 
-`books/manual.journal` and the derived bank journals are writable sections.
+The configured `manual_journal` and the derived bank journals are writable
+sections. Configured `historical_journals` are fixed and read-only.
 Transactions are revised in the same source journal: ordinary entries stay in
-the manual journal, and statement-derived entries stay in their bank journal.
+the active manual journal, and statement-derived entries stay in their bank journal.
 Entries in other included journals remain read-only.
 Existing books are not migrated or changed just by opening this screen.
 Deletion, period closing, and reopening or rolling back a finished reconciliation

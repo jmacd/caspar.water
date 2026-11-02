@@ -153,8 +153,8 @@ not make the new file-backed workspace Pond-authoritative.
    only when cross-report amounts may overlap; do not add or balance those
    magnitudes automatically. Replace the complete template with supported
    accounts, directions, and any missing amounts. Copy only completed, reviewed
-   entries into
-   `wat/books/manual.journal`, make a private backup first, and run
+   entries into the configured active manual journal (currently
+   `wat/books/manual-2022.journal`), make a private backup first, and run
    `go run ./cmd/wat --config wat/wat.yaml check` after each small batch. Never
    edit generated `accounts.journal` or `books.journal`. A future bulk importer
    should reject unresolved markers and duplicate IDs, validate the exact
