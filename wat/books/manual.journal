@@ -114,8 +114,8 @@
     Equity:218.400:Owner:Equity  $-62.91
 
 2021-09-09 ! Kibesilah Rock Co | Rock for the driveway
-    Expense:640.001:Material:Building  $-783.41
-    Equity:218.400:Owner:Equity  $783.41
+    Expense:640.001:Material:Building  $783.41
+    Equity:218.400:Owner:Equity  $-783.41
 
 2021-09-10 ! Terry Casey | Driveway clearing & rock spreading / leveling
     Expense:650.213:Maintenance:Building  $900.00
@@ -127,12 +127,12 @@
     Equity:218.400:Owner:Equity  $-240.00
 
 2021-09-20 ! Plastic Mart | Six emergency water tanks
-    Asset:151.000:Equipment:Stored  $-2222.14
-    Equity:218.400:Owner:Equity  $2222.14
+    Asset:151.000:Equipment:Stored  $2222.14
+    Equity:218.400:Owner:Equity  $-2222.14
 
 2021-09-23 ! Saul Uitz | For cement slab water of new treatment facility
-    Asset:105.401:Plant:Construction  $-4227.00
-    Equity:218.400:Owner:Equity  $4227.00
+    Asset:105.401:Plant:Construction  $4227.00
+    Equity:218.400:Owner:Equity  $-4227.00
 
 2021-09-23 ! PG&E | Electricity
     Expense:615.000:Electricity  $61.42
@@ -175,8 +175,8 @@
     Equity:218.400:Owner:Equity  $-350.00
 
 2021-11-17 ! Deluxe Business | Bank checks
-    Expense:681.000:Office:Supplies  $-132.97
-    Equity:218.400:Owner:Equity  $132.97
+    Expense:681.000:Office:Supplies  $132.97
+    Equity:218.400:Owner:Equity  $-132.97
 
 2021-11-19 ! Mendocino County Tax Collector | 2021-2022 parcel 118-090-12
     Expense:408.101:Tax:Property:Plant:118-090-13  $1946.70
