@@ -14,7 +14,7 @@ func recordStatement(t *testing.T, books *Books, statement *Statement) {
 	for index := range statement.Rows {
 		draft, entry, err := books.StatementDraft(statement, index)
 		require.NoError(t, err)
-		entry.Postings[1].Account = "Equity:218:Owner"
+		entry.Postings[1].Account = "Equity:218.000:Owner"
 		_, err = draft.Preview(entry)
 		require.NoError(t, err)
 		_, err = draft.Save()
@@ -29,8 +29,8 @@ func saveBankEntry(t *testing.T, books *Books, date, description, amount string)
 	entry := Entry{
 		Date: date, Payee: description,
 		Postings: []Posting{
-			{Account: "Equity:218:Owner", Amount: amount},
-			{Account: "Bank:131.2:Checking", Amount: "-" + amount},
+			{Account: "Equity:218.000:Owner", Amount: amount},
+			{Account: "Bank:131.200:Checking", Amount: "-" + amount},
 		},
 	}
 	_, err = draft.Preview(entry)
@@ -160,7 +160,7 @@ func TestReconciliationRequiresRecordedRowsAndEarlierStatements(t *testing.T) {
 
 func TestReconciliationOrderingIsIndependentPerBankAccount(t *testing.T) {
 	books, statement, _ := statementFixture(t)
-	addBankAccount(t, books, "Bank:131.2:Savings")
+	addBankAccount(t, books, "Bank:131.200:Savings")
 	root := books.Config.root
 	earlierPDF := filepath.Join(root, "earlier-savings.pdf")
 	earlierJSON := filepath.Join(root, "earlier-savings.json")
@@ -173,7 +173,7 @@ func TestReconciliationOrderingIsIndependentPerBankAccount(t *testing.T) {
 	require.NoError(t, os.WriteFile(earlierJSON, []byte(earlierData), 0600))
 	earlier, err := books.LoadStatement(earlierPDF, StatementOptions{Extraction: earlierJSON}, nil)
 	require.NoError(t, err)
-	require.Equal(t, "Bank:131.2:Savings", earlier.BankAccount)
+	require.Equal(t, "Bank:131.200:Savings", earlier.BankAccount)
 
 	_, err = books.Reconciliation(statement)
 	require.NoError(t, err, "an unfinished statement for another account must not block reconciliation")

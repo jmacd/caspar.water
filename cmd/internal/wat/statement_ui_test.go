@@ -16,7 +16,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	books, statement, pdf := statementFixture(t)
 	draft, entry, err := books.StatementDraft(statement, 0)
 	require.NoError(t, err)
-	entry.Postings[1].Account = "Equity:218:Owner"
+	entry.Postings[1].Account = "Equity:218.000:Owner"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -50,7 +50,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	press(tcell.KeyEnter, 0)
 	account, ok := ui.app.GetFocus().(*tview.InputField)
 	require.True(t, ok, "recorded rows must reopen in the existing revision form")
-	require.Equal(t, "Equity:218:Owner", account.GetText())
+	require.Equal(t, "Equity:218.000:Owner", account.GetText())
 	ui.entryBack()
 	press(tcell.KeyEscape, 0)
 	require.Nil(t, ui.statement, "return from the browser must restore the previous active statement")
@@ -94,7 +94,7 @@ func TestBankStatementsBrowserPreservesActiveBatch(t *testing.T) {
 	for index := range statement.Rows {
 		draft, entry, err := books.StatementDraft(statement, index)
 		require.NoError(t, err)
-		entry.Postings[1].Account = "Equity:218:Owner"
+		entry.Postings[1].Account = "Equity:218.000:Owner"
 		_, err = draft.Preview(entry)
 		require.NoError(t, err)
 		_, err = draft.Save()
@@ -293,11 +293,11 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	journal := bankJournal(t, books, statement.BankAccount)
 	saved := read(t, journal)
 	require.Contains(t, saved, "; bank-row: "+statement.key(1))
-	require.Contains(t, saved, "Bank:131.2:Checking  $-12.34")
+	require.Contains(t, saved, "Bank:131.200:Checking  $-12.34")
 	require.Contains(t, key(tcell.KeyEnter, 0), "Statement row 3/3")
 	focused, ok = app.GetFocus().(*tview.InputField)
 	require.True(t, ok)
-	require.Equal(t, "Expense:615:Utility", focused.GetText(), "next statement row learns the just-saved category")
+	require.Equal(t, "Expense:615.000:Utility", focused.GetText(), "next statement row learns the just-saved category")
 	require.Contains(t, key(tcell.KeyEscape, 0), "Press Esc again to discard")
 	require.Contains(t, key(tcell.KeyEscape, 0), "1/3 recorded")
 	require.Equal(t, saved, read(t, journal), "deferring the next row must not post it")
@@ -305,9 +305,9 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	require.Contains(t, key(tcell.KeyEnter, 0), "Revise working transaction")
 	focused, ok = app.GetFocus().(*tview.InputField)
 	require.True(t, ok)
-	require.Equal(t, "Expense:615:Utility", focused.GetText())
+	require.Equal(t, "Expense:615.000:Utility", focused.GetText())
 	key(tcell.KeyCtrlU, 0)
-	for _, r := range "Income:421:Misc" {
+	for _, r := range "Income:421.000:Misc" {
 		key(tcell.KeyRune, r)
 	}
 	require.Contains(t, key(tcell.KeyF2, 0), "Transaction saved and validated")
@@ -315,7 +315,7 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	require.Equal(t, 1, strings.Count(read(t, journal), "; bank-row: "+statement.key(1)))
 	statuses, err := books.StatementStatuses(statement)
 	require.NoError(t, err)
-	require.Equal(t, "Income:421:Misc", statuses[2].Suggestion)
+	require.Equal(t, "Income:421.000:Misc", statuses[2].Suggestion)
 	app.Stop()
 	select {
 	case err := <-done:
@@ -338,7 +338,7 @@ func TestStatementBatchAdvanceRequiresRecordedRows(t *testing.T) {
 	for index := range statement.Rows {
 		draft, entry, err := books.StatementDraft(statement, index)
 		require.NoError(t, err)
-		entry.Postings[1].Account = "Equity:218:Owner"
+		entry.Postings[1].Account = "Equity:218.000:Owner"
 		_, err = draft.Preview(entry)
 		require.NoError(t, err)
 		_, err = draft.Save()

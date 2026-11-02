@@ -56,7 +56,7 @@ type StatementConfig struct {
 
 func (b *BankAccountConfig) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.ScalarNode {
-		return fmt.Errorf("bank account must be a Category:CPUC-number:LocalName string")
+		return fmt.Errorf("bank account must be a Category:xxx.yyy:LocalName string")
 	}
 	b.Account = node.Value
 	return nil
@@ -135,7 +135,12 @@ func LoadConfig(path string) (Config, error) {
 	for index, name := range cfg.Accounts {
 		account, valid := parsePostingAccount(name)
 		if !valid || account.Category == "Bank" {
-			return cfg, fmt.Errorf("accounts[%d] must use Asset, Equity, Liability, Expense, or Income:CPUC-number:local-name", index)
+			return cfg, fmt.Errorf(
+				"accounts[%d] %q must use Asset, Equity, Liability, Expense, or "+
+					"Income:xxx.yyy:local-name",
+				index,
+				name,
+			)
 		}
 		if accounts[name] {
 			return cfg, fmt.Errorf("account %q is configured more than once", name)
@@ -146,7 +151,11 @@ func LoadConfig(path string) (Config, error) {
 		bank := &cfg.BankAccounts[index]
 		account, valid := parsePostingAccount(bank.Account)
 		if !valid || account.Category != "Bank" {
-			return cfg, fmt.Errorf("bank_accounts[%d] must use Bank:CPUC-number:local-name", index)
+			return cfg, fmt.Errorf(
+				"bank_accounts[%d] %q must use Bank:xxx.yyy:local-name",
+				index,
+				bank.Account,
+			)
 		}
 		if accounts[bank.Account] {
 			return cfg, fmt.Errorf("bank account %q is configured more than once", bank.Account)

@@ -79,11 +79,11 @@ version: 3
 name: Caspar Water
 chart_defs: [reference/cpuc-u39w.yaml]
 accounts:
-  - Asset:151:Admin-Supplies
-  - Expense:615:Electricity
-  - Equity:218:Owner-Equity
+  - Asset:151.000:Admin-Supplies
+  - Expense:615.000:Electricity
+  - Equity:218.000:Owner-Equity
 bank_accounts:
-  - Bank:131.2:SBMC:0000
+  - Bank:131.200:SBMC:0000
 ```
 
 The live books layout is fixed; the reference chart path is configured:
@@ -105,14 +105,24 @@ missing and remain ordinary plain-text hledger files. All workspace files and
 directories must be nonsymlink paths. Unknown configuration keys and additional
 YAML documents are errors.
 
-An account must use `Category:CPUC-number:LocalName[:MoreNames...]`, and its CPUC
-number and category must agree with the merged `chart_defs`. Every definition
-path must be relative to the workspace, and CPUC numbers must be unique across
-all files. `Bank` accounts must map to an Asset number. Their final component is
-the unique statement identifier suffix: an extracted identifier ending in
-`0000` binds to the configured account with that suffix. A missing or ambiguous match is an error;
-Wat never guesses a journal. The bound account is stored in the private
-extraction cache.
+An account must use `Category:xxx.yyy:LocalName[:MoreNames...]`. `xxx` is the
+three-digit CPUC family and `yyy` combines one formal branch digit with a
+two-digit local number. For a CPUC leaf such as `615`, local codes `615.000`
+through `615.099` map to that leaf. When the chart defines formal branches such
+as `131.1` and `131.2`, local codes must use the matching ranges `131.100`-
+`131.199` or `131.200`-`131.299`; the `.0yy` range is not allowed for that
+family. An unused branch digit from `.4xx` through `.9xx` is a local extension
+of the CPUC parent when that family has formal subaccounts. Exact formal
+branches always win: if `265.4` is formal, `265.4yy` maps to it, while an unused
+`265.5yy` maps to parent `265`. Undefined `.1xx`-`.3xx` branches remain errors,
+and a CPUC leaf without formal subaccounts continues to use only `.0yy`. The
+resolved CPUC category must agree with the posting category.
+Every definition path must be relative to the workspace, and CPUC numbers must
+be unique across all files. `Bank` accounts must resolve to an Asset account.
+Their final component is the unique statement identifier suffix: an extracted
+identifier ending in `0000` binds to the configured account with that suffix.
+A missing or ambiguous match is an error; Wat never guesses a journal. The
+bound account is stored in the private extraction cache.
 
 Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
@@ -223,16 +233,16 @@ optional single-line comment are validated strictly. Wat prints the comment with
 account
 listings and mapping choices.
 
-Local posting accounts in `wat.yaml` use the shorter
-`Category:CPUC-number:LocalName[:MoreNames...]` form. Wat materializes them as
-these declarations in generated `books/accounts.journal`:
+Local posting accounts in `wat.yaml` use
+`Category:xxx.yyy:LocalName[:MoreNames...]`. Wat materializes them as these
+declarations in generated `books/accounts.journal`:
 
 ```journal
 account Bank  ; type: A
-account Bank:131.2:SBMC:0000
-account Expense:650.1:Feiner-Fixings
-account Equity:218:Owner
-account Liability:241:Due-to-Owner
+account Bank:131.200:SBMC:0000
+account Expense:650.100:Feiner-Fixings
+account Equity:218.000:Owner
+account Liability:241.000:Due-to-Owner
 ```
 
 The ordinary categories are exactly `Asset`, `Equity`, `Liability`, `Expense`,
@@ -241,15 +251,24 @@ statements. It needs the hledger `type: A` declaration shown above so standard
 balance-sheet reports classify it as an asset.
 
 `wat` resolves the number in each local account through the configured chart.
-`Expense:650.1:Feiner-Fixings`, for example, maps to formal CPUC designation
+`Expense:650.100:Feiner-Fixings`, for example, maps to formal CPUC designation
 `Expense:650.1:Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
-category mismatches, and `Bank` accounts whose number is not an Asset are errors.
-The long formal name is therefore not repeated in every posting while remaining
-available whenever needed:
+unsupported low branch digits, `.0yy` codes on a family with formal subaccounts,
+category mismatches, and `Bank` accounts that do not resolve to an Asset are
+errors. A high branch already defined by CPUC remains formal; only unused
+`.4xx`-`.9xx` branches are local extensions of a CPUC parent that has formal
+subaccounts. The long formal name is therefore not repeated in every posting
+while remaining available whenever needed:
 
 ```sh
 go run ./cmd/wat --config wat/wat.yaml accounts
 ```
+
+The command prints aligned `LOCAL ACCOUNT` and `CPUC TITLE` columns. Formal chart
+names are presented as human titles, replacing YAML hyphens with spaces; for
+example, `Water-Plant-Purchased-or-Sold` is displayed as
+`Water Plant Purchased or Sold`. An optional chart comment appears on the next
+line under the CPUC title, with the local-account column blank.
 
 Account completion and the F4 cheatsheet show only declared local accounts.
 Completion can match either the local name or formal CPUC designation while
@@ -525,7 +544,7 @@ transactions across all included journals, including earlier years. Suggestions
 refresh when you start a new transaction; no separate history database is kept.
 Account suggestions come from declared local accounts that resolve through the
 configured CPUC chart. Start with digits to match the CPUC-number prefix (`13`
-matches `131.2`, but not a `13` later in a local name); start with other text to
+matches `131.200`, but not a `13` later in a local name); start with other text to
 search the local account and its formal CPUC designation, ignoring case.
 
 Use **Ctrl-N/Ctrl-P** to cycle suggestions and **Enter** to accept the highlighted

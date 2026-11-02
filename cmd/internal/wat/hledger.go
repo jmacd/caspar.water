@@ -215,7 +215,7 @@ func checkPostingAccounts(transactions []journalTransaction, accounts []string) 
 	for _, tx := range transactions {
 		for _, posting := range tx.Postings {
 			if !slices.Contains(accounts, posting.Account) {
-				return fmt.Errorf("%s %s: posting account %q must be a declared Category:CPUC-number:LocalName account; revise this entry", tx.Date, tx.Description, posting.Account)
+				return fmt.Errorf("%s %s: posting account %q must be a declared Category:xxx.yyy:LocalName account; revise this entry", tx.Date, tx.Description, posting.Account)
 			}
 		}
 	}

@@ -91,7 +91,7 @@ func TestStatementIgnoresZeroAmountBalanceMarkers(t *testing.T) {
 
 func TestStatementAccountIdentifierRoutesToUniqueBankJournal(t *testing.T) {
 	books, root := fixture(t, "")
-	savings := addBankAccount(t, books, "Bank:131.2:Savings")
+	savings := addBankAccount(t, books, "Bank:131.200:Savings")
 	extraction := strings.ReplaceAll(statementJSON, `"account_id":"Checking"`, `"account_id":"0000-Savings"`)
 	pdf := filepath.Join(root, "savings.pdf")
 	jsonPath := filepath.Join(root, "savings.json")
@@ -102,12 +102,12 @@ func TestStatementAccountIdentifierRoutesToUniqueBankJournal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, savings.Account, statement.BankAccount)
 	cache := read(t, filepath.Join(filepath.Dir(filepath.Join(root, statement.Source)), "extracted.json"))
-	require.Contains(t, cache, `"wat_bank_account":"Bank:131.2:Savings"`)
+	require.Contains(t, cache, `"wat_bank_account":"Bank:131.200:Savings"`)
 
 	draft, entry, err := books.StatementDraft(statement, 1)
 	require.NoError(t, err)
 	entry.Payee = "Power company"
-	entry.Postings[1].Account = "Expense:615:Utility"
+	entry.Postings[1].Account = "Expense:615.000:Utility"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -224,18 +224,18 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	books, s, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(s, 1)
 	require.NoError(t, err)
-	require.Equal(t, "Bank:131.2:Checking", entry.Postings[0].Account)
+	require.Equal(t, "Bank:131.200:Checking", entry.Postings[0].Account)
 	require.Equal(t, "-12.34", entry.Postings[0].Amount)
 	require.Equal(t, "12.34", entry.Postings[1].Amount)
 	require.Empty(t, entry.Postings[1].Account)
-	entry.Postings[1].Account = "Expense:615:Utility"
+	entry.Postings[1].Account = "Expense:615.000:Utility"
 	entry.Payee = "Electric company"
 	text, err := draft.Preview(entry)
 	require.NoError(t, err)
 	for _, mutated := range []string{
 		strings.ReplaceAll(text, "12.34", "13.34"),
 		strings.Replace(text, "2021-04-05", "2021-04-06", 1),
-		strings.Replace(text, "Bank:131.2:Checking", "Equity:218:Owner", 1),
+		strings.Replace(text, "Bank:131.200:Checking", "Equity:218.000:Owner", 1),
 		strings.Replace(text, "bank-row:", "missing-row:", 1),
 		strings.Replace(text, "bank-description:", "missing-description:", 1),
 	} {
@@ -246,7 +246,7 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	require.NoError(t, err)
 	stale, staleEntry, err := books.StatementDraft(s, 1)
 	require.NoError(t, err)
-	staleEntry.Postings[1].Account = "Expense:615:Utility"
+	staleEntry.Postings[1].Account = "Expense:615.000:Utility"
 	_, err = draft.Save()
 	require.NoError(t, err)
 	_, err = stale.Preview(staleEntry)
@@ -255,14 +255,14 @@ func TestStatementRecordingLearningAndProvenance(t *testing.T) {
 	status, err := books.StatementStatuses(s)
 	require.NoError(t, err)
 	require.True(t, status[1].Recorded)
-	require.Equal(t, "Expense:615:Utility", status[2].Suggestion, "learn using original bank description even if payee was edited")
+	require.Equal(t, "Expense:615.000:Utility", status[2].Suggestion, "learn using original bank description even if payee was edited")
 	require.Empty(t, status[0].Suggestion, "an incoming deposit must not be guessed as income")
 	_, _, err = books.StatementDraft(s, 1)
 	require.ErrorContains(t, err, "already recorded")
 	draft, entry, err = books.StatementDraft(s, 2)
 	require.NoError(t, err)
-	require.Equal(t, "Expense:615:Utility", entry.Postings[1].Account)
-	entry.Postings[1].Account = "Equity:218:Owner"
+	require.Equal(t, "Expense:615.000:Utility", entry.Postings[1].Account)
+	entry.Postings[1].Account = "Equity:218.000:Owner"
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -281,8 +281,8 @@ func TestStatementSplitAndChangedRecordedRow(t *testing.T) {
 	books, s, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(s, 0)
 	require.NoError(t, err)
-	entry.Postings[1] = Posting{"Equity:218:Owner", "-60.00"}
-	entry.Postings = append(entry.Postings, Posting{"Expense:615:Utility", "-40.00"})
+	entry.Postings[1] = Posting{"Equity:218.000:Owner", "-60.00"}
+	entry.Postings = append(entry.Postings, Posting{"Expense:615.000:Utility", "-40.00"})
 	_, err = draft.Preview(entry)
 	require.NoError(t, err)
 	_, err = draft.Save()
@@ -423,8 +423,8 @@ func TestBankAmountExactQuantities(t *testing.T) {
 		{`{"decimalMantissa":9223372036854775808,"decimalPlaces":2}`, 0, "exceeds supported"},
 	} {
 		var tx journalTransaction
-		require.NoError(t, json.Unmarshal([]byte(`{"tpostings":[{"paccount":"Bank:131.2:Checking","ptype":"RegularPosting","pamount":[{"acommodity":"$","aquantity":`+tc.quantity+`}]}]}`), &tx))
-		cents, err := bankAmount(tx, "Bank:131.2:Checking")
+		require.NoError(t, json.Unmarshal([]byte(`{"tpostings":[{"paccount":"Bank:131.200:Checking","ptype":"RegularPosting","pamount":[{"acommodity":"$","aquantity":`+tc.quantity+`}]}]}`), &tx))
+		cents, err := bankAmount(tx, "Bank:131.200:Checking")
 		if tc.failure != "" {
 			require.ErrorContains(t, err, tc.failure)
 		} else {

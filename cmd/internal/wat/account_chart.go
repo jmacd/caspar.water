@@ -13,7 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var accountNumberPattern = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
+var (
+	accountNumberPattern        = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)*$`)
+	postingAccountNumberPattern = regexp.MustCompile(`^([0-9]{3})\.([0-9]{3})$`)
+)
 
 type chartAccount struct {
 	Category string `yaml:"category"`
@@ -51,6 +54,8 @@ type PostingAccount struct {
 	Name           string
 	Category       string
 	Number         string
+	FormalNumber   string
+	LocalExtension bool
 	FormalCategory string
 	FormalName     string
 	FormalComment  string
@@ -271,16 +276,59 @@ func baseCategory(category string) bool {
 func parsePostingAccount(name string) (PostingAccount, bool) {
 	parts := strings.Split(name, ":")
 	if len(parts) < 3 || (!baseCategory(parts[0]) && parts[0] != "Bank") ||
-		!accountNumberPattern.MatchString(parts[1]) || !validLocalAccountName(name) {
+		!postingAccountNumberPattern.MatchString(parts[1]) || !validLocalAccountName(name) {
 		return PostingAccount{}, false
 	}
 	return PostingAccount{Name: name, Category: parts[0], Number: parts[1]}, true
 }
 
 func (c accountChart) resolve(account PostingAccount) (PostingAccount, error) {
-	formal, ok := c.byNumber[account.Number]
+	match := postingAccountNumberPattern.FindStringSubmatch(account.Number)
+	if match == nil {
+		return PostingAccount{}, fmt.Errorf(
+			"posting account %q must use a three-digit CPUC/local code such as "+
+				"104.000 or 131.200",
+			account.Name,
+		)
+	}
+	base, local := match[1], match[2]
+	branch := local[:1]
+	formalNumber := base
+	if branch == "0" {
+		formalBranches := c.formalBranches(base)
+		if len(formalBranches) != 0 {
+			return PostingAccount{}, fmt.Errorf(
+				"posting account %q uses local code %s, but CPUC account %s "+
+					"defines formal subaccounts %s; use a local code in the "+
+					"matching formal branch range",
+				account.Name,
+				account.Number,
+				base,
+				strings.Join(formalBranches, ", "),
+			)
+		}
+	} else {
+		formalNumber += "." + branch
+	}
+	formal, ok := c.byNumber[formalNumber]
+	localExtension := false
+	if !ok && branch >= "4" {
+		parent, parentExists := c.byNumber[base]
+		if parentExists && len(c.formalBranches(base)) != 0 {
+			formalNumber = base
+			formal = parent
+			ok = true
+			localExtension = true
+		}
+	}
 	if !ok {
-		return PostingAccount{}, fmt.Errorf("posting account %q uses CPUC account %s, which is not in the CPUC chart", account.Name, account.Number)
+		return PostingAccount{}, fmt.Errorf(
+			"posting account %q uses local code %s, which maps to CPUC account %s "+
+				"that is not in the CPUC chart",
+			account.Name,
+			account.Number,
+			formalNumber,
+		)
 	}
 	expected := account.Category
 	if expected == "Bank" {
@@ -289,13 +337,30 @@ func (c accountChart) resolve(account PostingAccount) (PostingAccount, error) {
 	if formal.Category != expected {
 		return PostingAccount{}, fmt.Errorf(
 			"posting account %q classifies CPUC account %s as %s, but the CPUC chart classifies it as %s",
-			account.Name, account.Number, account.Category, formal.Category,
+			account.Name, formalNumber, account.Category, formal.Category,
 		)
 	}
+	account.FormalNumber = formalNumber
+	account.LocalExtension = localExtension
 	account.FormalCategory = formal.Category
 	account.FormalName = formal.Name
 	account.FormalComment = formal.Comment
 	return account, nil
+}
+
+func (c accountChart) formalBranches(base string) []string {
+	prefix := base + "."
+	var branches []string
+	for number := range c.byNumber {
+		if len(number) == len(prefix)+1 &&
+			strings.HasPrefix(number, prefix) &&
+			number[len(prefix)] >= '1' &&
+			number[len(prefix)] <= '9' {
+			branches = append(branches, number)
+		}
+	}
+	sort.Strings(branches)
+	return branches
 }
 
 func (b *Books) PostingAccounts() ([]PostingAccount, error) {

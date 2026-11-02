@@ -153,8 +153,8 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Contains(t, frame.text, "Transaction saved and validated")
 	saved := read(t, books.Config.ManualJournal)
 	require.Contains(t, saved, "2021-04-05 Electric company | Edited power")
-	require.Contains(t, saved, "Expense:615:Utility  $15.00")
-	require.Contains(t, saved, "Bank:131.2:Checking  $-15.00")
+	require.Contains(t, saved, "Expense:615.000:Utility  $15.00")
+	require.Contains(t, saved, "Bank:131.200:Checking  $-15.00")
 	key(tcell.KeyEnter, 0)
 	frame = key(tcell.KeyRune, '2')
 	require.Contains(t, frame.text, "Electric company")
@@ -207,7 +207,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	key(tcell.KeyRune, '1')
 	for _, value := range []string{
 		"2021-04-06", "Electric company", "Direct save", "", "",
-		"Expense:615:Utility", "12.34", "Bank:131.2:Checking", "-12.34",
+		"Expense:615.000:Utility", "12.34", "Bank:131.200:Checking", "-12.34",
 	} {
 		typeText(value)
 		key(tcell.KeyTab, 0)
@@ -297,11 +297,11 @@ func TestEntryGridCompletionAndNavigation(t *testing.T) {
 	require.NoError(t, screen.Init())
 	t.Cleanup(screen.Fini)
 	screen.SetSize(100, 24)
-	bank := "Bank:131.2:Checking"
-	savings := "Asset:131.3:Savings"
+	bank := "Bank:131.200:Checking"
+	savings := "Asset:131.300:Savings"
 	payee := "City [red] Water"
 	draft := &Draft{
-		accounts: []string{bank, savings, "Expense:615:Utility"},
+		accounts: []string{bank, savings, "Expense:615.000:Utility"},
 		history:  completionHistory{payees: []string{payee}, descriptions: []string{"Power bill"}},
 	}
 	entry := Entry{Postings: make([]Posting, 2)}

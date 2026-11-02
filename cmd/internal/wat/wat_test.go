@@ -43,11 +43,11 @@ name: Test Water
 chart_defs:
   - reference/cpuc-u39w.yaml
 accounts:
-  - Equity:218:Owner
-  - Expense:615:Utility
-  - Income:421:Misc
+  - Equity:218.000:Owner
+  - Expense:615.000:Utility
+  - Income:421.000:Misc
 bank_accounts:
-  - Bank:131.2:Checking
+  - Bank:131.200:Checking
 `,
 		"reference/cpuc-u39w.yaml": testChart,
 		"books/manual.journal":     journal,
@@ -65,7 +65,7 @@ func testEntry() Entry {
 	return Entry{
 		Date: "2021-04-05", Payee: "Electric company", Description: "Power bill",
 		Reference: "check-7", Source: "sources/power.pdf",
-		Postings: []Posting{{Account: "Expense:615:Utility", Amount: "12.34"}, {Account: "Bank:131.2:Checking", Amount: "-12.34"}},
+		Postings: []Posting{{Account: "Expense:615.000:Utility", Amount: "12.34"}, {Account: "Bank:131.200:Checking", Amount: "-12.34"}},
 	}
 }
 
@@ -112,22 +112,22 @@ func TestConfig(t *testing.T) {
 		{name: "empty charts", yaml: base + "chart_defs: []\n"},
 		{name: "duplicate chart", yaml: base + "chart_defs:\n  - reference/chart.yaml\n  - reference/./chart.yaml\n"},
 		{name: "chart conflicts with manual journal", yaml: base + "chart_defs:\n  - books/manual.journal\n"},
-		{name: "ordinary account", yaml: base + "accounts:\n  - Expense:615:Electricity\n", valid: true},
+		{name: "ordinary account", yaml: base + "accounts:\n  - Expense:615.000:Electricity\n", valid: true},
 		{name: "unknown", yaml: base + "typo: true\n"},
 		{name: "obsolete path", yaml: base + "journal: books/books.journal\n"},
-		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.2:SBMC:1234\n", valid: true},
-		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615:Electricity\n  - Expense:615:Electricity\n"},
-		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.2:First:1234\n  - Bank:131.2:Second:1234\n"},
-		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.2:First.Account\n  - Bank:131.2:First-Account\n"},
+		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.200:SBMC:1234\n", valid: true},
+		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615.000:Electricity\n  - Expense:615.000:Electricity\n"},
+		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.200:First:1234\n  - Bank:131.200:Second:1234\n"},
+		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.200:First.Account\n  - Bank:131.200:First-Account\n"},
 		{name: "azure statement", yaml: base + "statement:\n  python: python3\n  api_base: https://example.openai.azure.com/\n  api_version: 2025-04-01-preview\n  model: azure/example\n", valid: true},
 		{name: "duplicate statement endpoint", yaml: base + "statement:\n  api_base: https://example.openai.azure.com/\n  ollama_url: http://localhost:11434\n  model: azure/example\n"},
 		{name: "blank bank account", yaml: base + "bank_accounts:\n  - ' '\n"},
-		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.2:Checking\n"},
-		{name: "multiline bank account", yaml: base + "bank_accounts:\n  - \"Bank:131.2:Checking\\nEquity:218:Owner\"\n"},
-		{name: "virtual bank account", yaml: base + "bank_accounts:\n  - '[Bank:131.2:Checking]'\n"},
-		{name: "bank mapping object", yaml: base + "bank_accounts:\n  - account: Bank:131.2:Checking\n"},
-		{name: "bank in ordinary accounts", yaml: base + "accounts:\n  - Bank:131.2:Checking\n"},
-		{name: "path separator", yaml: base + "accounts:\n  - Expense:615:Power/Bill\n"},
+		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.200:Checking\n"},
+		{name: "multiline bank account", yaml: base + "bank_accounts:\n  - \"Bank:131.200:Checking\\nEquity:218.000:Owner\"\n"},
+		{name: "virtual bank account", yaml: base + "bank_accounts:\n  - '[Bank:131.200:Checking]'\n"},
+		{name: "bank mapping object", yaml: base + "bank_accounts:\n  - account: Bank:131.200:Checking\n"},
+		{name: "bank in ordinary accounts", yaml: base + "accounts:\n  - Bank:131.200:Checking\n"},
+		{name: "path separator", yaml: base + "accounts:\n  - Expense:615.000:Power/Bill\n"},
 		{name: "documents", yaml: base + "---\nname: other\n"},
 		{name: "version", yaml: strings.Replace(base, "version: 3", "version: 2", 1)},
 		{name: "missing name", yaml: strings.Replace(base, "name: Water\n", "", 1)},
@@ -194,13 +194,13 @@ func TestWorkspaceRejectsSymlinkedGeneratedFiles(t *testing.T) {
 
 func TestBankAccountConfiguration(t *testing.T) {
 	books, _ := fixture(t, "")
-	for _, account := range []string{"Bank:131.2:Checking", "Bank:131.2:Missing", "Bank:999:Unknown"} {
+	for _, account := range []string{"Bank:131.200:Checking", "Bank:131.200:Missing", "Bank:999.000:Unknown"} {
 		t.Run(account, func(t *testing.T) {
 			cfg := books.Config
 			cfg.BankAccounts[0].Account = account
 			cfg.BankAccounts[0].Journal = filepath.Join(cfg.root, booksDirectory, bankJournalFilename(account))
 			_, err := Open(cfg)
-			if account != "Bank:999:Unknown" {
+			if account != "Bank:999.000:Unknown" {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, "not in the CPUC chart")
@@ -258,7 +258,7 @@ func TestEntryBalanceStatus(t *testing.T) {
 }
 
 func TestEntryValidation(t *testing.T) {
-	accounts := []string{"Expense:615:Utility", "Bank:131.2:Checking"}
+	accounts := []string{"Expense:615.000:Utility", "Bank:131.200:Checking"}
 	for _, tc := range []struct {
 		name   string
 		change func(*Entry)
@@ -275,10 +275,10 @@ func TestEntryValidation(t *testing.T) {
 		{"one-leg", func(e *Entry) { e.Postings = e.Postings[:1] }},
 		{"overflow", func(e *Entry) {
 			e.Postings = []Posting{
-				{"Bank:131.2:Checking", "92233720368547758.07"},
-				{"Bank:131.2:Checking", "0.01"},
-				{"Bank:131.2:Checking", "-92233720368547758.07"},
-				{"Bank:131.2:Checking", "-0.01"},
+				{"Bank:131.200:Checking", "92233720368547758.07"},
+				{"Bank:131.200:Checking", "0.01"},
+				{"Bank:131.200:Checking", "-92233720368547758.07"},
+				{"Bank:131.200:Checking", "-0.01"},
 			}
 		}},
 	} {
@@ -291,13 +291,13 @@ func TestEntryValidation(t *testing.T) {
 	}
 	entry := testEntry()
 	entry.Date = "2022-01-01"
-	entry.Postings = []Posting{{"Expense:615:Utility", "6"}, {"Expense:615:Utility", "6.34"}, {"Bank:131.2:Checking", "-12.34"}}
+	entry.Postings = []Posting{{"Expense:615.000:Utility", "6"}, {"Expense:615.000:Utility", "6.34"}, {"Bank:131.200:Checking", "-12.34"}}
 	text, err := entry.render(accounts, "test-id")
 	require.NoError(t, err)
 	require.Contains(t, text, "2022-01-01 Electric company | Power bill")
 	require.Contains(t, text, "; id: test-id")
 	require.Contains(t, text, "; source: sources/power.pdf")
-	require.Contains(t, text, "Bank:131.2:Checking  $-12.34")
+	require.Contains(t, text, "Bank:131.200:Checking  $-12.34")
 }
 
 func TestSavePreservesBytesAndBackup(t *testing.T) {
@@ -357,7 +357,7 @@ func TestStaleDraftAndLock(t *testing.T) {
 }
 
 func TestAssertionFailureDoesNotChangeBooks(t *testing.T) {
-	original := "2021-12-31 Bank checkpoint\n    Bank:131.2:Checking  $0 = $0\n    Equity:218:Owner  $0\n"
+	original := "2021-12-31 Bank checkpoint\n    Bank:131.200:Checking  $0 = $0\n    Equity:218.000:Owner  $0\n"
 	books, _ := fixture(t, original)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
@@ -400,16 +400,16 @@ func TestUnsupportedIncludes(t *testing.T) {
 func TestReportsIncludeAllAccountingDates(t *testing.T) {
 	books, _ := fixture(t, "")
 	history := `2020-12-31 Opening
-    Bank:131.2:Checking  $100
-    Equity:218:Owner  $-100
+    Bank:131.200:Checking  $100
+    Equity:218.000:Owner  $-100
 
 2021-04-05 Power
-    Expense:615:Utility  $10
-    Bank:131.2:Checking  $-10
+    Expense:615.000:Utility  $10
+    Bank:131.200:Checking  $-10
 
 2022-01-01 Future
-    Bank:131.2:Checking  $900
-    Income:421:Misc  $-900
+    Bank:131.200:Checking  $900
+    Income:421.000:Misc  $-900
 `
 	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(history), 0600))
 	for _, name := range []string{"trial-balance", "balance-sheet"} {
@@ -417,7 +417,7 @@ func TestReportsIncludeAllAccountingDates(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, report, "$990")
 		if name == "balance-sheet" {
-			require.Contains(t, report, "Equity:218:Owner")
+			require.Contains(t, report, "Equity:218.000:Owner")
 			require.Contains(t, report, "$100")
 		}
 	}

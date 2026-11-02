@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/jmacd/caspar.water/cmd/internal/wat"
 	"github.com/spf13/cobra"
@@ -141,28 +142,27 @@ func command() *cobra.Command {
 		},
 	}, &cobra.Command{
 		Use:   "accounts",
-		Short: "List local posting accounts and their formal CPUC designations",
+		Short: "List local posting accounts and CPUC titles",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			accounts, err := books.PostingAccounts()
 			if err != nil {
 				return err
 			}
+			output := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+			fmt.Fprintln(output, "LOCAL ACCOUNT\tCPUC TITLE")
 			for _, account := range accounts {
 				fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"%s\t%s:%s:%s",
+					output,
+					"%s\t%s\n",
 					account.Name,
-					account.FormalCategory,
-					account.Number,
-					account.FormalName,
+					strings.ReplaceAll(account.FormalName, "-", " "),
 				)
 				if account.FormalComment != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "\t%s", account.FormalComment)
+					fmt.Fprintf(output, "\t%s\n", account.FormalComment)
 				}
-				fmt.Fprintln(cmd.OutOrStdout())
 			}
-			return nil
+			return output.Flush()
 		},
 	}, &cobra.Command{
 		Use:   "report NAME",

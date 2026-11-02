@@ -2,12 +2,12 @@ version: 3
 name: Caspar Water
 accounts:
   - Asset:104.000:Company:Purchase
-  - Asset:105.001:Plant:Construction
-  - Asset:105.002:Pipeline:Construction
+  - Asset:105.401:Plant:Construction
+  - Asset:105.402:Pipeline:Construction
   - Asset:151.000:Equipment:Stored
 
-  - Equity:218.000:Owner:Equity
-  - Equity:218.001:Owner:Unpaid
+  - Equity:218.400:Owner:Equity
+  - Equity:218.401:Owner:Unpaid
 
   - Expense:408.101:Tax:Property:Plant:118-090-13
   - Expense:408.102:Tax:Property:Pasture:118-090-12
@@ -20,6 +20,7 @@ accounts:
   - Expense:640.002:Material:Pipeline
 
   - Expense:650.100:Testing:Lab
+
   - Expense:650.200:Operations:Treatment
   - Expense:650.201:Operations:Legal
 
@@ -29,14 +30,15 @@ accounts:
 
   - Expense:671.000:Salary:Manager
 
-  - Expense:682:Office:Supplies
-  - Expense:682:Legal:Business
+  - Expense:681.000:Office:Supplies
+  - Expense:682.000:Legal:Business
+  - Expense:684.000:Insurance:General
   - Expense:688.001:Regulatory:Certification:Owner
   - Expense:689.000:General:Admin
   - Expense:689.001:General:Equipment
 
 bank_accounts:
-  - Bank:131.001:SBMC:4660
+  - Bank:131.401:SBMC:4660
 
 chart_defs:
   - reference/cpuc-u39w.yaml
