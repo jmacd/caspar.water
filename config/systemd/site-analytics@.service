@@ -1,0 +1,35 @@
+[Unit]
+Description=First-party site analytics collector (%i)
+After=network.target
+
+[Service]
+Type=simple
+User=watertown-analytics-%i
+Group=watertown-analytics-%i
+ExecStart=/usr/local/bin/site-analytics-collector --config /etc/watertown-analytics/%i/collector.json
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+UMask=0027
+StateDirectory=watertown-analytics/%i
+StateDirectoryMode=0750
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/watertown-analytics/%i
+ReadWritePaths=/var/lib/watertown-analytics/%i
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=256M
+TasksMax=32
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target
