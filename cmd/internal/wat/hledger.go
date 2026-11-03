@@ -185,7 +185,11 @@ func (b *Books) Check() error {
 	if err := checkPostingAccounts(transactions, accounts); err != nil {
 		return err
 	}
-	return b.checkRegisteredVendors(transactions)
+	if err := checkTransactionDescriptions(transactions); err != nil {
+		return err
+	}
+	_, err = b.run(b.Config.Journal, "check", "--strict", "payees")
+	return err
 }
 
 func (b *Books) checkSyntax(journal string) error {

@@ -81,9 +81,6 @@ chart_defs: [reference/cpuc-u39w.yaml]
 manual_journal: books/manual-2022.journal
 historical_journals:
   - books/manual-2021.journal
-vendors:
-  - reference/vendors-2021.csv
-  - reference/vendors-2022.csv
 accounts:
   - Asset:151.000:Admin-Supplies
   - Expense:615.000:Electricity
@@ -98,21 +95,21 @@ The live books layout is fixed; the reference chart path is configured:
 - additional reference YAML files may be added to `chart_defs`; account numbers
   must remain unique across the merged definitions.
 - `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
+- `books/payees.journal` is an ordinary hledger journal containing native
+  `payee NAME` directives. It may include additional `.journal` files using
+  hledger's `include` directive.
 - `books/books.journal` is the generated hledger include file.
 - `manual_journal` names the active writable journal that receives ordinary
   entries; it defaults to `books/manual.journal`.
 - `historical_journals` names fixed, read-only journals included in every check
   and report. At year rollover, move the previous `manual_journal` path into
   this list and configure a new active yearly file.
-- `vendors` optionally lists one or more one-column CSV files whose header is
-  `name`. Wat merges their canonical names and rejects duplicate file paths or
-  names, including names repeated across files. With vendor files configured,
-  every transaction description must use exactly `PAYEE | MEMO`, with one
-  spaced separator and nonempty fields. `PAYEE` must be a canonical vendor,
-  `Journal`, or `Deposit`. The memo is the complete explanation for `Journal`
-  and `Deposit`; neither requires special metadata. `Deposit` requires a
-  `Bank:` posting and must not contain an `Expense:` posting. `Journal` and
-  `Deposit` are reserved and cannot appear in a vendor CSV.
+- `wat check` runs hledger's native `payees` check, so every transaction payee
+  must be declared with a `payee` directive. Every transaction description
+  must use exactly `PAYEE | MEMO`, with one spaced separator and nonempty
+  fields. `Journal` and `Deposit` are ordinary declared payees whose memo is
+  the complete explanation; neither requires special metadata. Wat additionally
+  requires `Deposit` to have a `Bank:` posting and no `Expense:` posting.
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
@@ -625,8 +622,9 @@ amounts or overflow show an explicit unavailable-balance message rather than an
 incorrect total. A balanced amount total alone does not mean the entry is valid.
 
 Enter the actual transaction date in `YYYY-MM-DD` form. Enter the payee,
-optional description, reference, and source
-reference. Every saved entry
+description/memo, reference, and source reference. `wat check` requires the
+rendered `PAYEE | MEMO` form and requires the payee to be declared in
+`books/payees.journal`. Every saved entry
 also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
@@ -712,8 +710,8 @@ External editors do not honor that lock. Changes are rechecked immediately befor
 replacement, but there is no cross-program filesystem compare-and-swap: do not
 edit the books concurrently with a save.
 
-Passing `wat check` establishes syntax, declared accounts/commodities, posting
-account depth, balance
+Passing `wat check` establishes syntax, declared accounts/commodities/payees,
+posting account depth, balance
 assertions, and balanced entries, not correct classification, completeness,
 regulatory compliance, or a new bank reconciliation. Existing reconciliation
 checkpoint integrity is verified when the books open. There is no implicit

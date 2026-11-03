@@ -23,6 +23,9 @@ func prepareWorkspace(cfg Config) error {
 			return err
 		}
 	}
+	if err := ensureJournal(cfg.Payees); err != nil {
+		return err
+	}
 	for _, journal := range cfg.HistoricalJournals {
 		if _, err := readNonsymlinkFileState(journal, "historical journal"); err != nil {
 			return err
@@ -79,6 +82,7 @@ func generatedMaster(cfg Config) []byte {
 	var text strings.Builder
 	text.WriteString(generatedHeader)
 	fmt.Fprintf(&text, "include %s\n", accountsJournal)
+	fmt.Fprintf(&text, "include %s\n", payeesJournal)
 	for _, journal := range cfg.HistoricalJournals {
 		fmt.Fprintf(&text, "include %s\n", journalIncludePath(cfg, journal))
 	}

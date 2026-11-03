@@ -140,7 +140,7 @@ func TestEditedTextUsesHledgerWithoutReformatting(t *testing.T) {
 }
 
 func TestEditedAssertionUsesCompleteBooks(t *testing.T) {
-	books, _ := fixture(t, "2021-01-01 Opening\n    Bank:131.200:Checking  $100\n    Equity:218.000:Owner  $-100\n")
+	books, _ := fixture(t, "2021-01-01 Journal | Opening\n    Bank:131.200:Checking  $100\n    Equity:218.000:Owner  $-100\n")
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
 	text, err := draft.Preview(testEntry())

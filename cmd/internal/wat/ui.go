@@ -153,12 +153,12 @@ func (ui *terminal) menu() {
 	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
 		AddItem("Review / revise journal", "Browse entries; revise entries in the working journal", '2', ui.journalEntries).
 		AddItem("Reports", "Trial balance, balance sheet, income statement", '3', ui.reports).
-		AddItem("Check books", "Run hledger strict validation and CPUC account-mapping checks", '4', func() {
+		AddItem("Check books", "Run hledger strict/payee validation and CPUC account-mapping checks", '4', func() {
 			if err := ui.books.Check(); err != nil {
 				ui.message(" Check failed ", err.Error(), ui.menu)
 				return
 			}
-			ui.message(" Check books ", "The books pass hledger strict checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
+			ui.message(" Check books ", "The books pass hledger strict/payee checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
 		AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '5', ui.bankStatements).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)

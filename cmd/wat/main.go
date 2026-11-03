@@ -160,13 +160,13 @@ func command() *cobra.Command {
 	})
 	root.AddCommand(&cobra.Command{
 		Use:   "check",
-		Short: "Validate the complete books and posting account depth",
+		Short: "Validate books, declared payees, and posting account depth",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := books.Check(); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Books pass hledger strict checks and CPUC account-mapping checks (not a reconciliation or completeness check).")
+			fmt.Fprintln(cmd.OutOrStdout(), "Books pass hledger strict/payee checks and CPUC account-mapping checks (not a reconciliation or completeness check).")
 			return nil
 		},
 	}, &cobra.Command{

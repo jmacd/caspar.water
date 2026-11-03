@@ -16,6 +16,7 @@ const (
 	masterJournal    = "books.journal"
 	chartJournal     = "chart.journal"
 	accountsJournal  = "accounts.journal"
+	payeesJournal    = "payees.journal"
 	manualJournal    = "manual.journal"
 	sourcesDirectory = "sources"
 )
@@ -33,14 +34,13 @@ type Config struct {
 	ChartDefPaths          []string            `yaml:"chart_defs,omitempty"`
 	ManualJournalPath      string              `yaml:"manual_journal,omitempty"`
 	HistoricalJournalPaths []string            `yaml:"historical_journals,omitempty"`
-	VendorPaths            []string            `yaml:"vendors,omitempty"`
 	Statement              StatementConfig     `yaml:"statement"`
 	Journal                string              `yaml:"-"`
 	ChartDefs              []string            `yaml:"-"`
 	LocalAccounts          string              `yaml:"-"`
+	Payees                 string              `yaml:"-"`
 	ManualJournal          string              `yaml:"-"`
 	HistoricalJournals     []string            `yaml:"-"`
-	Vendors                []string            `yaml:"-"`
 	Sources                string              `yaml:"-"`
 	QuickBooksMappings     string              `yaml:"-"`
 	root                   string
@@ -104,6 +104,7 @@ func LoadConfig(path string) (Config, error) {
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
+	cfg.Payees = filepath.Join(books, payeesJournal)
 	manualPath := cfg.ManualJournalPath
 	if manualPath == "" {
 		manualPath = filepath.Join(booksDirectory, manualJournal)
@@ -122,25 +123,6 @@ func LoadConfig(path string) (Config, error) {
 			return cfg, err
 		}
 		cfg.HistoricalJournals = append(cfg.HistoricalJournals, resolved)
-	}
-	if cfg.VendorPaths != nil && len(cfg.VendorPaths) == 0 {
-		return cfg, fmt.Errorf("vendors must contain at least one path")
-	}
-	vendorPaths := make(map[string]bool, len(cfg.VendorPaths))
-	for index, path := range cfg.VendorPaths {
-		resolved, err := resolveWorkspaceCSVPath(
-			cfg.root,
-			fmt.Sprintf("vendors[%d]", index),
-			path,
-		)
-		if err != nil {
-			return cfg, err
-		}
-		if vendorPaths[resolved] {
-			return cfg, fmt.Errorf("vendors[%d] duplicates vendor file path %q", index, path)
-		}
-		vendorPaths[resolved] = true
-		cfg.Vendors = append(cfg.Vendors, resolved)
 	}
 	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
 	cfg.QuickBooksMappings = filepath.Join(cfg.root, "quickbooks-mappings.yaml")
@@ -233,10 +215,16 @@ func LoadConfig(path string) (Config, error) {
 		accounts[bank.Account], identifiers[identifier], journals[bank.Journal] = true, true, true
 	}
 	reserved := append(
-		[]string{absolute, cfg.Journal, cfg.LocalAccounts, cfg.ManualJournal, cfg.QuickBooksMappings},
+		[]string{
+			absolute,
+			cfg.Journal,
+			cfg.LocalAccounts,
+			cfg.Payees,
+			cfg.ManualJournal,
+			cfg.QuickBooksMappings,
+		},
 		cfg.HistoricalJournals...,
 	)
-	reserved = append(reserved, cfg.Vendors...)
 	reserved = append(
 		reserved,
 		cfg.writableJournals()...,
@@ -295,17 +283,6 @@ func resolveBookJournalPath(root, label, path string) (string, error) {
 		return "", fmt.Errorf("%s must name a journal inside books", label)
 	}
 	return resolved, nil
-}
-
-func resolveWorkspaceCSVPath(root, label, path string) (string, error) {
-	if strings.TrimSpace(path) != path ||
-		!singleLine(path) ||
-		!filepath.IsLocal(path) ||
-		filepath.Clean(path) == "." ||
-		!strings.EqualFold(filepath.Ext(path), ".csv") {
-		return "", fmt.Errorf("%s must be a workspace-relative .csv file path", label)
-	}
-	return filepath.Join(root, filepath.Clean(path)), nil
 }
 
 func validLocalAccountName(name string) bool {
