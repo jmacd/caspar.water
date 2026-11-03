@@ -81,6 +81,9 @@ chart_defs: [reference/cpuc-u39w.yaml]
 manual_journal: books/manual-2022.journal
 historical_journals:
   - books/manual-2021.journal
+vendors:
+  - reference/vendors-2021.csv
+  - reference/vendors-2022.csv
 accounts:
   - Asset:151.000:Admin-Supplies
   - Expense:615.000:Electricity
@@ -101,6 +104,15 @@ The live books layout is fixed; the reference chart path is configured:
 - `historical_journals` names fixed, read-only journals included in every check
   and report. At year rollover, move the previous `manual_journal` path into
   this list and configure a new active yearly file.
+- `vendors` optionally lists one or more one-column CSV files whose header is
+  `name`. Wat merges their canonical names and rejects duplicate file paths or
+  names, including names repeated across files. With vendor files configured,
+  every transaction description must use exactly `PAYEE | MEMO`, with one
+  spaced separator and nonempty fields. `PAYEE` must be a canonical vendor,
+  `Journal`, or `Deposit`. The memo is the complete explanation for `Journal`
+  and `Deposit`; neither requires special metadata. `Deposit` requires a
+  `Bank:` posting and must not contain an `Expense:` posting. `Journal` and
+  `Deposit` are reserved and cannot appear in a vendor CSV.
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
@@ -443,8 +455,27 @@ On startup, `wat` verifies that each finished checkpoint still matches its
 cached statement and that every locked journal transaction still exists
 unchanged. Direct text edits cannot be physically prevented, but a deletion or
 change is reported and the books refuse to open until the inconsistency is
-resolved. There is intentionally no ordinary Edit or Reconcile action after
-Finish. An explicit reopen/rollback workflow is not implemented.
+resolved.
+
+To undo a premature Finish while the books still open normally, select the
+finished statement and choose **Reopen reconciliation (u)**. Wat removes the
+checkpoint while retaining every recorded journal entry and restoring saved
+outstanding selections. The entries become editable and the statement can be
+reconciled and finished again. Reopening an earlier statement also reopens all
+later finished statements for the same bank account because their opening
+balances depend on the earlier checkpoint.
+
+If normal startup is blocked because a reconciled transaction or statement was
+already edited, use the transaction ID printed in the error:
+
+```sh
+./wat/run.sh reopen-reconciliation 33a486a16f493c7cf76b7c6500da2924
+```
+
+The selector may also be a unique statement-hash prefix, period start/end date,
+or `START..END`. This recovery command intentionally loads only workspace
+configuration and checkpoint metadata, bypassing normal reconciliation
+verification. It does not modify or remove journal entries.
 
 For a new PDF, install the optional Python parser in a separate environment
 (Python 3.13 is supported by the pinned hybrid dependencies):
@@ -464,6 +495,25 @@ statement:
   api_version: 2025-04-01-preview
   model: azure/example-deployment
 ```
+
+Pass an optional read-only QuickBooks bank-register export only for the Wat run
+that should use it:
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml \
+  --quickbooks-register ../caspar_water_bank/Bank_Register.xls
+```
+
+The CLI path is relative to the current directory. For a pending statement row,
+Wat uses only a unique match with the same date and signed payment/deposit
+amount. Check/reference or description evidence resolves otherwise-duplicate
+matches; unresolved ambiguity is shown and leaves the form blank. An exact
+match prefills its payee, memo, and reference. Its QuickBooks account prefills a
+counteraccount only after that label has been approved with
+`quickbooks --review`; unmapped labels remain explicit in the statement row
+hint. The operator must still review the form and press F2. Spreadsheet
+registers require the paired `pond` CLI through `WAT_POND`; CSV registers do
+not.
 
 For a local Ollama model, use a provider-prefixed model and omit `api_version`:
 
@@ -519,9 +569,9 @@ Transactions are revised in the same source journal: ordinary entries stay in
 the active manual journal, and statement-derived entries stay in their bank journal.
 Entries in other included journals remain read-only.
 Existing books are not migrated or changed just by opening this screen.
-Deletion, period closing, and reopening or rolling back a finished reconciliation
-are not implemented. A transaction becomes reconciled only through the explicit
-Finish action described above.
+Deletion and period closing are not implemented. A transaction becomes
+reconciled only through the explicit Finish action described above; reopening
+removes that checkpoint without reversing journal entries.
 
 A revision preserves the transaction's stable `id`, replaces only its original
 source range, and leaves all bytes outside that range intact. It never appends

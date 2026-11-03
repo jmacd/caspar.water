@@ -90,6 +90,72 @@ func TestFinishReconciliationLocksTransactions(t *testing.T) {
 	require.ErrorContains(t, err, "verify reconciliations")
 }
 
+func TestReopenReconciliationUnlocksTransactions(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	recordStatement(t, books, statement)
+	require.NoError(t, books.FinishReconciliation(statement))
+
+	reopened, err := books.ReopenReconciliation(statement)
+	require.NoError(t, err)
+	require.Len(t, reopened, 1)
+	require.NoFileExists(t, books.reconciliationPath(statement.Hash, "reconciliation.json"))
+	statuses, err := books.StatementStatuses(statement)
+	require.NoError(t, err)
+	for _, status := range statuses {
+		require.True(t, status.Recorded, "reopening must not remove recorded journal entries")
+	}
+	entries, err := books.JournalEntries()
+	require.NoError(t, err)
+	_, _, err = books.EditDraft(entries[0].ID)
+	require.NoError(t, err, "reopened transactions must become editable")
+	reconciliation, err := books.Reconciliation(statement)
+	require.NoError(t, err)
+	require.Nil(t, reconciliation.Checkpoint)
+	require.NoError(t, books.FinishReconciliation(statement), "a reopened statement can be finished again")
+}
+
+func TestRecoveryReopenCascadesAfterChangedTransaction(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	recordStatement(t, books, statement)
+	require.NoError(t, books.FinishReconciliation(statement))
+	checkpoint, err := books.loadCheckpoint(statement)
+	require.NoError(t, err)
+	selector := checkpoint.Transactions[0].ID
+
+	root := books.Config.root
+	laterPDF := filepath.Join(root, "later.pdf")
+	laterJSON := filepath.Join(root, "later.json")
+	laterData := strings.NewReplacer(
+		"2021-04-", "2021-06-",
+		"2021-05-", "2021-07-",
+		`"opening_balance":"0.00"`, `"opening_balance":"67.66"`,
+		`"closing_balance":"67.66"`, `"closing_balance":"135.32"`,
+	).Replace(statementJSON)
+	require.NoError(t, os.WriteFile(laterPDF, []byte("%PDF-1.7\nlater statement\n"), 0600))
+	require.NoError(t, os.WriteFile(laterJSON, []byte(laterData), 0600))
+	later, err := books.LoadStatement(laterPDF, StatementOptions{Extraction: laterJSON}, nil)
+	require.NoError(t, err)
+	recordStatement(t, books, later)
+	require.NoError(t, books.FinishReconciliation(later))
+
+	journalPath := bankJournal(t, books, statement.BankAccount)
+	journal := read(t, journalPath)
+	require.NoError(t, os.WriteFile(journalPath,
+		[]byte(strings.Replace(journal, "OPENING DEPOSIT", "Changed deposit", 1)), 0600))
+	_, err = Open(books.Config)
+	require.ErrorContains(t, err, "changed after Finish")
+
+	reopened, err := ReopenReconciliationBySelector(books.Config, selector)
+	require.NoError(t, err)
+	require.Len(t, reopened, 2, "later reconciliation depends on the reopened closing balance")
+	require.Equal(t, statement.Hash, reopened[0].StatementHash)
+	require.Equal(t, later.Hash, reopened[1].StatementHash)
+	require.NoFileExists(t, books.reconciliationPath(statement.Hash, "reconciliation.json"))
+	require.NoFileExists(t, books.reconciliationPath(later.Hash, "reconciliation.json"))
+	_, err = Open(books.Config)
+	require.NoError(t, err, "recovery command must work when normal Open was blocked")
+}
+
 func TestReconciliationPersistsExplicitOutstandingItems(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	outstandingID := saveBankEntry(t, books, "2021-04-10", "Uncleared check", "25.00")
@@ -127,6 +193,12 @@ func TestReconciliationPersistsExplicitOutstandingItems(t *testing.T) {
 	require.Equal(t, outstandingID, checkpoint.Outstanding[0].ID)
 	_, _, err = reopened.EditDraft(outstandingID)
 	require.NoError(t, err, "outstanding entries are not cleared or locked by this statement")
+	reopenedCheckpoints, err := reopened.ReopenReconciliation(statement)
+	require.NoError(t, err)
+	require.Len(t, reopenedCheckpoints, 1)
+	value, err = reopened.Reconciliation(statement)
+	require.NoError(t, err)
+	require.True(t, value.Items[0].Outstanding, "reopening must restore saved outstanding selections")
 }
 
 func TestReconciliationRequiresMatchingBookOpening(t *testing.T) {

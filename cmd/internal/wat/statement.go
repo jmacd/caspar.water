@@ -846,9 +846,10 @@ func transactionTag(tx journalTransaction, name string) string {
 }
 
 type StatementStatus struct {
-	Recorded      bool
-	PossibleMatch bool
-	Suggestion    string
+	Recorded           bool
+	PossibleMatch      bool
+	Suggestion         string
+	QuickBooksEvidence string
 }
 
 func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
@@ -918,6 +919,11 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 				statuses[index].Suggestion = account
 			}
 		}
+		register, err := b.statementRegisterDefault(row)
+		if err != nil {
+			return nil, err
+		}
+		statuses[index].QuickBooksEvidence = register.hint()
 	}
 	return statuses, nil
 }
@@ -948,10 +954,25 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 		return nil, Entry{}, err
 	}
 	row := s.Rows[index]
+	register, err := b.statementRegisterDefault(row)
+	if err != nil {
+		return nil, Entry{}, err
+	}
+	counteraccount := statuses[index].Suggestion
+	if register.Account != "" {
+		counteraccount = register.Account
+	}
 	draft.statement = &statementDraft{s, index, s.BankAccount}
 	entry := Entry{Date: row.Date, Payee: row.Description, Source: s.Source,
 		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
-		Postings: []Posting{{s.BankAccount, formatCents(row.Cents)}, {statuses[index].Suggestion, formatCents(-row.Cents)}}}
+		Postings: []Posting{{s.BankAccount, formatCents(row.Cents)}, {counteraccount, formatCents(-row.Cents)}}}
+	if register.exact() {
+		if register.Payee != "" {
+			entry.Payee = register.Payee
+		}
+		entry.Description = register.Description
+		entry.Reference = register.Reference
+	}
 	return draft, entry, nil
 }
 

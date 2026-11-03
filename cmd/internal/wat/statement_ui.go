@@ -25,11 +25,8 @@ func (ui *terminal) bankStatements() {
 		ui.message(" Bank statements ", "No bank statements are available. Add PDF files to the configured statement inbox, then start wat again.", ui.menu)
 		return
 	}
-	list := themedList().ShowSecondaryText(true)
-	list.SetBorder(true).SetTitle(fmt.Sprintf(
-		" Bank statements | %d extracted | %d ready - recorded does not mean reconciled ",
-		len(statements), len(pending),
-	))
+	list := themedList().ShowSecondaryText(false)
+	reconciled := 0
 	for _, statement := range statements {
 		statuses, err := ui.books.StatementStatuses(statement)
 		if err != nil {
@@ -51,14 +48,13 @@ func (ui *terminal) bankStatements() {
 		if statement.Period != nil {
 			period = statement.Period.Start + " to " + statement.Period.End
 		}
-		state := fmt.Sprintf("%d recorded, %d pending", recorded, len(statuses)-recorded)
-		hint := statement.Source
+		state := fmt.Sprintf("%d/%d RECORDED", recorded, len(statuses))
 		if checkpoint != nil {
+			reconciled++
 			state = "RECONCILED"
-			hint = "Finished " + checkpoint.FinishedAt + " | read-only | " + statement.Source
 		}
-		label := fmt.Sprintf("EXTRACTED | %s | %s | %s | %s", statement.BankAccount, period, state, statement.Hash[:12])
-		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+		label := fmt.Sprintf("%-14s  %s  %s", state, period, statementAccountLabel(statement.BankAccount))
+		list.AddItem(tview.Escape(label), "", 0, func() {
 			current, err := ui.books.cachedStatement(statement.Hash)
 			if err != nil {
 				ui.message(" Cannot open bank statement ", err.Error(), ui.bankStatements)
@@ -68,13 +64,16 @@ func (ui *terminal) bankStatements() {
 		})
 	}
 	for _, statement := range pending {
-		label := fmt.Sprintf("READY TO EXTRACT | %s | %s", statement.Name, statement.Hash[:12])
-		hint := "Enter to extract this complete PDF"
-		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+		label := fmt.Sprintf("%-14s  %s", "READY", statement.Name)
+		list.AddItem(tview.Escape(label), "", 0, func() {
 			ui.extractPendingStatement(statement)
 		})
 	}
-	list.AddItem("Back to menu", "Saved entries and statement caches are unchanged", 'q', ui.menu)
+	list.AddItem("Back to menu", "", 'q', ui.menu)
+	list.SetBorder(true).SetTitle(fmt.Sprintf(
+		" Bank statements | %d reconciled | %d unfinished | %d ready ",
+		reconciled, len(statements)-reconciled, len(pending),
+	))
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ui.menu()
@@ -83,6 +82,14 @@ func (ui *terminal) bankStatements() {
 		return event
 	})
 	ui.screen("Bank statements", list, "Enter Open / extract one statement | Esc Menu")
+}
+
+func statementAccountLabel(account string) string {
+	parts := strings.Split(account, ":")
+	if len(parts) > 2 {
+		return strings.Join(parts[2:], ":")
+	}
+	return account
 }
 
 func (ui *terminal) openStatementFromBrowser(statement *Statement) {
@@ -185,7 +192,17 @@ func (ui *terminal) statementList() {
 		} else if status.PossibleMatch {
 			label = "POSSIBLE MATCH"
 		}
-		hint := "Suggested counteraccount: " + status.Suggestion
+		var hints []string
+		if status.QuickBooksEvidence != "" {
+			hints = append(hints, status.QuickBooksEvidence)
+		}
+		if status.Suggestion != "" {
+			hints = append(hints, "Learned account: "+status.Suggestion)
+		}
+		hint := strings.Join(hints, " | ")
+		if hint == "" {
+			hint = "No exact register match or learned account"
+		}
 		if status.Recorded {
 			hint = "Enter to revise the existing entry (working journal only)"
 		}
@@ -218,6 +235,39 @@ func (ui *terminal) statementList() {
 		})
 		list.SetCurrentItem(len(ui.statement.Rows))
 		footer = "Enter/n " + label + " | i Source/notices | Esc Menu"
+	}
+	if checkpoint != nil {
+		list.AddItem(
+			"Reopen reconciliation",
+			"Remove Finish checkpoint; recorded entries remain and become editable",
+			'u',
+			func() {
+				modal := themedModal().
+					SetText("Reopen this reconciliation?\n\nIts recorded entries will remain in the journal and become editable. Any later finished reconciliation for the same bank account will also be reopened.").
+					AddButtons([]string{"Cancel", "Reopen"})
+				modal.SetDoneFunc(func(index int, _ string) {
+					if index != 1 {
+						ui.statementList()
+						return
+					}
+					reopened, err := ui.books.ReopenReconciliation(ui.statement)
+					if err != nil {
+						ui.message(" Cannot reopen reconciliation ", err.Error(), ui.statementList)
+						return
+					}
+					message := "Removed the Finish checkpoint. Recorded entries remain unchanged and editable."
+					if len(reopened) > 1 {
+						message = fmt.Sprintf(
+							"Reopened %d dependent reconciliations. Recorded entries remain unchanged and editable.",
+							len(reopened),
+						)
+					}
+					ui.message(" Reconciliation reopened ", message, ui.statementList)
+				})
+				ui.app.SetRoot(modal, true).SetFocus(modal)
+			},
+		)
+		footer += " | u Reopen"
 	}
 	list.AddItem("Statement notices / source", "Extraction warnings and PDF location; balance checks are not proof of reconciliation", 'i', func() {
 		period := "Statement dates unavailable"

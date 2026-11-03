@@ -29,6 +29,8 @@ func TestHelpDoesNotRequireBooks(t *testing.T) {
 	root.SetArgs([]string{"--config", "missing.yaml", "--help"})
 	require.NoError(t, root.Execute())
 	require.Contains(t, output.String(), "Water Accounting Terminal")
+	require.Contains(t, output.String(), "--quickbooks-register")
+	require.Contains(t, output.String(), "reopen-reconciliation")
 }
 
 func TestQuickBooksHelpIncludesMappingReview(t *testing.T) {

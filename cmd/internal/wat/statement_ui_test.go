@@ -38,8 +38,10 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	label, source := list.GetItemText(0)
 	require.Contains(t, label, "2021-04-01 to 2021-05-31")
 	require.NotContains(t, label, "2021-05-05", "last transaction date is not the statement end date")
-	require.Contains(t, label, "1 recorded, 2 pending")
-	require.Equal(t, statement.Source, source)
+	require.Contains(t, label, "1/3 RECORDED")
+	require.Contains(t, label, "Checking")
+	require.NotContains(t, label, statement.BankAccount)
+	require.Empty(t, source)
 	press(tcell.KeyEnter, 0)
 	require.Equal(t, statement, ui.statement)
 	list = ui.app.GetFocus().(*tview.List)
@@ -82,11 +84,11 @@ func TestBankStatementsListsExtractedBeforeReadyStatements(t *testing.T) {
 	ui := &terminal{app: tview.NewApplication(), books: books}
 	ui.bankStatements()
 	list := ui.app.GetFocus().(*tview.List)
-	require.Contains(t, list.GetTitle(), "1 extracted | 1 ready")
+	require.Contains(t, list.GetTitle(), "0 reconciled | 1 unfinished | 1 ready")
 	extracted, _ := list.GetItemText(0)
 	ready, _ := list.GetItemText(1)
-	require.Contains(t, extracted, "EXTRACTED")
-	require.Contains(t, ready, "READY TO EXTRACT")
+	require.Contains(t, extracted, "0/3 RECORDED")
+	require.Contains(t, ready, "READY")
 }
 
 func TestBankStatementsBrowserPreservesActiveBatch(t *testing.T) {
@@ -119,6 +121,27 @@ func TestBankStatementsBrowserPreservesActiveBatch(t *testing.T) {
 	list = ui.app.GetFocus().(*tview.List)
 	label, _ = list.GetItemText(len(statement.Rows))
 	require.Equal(t, "Reconcile statement", label)
+}
+
+func TestStatementListShowsRegisterDefault(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	writeStatementRegister(t, books,
+		"4/5/2021,Expense,44,Electric Company,April power,Utilities,12.34,,87.66\n",
+	)
+	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
+		Label: "Utilities", Account: "Expense:615.000:Utility",
+	}}))
+	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement}
+	ui.statementList()
+	list := ui.app.GetFocus().(*tview.List)
+	_, hint := list.GetItemText(1)
+	require.Contains(t, hint, "QuickBooks: exact match")
+	require.Contains(t, hint, "Expense:615.000:Utility")
+	list.SetCurrentItem(1)
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
+	account, ok := ui.app.GetFocus().(*tview.InputField)
+	require.True(t, ok)
+	require.Equal(t, "Expense:615.000:Utility", account.GetText())
 }
 
 func TestBankStatementsMenuEmptyAndInvalidCache(t *testing.T) {
@@ -156,9 +179,9 @@ func TestBankStatementsShowsPendingInboxPDFsWithoutExtracting(t *testing.T) {
 	require.Equal(t, 3, list.GetItemCount())
 	for index, name := range []string{"2021-12.pdf", "2022-01.pdf"} {
 		label, hint := list.GetItemText(index)
-		require.Contains(t, label, "READY TO EXTRACT")
+		require.Contains(t, label, "READY")
 		require.Contains(t, label, name)
-		require.Contains(t, hint, "complete PDF")
+		require.Empty(t, hint)
 	}
 	pending, err := books.PendingStatements()
 	require.NoError(t, err)
@@ -181,12 +204,15 @@ func TestFinishedStatementIsReadOnlyInStatementMenus(t *testing.T) {
 	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement}
 	ui.statementList()
 	list := ui.app.GetFocus().(*tview.List)
-	require.Equal(t, len(statement.Rows)+2, list.GetItemCount(), "finished statements offer neither Reconcile nor edit actions")
+	require.Equal(t, len(statement.Rows)+3, list.GetItemCount(), "finished statements offer Reopen but no edit actions")
 	for index := range statement.Rows {
 		label, hint := list.GetItemText(index)
 		require.Contains(t, label, "RECONCILED")
 		require.Contains(t, hint, "read-only")
 	}
+	label, hint := list.GetItemText(len(statement.Rows))
+	require.Equal(t, "Reopen reconciliation", label)
+	require.Contains(t, hint, "recorded entries remain")
 	list.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 	button, ok := ui.app.GetFocus().(*tview.Button)
 	require.True(t, ok)
@@ -194,9 +220,9 @@ func TestFinishedStatementIsReadOnlyInStatementMenus(t *testing.T) {
 
 	ui.bankStatements()
 	list = ui.app.GetFocus().(*tview.List)
-	label, hint := list.GetItemText(0)
+	label, hint = list.GetItemText(0)
 	require.Contains(t, label, "RECONCILED")
-	require.Contains(t, hint, "read-only")
+	require.Empty(t, hint)
 }
 
 func TestReconciliationScreenOffersFinishAtZeroDifference(t *testing.T) {

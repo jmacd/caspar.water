@@ -120,6 +120,13 @@ func TestConfig(t *testing.T) {
 		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.200:First:1234\n  - Bank:131.200:Second:1234\n"},
 		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.200:First.Account\n  - Bank:131.200:First-Account\n"},
 		{name: "azure statement", yaml: base + "statement:\n  python: python3\n  api_base: https://example.openai.azure.com/\n  api_version: 2025-04-01-preview\n  model: azure/example\n", valid: true},
+		{name: "statement register is not configuration", yaml: base + "statement:\n  quickbooks_register: ../register.xls\n"},
+		{name: "vendors", yaml: base + "vendors: [dir/vendors-1.csv, dir/vendors-2.csv]\n", valid: true},
+		{name: "vendors scalar", yaml: base + "vendors: vendors.csv\n"},
+		{name: "vendors empty", yaml: base + "vendors: []\n"},
+		{name: "vendors absolute", yaml: base + "vendors: [/tmp/vendors.csv]\n"},
+		{name: "vendors extension", yaml: base + "vendors: [vendors.yaml]\n"},
+		{name: "vendors duplicate", yaml: base + "vendors: [vendors.csv, vendors.csv]\n"},
 		{name: "duplicate statement endpoint", yaml: base + "statement:\n  api_base: https://example.openai.azure.com/\n  ollama_url: http://localhost:11434\n  model: azure/example\n"},
 		{name: "blank bank account", yaml: base + "bank_accounts:\n  - ' '\n"},
 		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.200:Checking\n"},
@@ -168,6 +175,17 @@ func TestConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSetQuickBooksRegister(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Chdir(root)
+	var cfg Config
+	require.NoError(t, cfg.SetQuickBooksRegister("register.xls"))
+	require.Equal(t, filepath.Join(root, "register.xls"), cfg.Statement.QuickBooksRegister)
+	require.ErrorContains(t, cfg.SetQuickBooksRegister("register.pdf"), ".csv, .xls, or .xlsx")
+	require.ErrorContains(t, cfg.SetQuickBooksRegister(" register.xls"), "single-line file path")
 }
 
 func TestYearlyManualJournalConfiguration(t *testing.T) {

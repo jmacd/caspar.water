@@ -12,10 +12,11 @@ import (
 )
 
 type Books struct {
-	Config      Config
-	binary      string
-	chart       accountChart
-	chartStates map[string]fileState
+	Config                 Config
+	binary                 string
+	chart                  accountChart
+	chartStates            map[string]fileState
+	quickBooksRegisterYear map[int][]quickBooksRecord
 }
 
 type journalTransaction struct {
@@ -129,6 +130,7 @@ func Open(cfg Config) (*Books, error) {
 	}
 	books := &Books{
 		Config: cfg, binary: binary, chart: chart, chartStates: chartStates,
+		quickBooksRegisterYear: make(map[int][]quickBooksRecord),
 	}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
@@ -180,7 +182,10 @@ func (b *Books) Check() error {
 	if err != nil {
 		return err
 	}
-	return checkPostingAccounts(transactions, accounts)
+	if err := checkPostingAccounts(transactions, accounts); err != nil {
+		return err
+	}
+	return b.checkRegisteredVendors(transactions)
 }
 
 func (b *Books) checkSyntax(journal string) error {
