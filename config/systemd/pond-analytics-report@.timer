@@ -1,0 +1,10 @@
+[Unit]
+Description=Watertown daily analytics projection refresh %i
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

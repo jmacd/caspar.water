@@ -70,6 +70,42 @@ if [ -n "${MONITOR_OUTPUT_DIR:-}" ]; then
     )
 fi
 
+# Reporting is staging-only until its separate production approval. Ordinary
+# commands see only saved reports; refresh gets one site's writable directory.
+if [ -n "${ANALYTICS_REPORT_ROOT:-}" ] || [ "${1:-}" = "--analytics-report" ]; then
+    if [[ ! "${INSTANCE}" =~ ^[a-zA-Z0-9_-]+-staging$ ]]; then
+        echo "ERROR: Analytics report mounts are restricted to staging instances" >&2
+        exit 1
+    fi
+    if [[ "${ANALYTICS_REPORT_ROOT:-}" != /* ]] || [ ! -d "${ANALYTICS_REPORT_ROOT:-}" ]; then
+        echo "ERROR: ANALYTICS_REPORT_ROOT must be an existing absolute private directory" >&2
+        exit 1
+    fi
+    if [ "${1:-}" = "--analytics-report" ]; then
+        if [ "$#" -ne 1 ] || [ "${ANALYTICS_REPORT_ENABLED:-0}" != 1 ]; then
+            echo "ERROR: --analytics-report requires explicit enablement and no extra arguments" >&2
+            exit 1
+        fi
+        if [ "${POND_RUNTIME:-container}" != container ]; then
+            echo "ERROR: Analytics report staging currently requires the container runtime" >&2
+            exit 1
+        fi
+        if [ ! -d "${ANALYTICS_REPORT_ROOT}/${INSTANCE}" ] \
+            || [[ "${ANALYTICS_CATALOG_DIR:-}" != /* ]] \
+            || [ ! -d "${ANALYTICS_CATALOG_DIR:-}" ]; then
+            echo "ERROR: Provision the private per-instance report directory and ANALYTICS_CATALOG_DIR first" >&2
+            exit 1
+        fi
+        PODMAN_ARGS+=(
+            -v "${ANALYTICS_REPORT_ROOT}/${INSTANCE}:/analytics-reports/${INSTANCE}"
+            -v "${ANALYTICS_CATALOG_DIR}:/analytics-catalogs:ro"
+        )
+        set -- run /system/etc/90-sitegen analytics-report
+    else
+        PODMAN_ARGS+=(-v "${ANALYTICS_REPORT_ROOT}:/analytics-reports:ro")
+    fi
+fi
+
 # Deliberate one-shot seed override. Keep it out of the persistent env file:
 # callers must opt in on the specific command, and the wrapper forwards only
 # this recognized control variable into the container.

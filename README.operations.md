@@ -213,6 +213,93 @@ The enabled instance sends every Monday at 09:00 America/Los_Angeles. Add
 `site-prod` only after the staging message is received and the corresponding
 Watertown image has been promoted.
 
+### Site analytics report staging (inactive)
+
+Daily public reporting has an **inactive, staging-only** runner and user-unit
+templates. Nothing installs/enables these units or changes deployed env files.
+Normal instances with no analytics variables retain their existing mounts and
+behavior. Production reporting and native-runtime refresh are explicitly rejected.
+
+`config/scripts/run-analytics-report.sh <instance>` refreshes the owning pond's
+`/system/etc/90-sitegen` report, not an imported subsite node in the outer pond.
+It takes the same per-instance host lock as `run.sh`, pulls the staging image
+once, and propagates image/lock/refresh failure. It never runs ingestion,
+rollup repair, collector rotation, site publication, or raw-data cleanup.
+Ingestion and rollups must already publish a committed snapshot independently.
+
+Use a separate private tree for each environment, outside **all** current and
+historical web roots. For example, the proposed `noyo-staging.env` settings are:
+
+```sh
+ANALYTICS_REPORT_ENABLED=1
+ANALYTICS_REPORT_ROOT=/home/jmacd/watertown/analytics/staging/reports
+ANALYTICS_CATALOG_DIR=/home/jmacd/watertown/analytics/staging/catalogs/noyo-staging
+```
+
+These are host-side wrapper controls, not container paths. Provision
+`reports/noyo-staging/` and the catalog directory before running. Keep the tree
+private to the service account; rootless Podman refresh and rendering must run
+as that same account so they can read mode-0600 state files. Do not symlink
+per-site directories to each other or into a web root. Catalogs here are
+verified publisher catalogs (`current.json` and `retained/*.json`), not raw
+collector logs.
+
+The matching **staging** Sitegen configuration is illustrative:
+
+```yaml
+analytics_report:
+  site_id: noyo-staging
+  target: /analytics/hourly
+  catalog_dir: /analytics-catalogs/retained
+  current_catalog: /analytics-catalogs/current.json
+  state_path: /analytics-reports/noyo-staging/report-state.json
+```
+
+Site ID must match that environment's collector catalogs and rollup inventory.
+This config belongs in the Noyo pond; use `site-staging`'s own separate config,
+catalogs, and report directory for the non-nested Caspar site. Do not add this
+block to a shared production config as a way to test staging.
+
+`pond.sh <instance> --analytics-report` is the narrow write-capable entrypoint:
+it mounts only that instance's report directory read/write and its catalogs
+read-only. It accepts no extra Pond arguments and requires explicit enablement.
+Ordinary `pond.sh` commands mount the report root read-only and no catalogs.
+Set the same `ANALYTICS_REPORT_ROOT` in `site-staging.env` for recursive rendering;
+it can read Noyo's saved report without refreshing or writing Noyo's state.
+The renderer does not need Noyo's `ANALYTICS_REPORT_ENABLED` or catalog setting.
+
+`config/systemd/pond-analytics-report@.{service,timer}` are **user** units.
+The proposed cadence is hourly with up to five minutes of jitter. The service
+has a 20-minute timeout, including its maximum 10-minute host-lock wait, keeping
+its lock occupancy below the normal content job's 30-minute wait budget.
+There is no dependency from the content service to the analytics service.
+The units remain uninstalled and disabled until staging approval/provisioning.
+
+After approved installation, inspect the independent outcome with
+`systemctl --user status pond-analytics-report@noyo-staging.service --no-pager`
+and `journalctl --user -u pond-analytics-report@noyo-staging.service --no-pager`.
+Successful content publication does not acknowledge an analytics failure.
+A query/catalog failure records last-good state with its original timestamp
+and still fails the service. Infrastructure failure before the factory runs
+(image pull, lock, timeout, or mounts) cannot update that state; the failed unit
+and original snapshot timestamp are then the evidence. Include this unit in
+operator alerting before enabling its timer.
+
+Local script checks use disposable directories and fake container commands:
+
+```sh
+make test-analytics-scripts
+```
+
+Remaining live gates: publish a staging image containing the analytics code;
+approve the repair horizon and provision ingestion/rollup nodes; manage the
+private directories/env values and unit installation through deployment;
+verify effective units and bind permissions on Linux; install catalogs;
+exercise missing snapshots/catalogs, stopped collector, service timeout and
+recovery while core content publishes; verify alert delivery; and exercise raw
+source backup/restore before approving retention or production. Collector
+packaging, proxy routing/privacy, and actual collection remain separate gates.
+
 ### Deploy / Update configs
 
 ```bash
