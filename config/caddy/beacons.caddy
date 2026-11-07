@@ -1,0 +1,43 @@
+# Import this snippet definition outside the site block. Inside the site, use:
+# import analytics-beacons noyo-staging /_analytics/noyo/view /var/log/caddy/beacons/noyo-staging
+# Put ordinary site handlers (including try_files) in a fallback handle block.
+(analytics-beacons) {
+	log beacons-{args[0]} {
+		no_hostname
+		output file {args[2]}/beacons.log {
+			mode 0640
+			roll_size 10MiB
+			roll_uncompressed
+			# Retention is an operator decision after ingestion/backup is established.
+			roll_keep 0
+			roll_keep_for 0
+		}
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+				user_id delete
+			}
+		}
+	}
+
+	handle {args[1]} {
+		log_name beacons-{args[0]}
+		header Cache-Control no-store
+		log_append site_id {args[0]}
+
+		@valid-beacon-{args[0]} {
+			method POST
+			expression `{query.page_uri}.startsWith('/') && size({query.page_uri}) <= 1024 && {query.catalog_id}.matches('^[a-f0-9]{64}$')`
+		}
+		handle @valid-beacon-{args[0]} {
+			log_append schema_version 1
+			log_append event pageview
+			log_append page_uri {query.page_uri}
+			log_append catalog_id {query.catalog_id}
+			respond "" 204
+		}
+		respond "" 400
+	}
+}

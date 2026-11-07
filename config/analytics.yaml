@@ -1,0 +1,59 @@
+# Opt-in, one site/environment per owning pond.
+# ANALYTICS_LOG_DIR is the host source directory visible to pond.
+version: v1
+kind: mkdir
+metadata:
+  path: /analytics/raw
+---
+version: v1
+kind: mknod
+metadata:
+  path: /etc/analytics-ingest
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:ANALYTICS_LOG_DIR}/beacons-*.log"
+    active_pattern: "${env:ANALYTICS_LOG_DIR}/beacons.log"
+    pond_path: /analytics/raw
+    timestamp_field: ts
+    timestamp_unit: seconds
+---
+version: v1
+kind: mknod
+metadata:
+  path: /analytics/views
+spec:
+  factory: sql-derived-series
+  config:
+    patterns:
+      source: "jsonlogs:///analytics/raw/beacons*.log"
+    locality:
+      type: timestamp-local
+      event_time: timestamp
+    query: >-
+      SELECT
+        to_timestamp_seconds(CAST(floor(CAST(ts AS DOUBLE)) AS BIGINT)) AS timestamp,
+        site_id,
+        page_uri,
+        catalog_id
+      FROM source
+      WHERE schema_version = '1'
+        AND event = 'pageview'
+        AND status = '204'
+---
+version: v1
+kind: mknod
+metadata:
+  path: /analytics/daily
+spec:
+  factory: temporal-reduce-series
+  config:
+    in_pattern: "series:///analytics/views"
+    time_column: timestamp
+    group_by: [site_id, page_uri]
+    resolution: 1d
+    aggregations:
+      - type: count
+        columns: ["*"]
+    output_aliases:
+      timestamp.count: views

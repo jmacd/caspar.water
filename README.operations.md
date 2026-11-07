@@ -213,92 +213,102 @@ The enabled instance sends every Monday at 09:00 America/Los_Angeles. Add
 `site-prod` only after the staging message is received and the corresponding
 Watertown image has been promoted.
 
-### Site analytics report staging (inactive)
+### Site analytics via Caddy (opt-in)
 
-Daily public reporting has an **inactive, staging-only** runner and user-unit
-templates. Nothing installs/enables these units or changes deployed env files.
-Normal instances with no analytics variables retain their existing mounts and
-behavior. Production reporting and native-runtime refresh are explicitly rejected.
+The collection path is browser beacon -> dedicated Caddy log -> ordinary pond
+log ingestion -> pond queries. No analytics server, collector inventory, or
+host report-state directory is needed. The checked-in configurations are not
+installed or enabled by deployment. Browser instrumentation remains off by
+default.
 
-`config/scripts/run-analytics-report.sh <instance>` refreshes the owning pond's
-`/system/etc/90-sitegen` report, not an imported subsite node in the outer pond.
-It takes the same per-instance host lock as `run.sh`, pulls the staging image
-once, and propagates image/lock/refresh failure. It never runs ingestion,
-rollup repair, collector rotation, site publication, or raw-data cleanup.
-Ingestion and rollups must already publish a committed snapshot independently.
+After choosing the owning pond and approving collection, install
+`config/caddy/beacons.caddy` as a Caddy snippet definition. Import it outside
+the site block, then configure each site's endpoint and private log directory:
 
-Use a separate private tree for each environment, outside **all** current and
-historical web roots. For example, the proposed `noyo-staging.env` settings are:
+```caddyfile
+import /etc/caddy/beacons.caddy
+
+example.com {
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    import analytics-beacons caspar-staging /_analytics/caspar/view /var/log/caddy/beacons/caspar-staging
+    import analytics-beacons noyo-staging /_analytics/noyo/view /var/log/caddy/beacons/noyo-staging
+
+    handle {
+        root * /path/to/published/site
+        try_files {path} {path}.html {path}/
+        file_server
+    }
+}
+```
+
+Keep the existing `/selfmon` and `/monitor` handlers when adapting the Watershop
+configuration. Ordinary `try_files` and static serving must be inside the
+fallback `handle`, not at site scope where rewriting could happen before the
+beacon handler. Validate the complete configuration before reloading Caddy.
+The snippet uses built-in Caddy directives; local integration uses Caddy 2.10.2.
+
+Each named beacon logger receives only its endpoint's requests, instead of
+also writing them to the ordinary weblog. It removes the complete request
+object, response headers, and authenticated user field. Only validated POSTs
+receive the selected `page_uri` and `catalog_id` fields; site identity comes
+from Caddy configuration, not the client. Unknown query parameters are not
+logged. This checks basic payload shape, not catalog membership or humanity.
+The browser sends no request body, credentials, referrer, or current-page URL
+state. Successful requests return 204 and `Cache-Control: no-store`; this
+does not promise an fsync-before-response journal acknowledgement.
+
+Provision log directories outside web roots, writable by Caddy and readable
+by the ingestion account. The snippet uses mode 0640 and uncompressed rotated
+logs for ordinary `logfile-ingest`. It deliberately does not delete archives:
+monitor disk use and approve a source backup/retention policy before production.
+Do not silently enable Caddy sampling for page counts.
+
+Apply `config/analytics.yaml` only in the site's writable owning pond:
 
 ```sh
-ANALYTICS_REPORT_ENABLED=1
-ANALYTICS_REPORT_ROOT=/home/jmacd/watertown/analytics/staging/reports
-ANALYTICS_CATALOG_DIR=/home/jmacd/watertown/analytics/staging/catalogs/noyo-staging
+export POND=/path/to/owning-pond
+export ANALYTICS_LOG_DIR=/var/log/caddy/beacons/noyo-staging
+pond apply -f config/analytics.yaml
+pond run /etc/analytics-ingest push
+pond cat /analytics/daily --format=table
 ```
 
-These are host-side wrapper controls, not container paths. Provision
-`reports/noyo-staging/` and the catalog directory before running. Keep the tree
-private to the service account; rootless Podman refresh and rendering must run
-as that same account so they can read mode-0600 state files. Do not symlink
-per-site directories to each other or into a web root. Catalogs here are
-verified publisher catalogs (`current.json` and `retained/*.json`), not raw
-collector logs.
+For containers, mount that source directory read-only and set
+`ANALYTICS_LOG_DIR` to its container-visible path. Schedule the existing ingest
+command in the owning pond's periodic workflow; do not ingest or write through
+another pond's imported mount. Site/environment source directories and ponds
+remain separate. No cadence, owning-pond deployment, or timer is installed by
+this configuration.
 
-The matching **staging** Sitegen configuration is illustrative:
+Raw source versions live under `/analytics/raw`, with Caddy's default fractional
+Unix-second `ts` recorded using conservative event-time bounds. `/analytics/views`
+is a typed projection of accepted beacons with timestamps floored to whole
+seconds; `/analytics/daily` groups them by UTC day, site, and canonical page.
+The queries contain no replica-local site-ID environment dependency, so imports
+can evaluate them under their effective root. Parsed logs use the existing
+shared format cache. Daily counts use ordinary `temporal-reduce-series` with
+site/page grouping, sharing its incremental cache and late-data handling rather
+than introducing an analytics-specific rollup. A query before the first accepted
+event may be unavailable; that is not evidence of zero views.
 
-```yaml
-analytics_report:
-  site_id: noyo-staging
-  target: /analytics/hourly
-  catalog_dir: /analytics-catalogs/retained
-  current_catalog: /analytics-catalogs/current.json
-  state_path: /analytics-reports/noyo-staging/report-state.json
-```
+This is private collection and querying, not the public report. Public
+publication still needs the approved 30-day daily-only disclosure and honest
+freshness/coverage semantics. The standalone collector, custom rollup/table
+factories, host-state report command, and their service templates and wrapper
+mounts have been removed. Remove any experimental `analytics_report` settings
+or collector-specific ingestion configuration before using this version.
+There is no `ANALYTICS_REPORT_ROOT` or replacement host report store.
 
-Site ID must match that environment's collector catalogs and rollup inventory.
-This config belongs in the Noyo pond; use `site-staging`'s own separate config,
-catalogs, and report directory for the non-nested Caspar site. Do not add this
-block to a shared production config as a way to test staging.
-
-`pond.sh <instance> --analytics-report` is the narrow write-capable entrypoint:
-it mounts only that instance's report directory read/write and its catalogs
-read-only. It accepts no extra Pond arguments and requires explicit enablement.
-Ordinary `pond.sh` commands mount the report root read-only and no catalogs.
-Set the same `ANALYTICS_REPORT_ROOT` in `site-staging.env` for recursive rendering;
-it can read Noyo's saved report without refreshing or writing Noyo's state.
-The renderer does not need Noyo's `ANALYTICS_REPORT_ENABLED` or catalog setting.
-
-`config/systemd/pond-analytics-report@.{service,timer}` are **user** units.
-The proposed cadence is hourly with up to five minutes of jitter. The service
-has a 20-minute timeout, including its maximum 10-minute host-lock wait, keeping
-its lock occupancy below the normal content job's 30-minute wait budget.
-There is no dependency from the content service to the analytics service.
-The units remain uninstalled and disabled until staging approval/provisioning.
-
-After approved installation, inspect the independent outcome with
-`systemctl --user status pond-analytics-report@noyo-staging.service --no-pager`
-and `journalctl --user -u pond-analytics-report@noyo-staging.service --no-pager`.
-Successful content publication does not acknowledge an analytics failure.
-A query/catalog failure records last-good state with its original timestamp
-and still fails the service. Infrastructure failure before the factory runs
-(image pull, lock, timeout, or mounts) cannot update that state; the failed unit
-and original snapshot timestamp are then the evidence. Include this unit in
-operator alerting before enabling its timer.
-
-Local script checks use disposable directories and fake container commands:
+Local checks use actual Caddy, a headless browser, and a disposable pond:
 
 ```sh
-make test-analytics-scripts
+# Caddy must be available, or set CADDY_BIN to its executable.
+make test-beacons
 ```
-
-Remaining live gates: publish a staging image containing the analytics code;
-approve the repair horizon and provision ingestion/rollup nodes; manage the
-private directories/env values and unit installation through deployment;
-verify effective units and bind permissions on Linux; install catalogs;
-exercise missing snapshots/catalogs, stopped collector, service timeout and
-recovery while core content publishes; verify alert delivery; and exercise raw
-source backup/restore before approving retention or production. Collector
-packaging, proxy routing/privacy, and actual collection remain separate gates.
 
 ### Deploy / Update configs
 
