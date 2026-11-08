@@ -535,8 +535,10 @@ must balance-verify. Missing text or a discrepancy is reported as an extraction
 failure.
 
 When an extracted debit row contains the word `CHECK`, Wat automatically sends
-the statement's rendered page images to the same configured model and asks for
-the exact name written on the check's payee line. This happens during new
+the statement's rendered page images and deduplicated embedded images to the
+same configured model and asks for the exact name written on the check's payee
+line. Embedded images are upscaled before transmission so check text remains
+legible. This happens during new
 statement extraction and on the first open of an older cached statement, with
 no separate action. The validated suggestions are stored separately in
 `check-payees.json`, tied to the statement fingerprint and row numbers, and

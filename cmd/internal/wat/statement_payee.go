@@ -33,6 +33,7 @@ type statementCheckPayee struct {
 }
 
 type statementCheckPayeeCache struct {
+	Version       int                   `json:"version"`
 	StatementHash string                `json:"statement_hash"`
 	Model         string                `json:"model"`
 	CreatedAt     string                `json:"created_at"`
@@ -122,6 +123,9 @@ func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCh
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("decode check payee extraction: expected one JSON object")
 	}
+	if cache.Version != 0 && cache.Version != 1 {
+		return nil, fmt.Errorf("check payee extraction has unsupported version %d", cache.Version)
+	}
 	if cache.StatementHash != statement.Hash {
 		return nil, fmt.Errorf("check payee extraction does not match its statement fingerprint")
 	}
@@ -189,6 +193,9 @@ func (b *Books) loadStatementCheckPayees(statement *Statement, dir string) error
 	if err != nil {
 		return err
 	}
+	if cache.Version == 0 {
+		return nil
+	}
 	applyStatementCheckPayees(statement, cache)
 	return nil
 }
@@ -249,6 +256,9 @@ func (b *Books) extractStatementCheckPayees(
 	cache, err := decodeStatementCheckPayees(data, statement)
 	if err != nil {
 		return nil, err
+	}
+	if cache.Version != 1 {
+		return nil, fmt.Errorf("check payee extraction did not return version 1")
 	}
 	applyStatementCheckPayees(statement, cache)
 	return data, nil

@@ -360,6 +360,7 @@ func TestStatementAutomaticallyExtractsCheckPayees(t *testing.T) {
 	hash := statementHash(pdfBytes)
 	payeesPath := filepath.Join(root, "check-payees-response.json")
 	require.NoError(t, os.WriteFile(payeesPath, []byte(`{
+ "version":1,
  "statement_hash":"`+hash+`",
  "model":"ollama/test",
  "created_at":"2025-01-02T03:04:05Z",
@@ -427,9 +428,21 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
 	statement, err := books.LoadStatement(pdf, StatementOptions{Extraction: extractionPath}, nil)
 	require.NoError(t, err)
 	require.False(t, statement.checkPayeesLoaded)
+	cacheDir := filepath.Join(root, filepath.Dir(statement.Source))
+	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, statementCheckPayeesFile), []byte(`{
+ "statement_hash":"`+statement.Hash+`",
+ "model":"azure/gpt-5-mini-statements",
+ "created_at":"2025-01-02T03:04:05Z",
+ "candidates":[2],
+ "payees":[]
+}`), 0600))
+	statement, err = books.cachedStatement(statement.Hash)
+	require.NoError(t, err)
+	require.False(t, statement.checkPayeesLoaded, "an older empty sidecar must be retried automatically")
 
 	response := filepath.Join(root, "older-check-payees.json")
 	require.NoError(t, os.WriteFile(response, []byte(`{
+ "version":1,
  "statement_hash":"`+statement.Hash+`",
  "model":"ollama/test",
  "created_at":"2025-01-02T03:04:05Z",
@@ -446,7 +459,7 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
 	require.NoError(t, books.EnsureStatementCheckPayees(statement, nil))
 	require.True(t, statement.checkPayeesLoaded)
 	require.Equal(t, "Feiner Fixings", statement.checkPayees[1].Payee)
-	require.FileExists(t, filepath.Join(root, filepath.Dir(statement.Source), statementCheckPayeesFile))
+	require.FileExists(t, filepath.Join(cacheDir, statementCheckPayeesFile))
 }
 
 func TestStatementCheckPayeeCacheValidation(t *testing.T) {
@@ -458,6 +471,7 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 		},
 	}
 	valid := `{
+ "version":1,
  "statement_hash":"` + statement.Hash + `",
  "model":"azure/test",
  "created_at":"2025-01-02T03:04:05Z",
@@ -467,6 +481,12 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 	cache, err := decodeStatementCheckPayees([]byte(valid), statement)
 	require.NoError(t, err)
 	require.Equal(t, "Feiner Fixings", cache.Payees[0].Payee)
+	legacy, err := decodeStatementCheckPayees(
+		[]byte(strings.Replace(valid, `"version":1,`, "", 1)),
+		statement,
+	)
+	require.NoError(t, err)
+	require.Zero(t, legacy.Version, "older caches must be eligible for automatic re-extraction")
 
 	for _, test := range []struct {
 		name, data, message string
@@ -479,6 +499,7 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 			"duplicate"},
 		{"invalid payee", strings.Replace(valid, "Feiner Fixings", "Feiner | Fixings", 1), "invalid payee"},
 		{"invalid confidence", strings.Replace(valid, "0.97", "1.01", 1), "invalid confidence"},
+		{"unsupported version", strings.Replace(valid, `"version":1`, `"version":2`, 1), "unsupported version"},
 		{"extra field", strings.Replace(valid, `"model":"azure/test"`, `"model":"azure/test","unexpected":true`, 1), "unknown field"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

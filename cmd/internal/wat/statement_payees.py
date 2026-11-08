@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import quote, urlparse
 
+from PIL import Image
 from bankstatementparser._llm_common import (
     extract_message_content,
     parse_json_payload,
@@ -30,6 +32,9 @@ the image cannot be matched confidently. Output only one JSON object:
 MAX_PAGES = 20
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_ERROR_DETAIL = 400
+EMBEDDED_IMAGE_MIN_WIDTH = 500
+EMBEDDED_IMAGE_MIN_HEIGHT = 150
+EMBEDDED_IMAGE_TARGET_WIDTH = 1800
 
 sys.tracebacklimit = 0
 
@@ -55,6 +60,55 @@ def azure_error_detail(response):
     if len(detail) > MAX_ERROR_DETAIL:
         detail = detail[: MAX_ERROR_DETAIL - 3] + "..."
     return detail or "Azure returned no error detail"
+
+
+def jpeg_bytes(image, target_width=None):
+    with ExitStack() as resources:
+        rgb = resources.enter_context(closing(image.convert("RGB")))
+        if target_width is not None and rgb.width < target_width:
+            height = round(rgb.height * target_width / rgb.width)
+            rgb = resources.enter_context(
+                closing(
+                    rgb.resize(
+                        (target_width, height),
+                        Image.Resampling.LANCZOS,
+                    )
+                )
+            )
+        buffer = BytesIO()
+        rgb.save(buffer, format="JPEG", quality=90, optimize=True)
+        return buffer.getvalue()
+
+
+def embedded_images(pdf_path):
+    from pypdf import PdfReader
+
+    reader = PdfReader(pdf_path)
+    candidates = {}
+    for page_index, page in enumerate(reader.pages):
+        for image_index, image_file in enumerate(page.images):
+            image = image_file.image
+            try:
+                if (
+                    image.width < EMBEDDED_IMAGE_MIN_WIDTH
+                    or image.height < EMBEDDED_IMAGE_MIN_HEIGHT
+                ):
+                    continue
+                digest = hashlib.sha256(image_file.data).digest()
+                if digest not in candidates:
+                    candidates[digest] = [
+                        0,
+                        f"Embedded image {image_index + 1} from page {page_index + 1}",
+                        jpeg_bytes(image, EMBEDDED_IMAGE_TARGET_WIDTH),
+                    ]
+                candidates[digest][0] += 1
+            finally:
+                image.close()
+    return [
+        (label, data)
+        for count, label, data in candidates.values()
+        if count == 1
+    ]
 
 
 path, endpoint, api_version, model, statement_hash = sys.argv[1:]
@@ -131,8 +185,10 @@ try:
 except Exception as exc:
     raise ValueError(f"failed to open statement PDF for check images: {exc}") from exc
 
-images = []
+images = embedded_images(path)
 total_bytes = 0
+for _, image in images:
+    total_bytes += len(image)
 with closing(pdf):
     page_count = len(pdf)
     if page_count > MAX_PAGES:
@@ -145,16 +201,13 @@ with closing(pdf):
             page = resources.enter_context(closing(pdf[page_index]))
             bitmap = resources.enter_context(closing(page.render(scale=2.0)))
             image = resources.enter_context(closing(bitmap.to_pil()))
-            buffer = BytesIO()
-            rgb = resources.enter_context(closing(image.convert("RGB")))
-            rgb.save(buffer, format="JPEG", quality=90, optimize=True)
-            encoded = buffer.getvalue()
+            encoded = jpeg_bytes(image)
             total_bytes += len(encoded)
             if total_bytes > MAX_IMAGE_BYTES:
                 raise ValueError(
                     "rendered statement pages exceed the 20 MiB check-image limit"
                 )
-            images.append(encoded)
+            images.append((f"Full statement page {page_index + 1}", encoded))
 
 content = [
     {
@@ -166,7 +219,8 @@ content = [
         ),
     }
 ]
-for image in images:
+for label, image in images:
+    content.append({"type": "text", "text": label})
     encoded = base64.b64encode(image).decode("ascii")
     content.append(
         {
@@ -250,6 +304,7 @@ for suggestion in payload["payees"]:
     )
 
 document = {
+    "version": 1,
     "statement_hash": statement_hash,
     "model": model,
     "created_at": datetime.now(timezone.utc).isoformat(),
