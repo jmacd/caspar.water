@@ -295,9 +295,48 @@ site/page grouping, sharing its incremental cache and late-data handling rather
 than introducing an analytics-specific rollup. A query before the first accepted
 event may be unavailable; that is not evidence of zero views.
 
-This is private collection and querying, not the public report. Public
-publication still needs the approved 30-day daily-only disclosure and honest
-freshness/coverage semantics. The standalone collector, custom rollup/table
+For section classification, configure the main site's instrumentation with:
+
+```yaml
+analytics:
+  enabled: true
+  site_id: caspar-staging  # Must match the site's Caddy logger identity.
+  endpoint: /_analytics/caspar/view
+  default_section: Static content
+  sections:
+    /blog: Blog
+    /data: Monitoring
+    /analysis: Monitoring
+    /septic: Monitoring
+    /explore: Monitoring
+```
+
+For Noyo, use its own site ID/endpoint, `default_section: Noyo`, and no section
+overrides. These are configuration examples, not enabled deployment settings.
+Sitegen emits `_analytics/pages.jsonl` for each independently instrumented site.
+After successful publication, copy that site's inventory into its owning
+analytics pond and install the optional public projection:
+
+```sh
+pond copy host:///path/to/published/_analytics/pages.jsonl /analytics/pages.jsonl
+pond apply -f config/analytics-public.yaml
+pond cat /analytics/public/daily-sections --format=table
+```
+
+Use ordinary data-file copy, not series append: only the current inventory should
+classify the reporting window. These facts then replicate with the pond.
+The query emits only UTC day, section, and reported views over the last 30 UTC
+calendar days. Unrecognized paths contribute to Other / unclassified without
+exposing their names. Classification follows the current inventory: retired
+pages move to Other and changed section assignments reclassify displayed history.
+Duplicate keys do not multiply counts; conflicting section labels become Other.
+Missing inventory is a report error, not fabricated zero activity.
+
+This prepares the public dataset, not the dashboard. The enclosing site should
+import the source ponds, combine their daily section counts, and export only
+the public projection to Parquet. Sitegen chart wiring, automated inventory
+transfer, and honest freshness/coverage presentation remain pending.
+The standalone collector, custom rollup/table
 factories, host-state report command, and their service templates and wrapper
 mounts have been removed. Remove any experimental `analytics_report` settings
 or collector-specific ingestion configuration before using this version.

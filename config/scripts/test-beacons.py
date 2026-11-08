@@ -210,6 +210,53 @@ http://127.0.0.1:{self.port} {{
         self.assertIn("1970-01-01", output)
         self.assertIn("1970-01-02", output)
 
+        self.start()
+        self.assertEqual(self.beacon(page="/unrecognized", section="Noyo")[0], 204)
+        self.records("a/beacons.log", 4)
+        self.stop()
+        today = int(time.time() // 86400) * 86400
+        with (self.work / "a/beacons.log").open("a") as log:
+            for timestamp in [today - 29 * 86400 + 0.25,
+                              today - 29 * 86400 - 0.25, today + 86400 + 0.25]:
+                log.write(json.dumps({
+                    **template, "ts": timestamp, "page_uri": "/water",
+                }) + "\n")
+        ingest_and_count(9)
+        inventory = self.work / "pages.jsonl"
+
+        def publish_inventory(rows):
+            inventory.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            run("copy", inventory.as_uri().replace("file:", "host:"), "/analytics/pages.jsonl")
+
+        static = {"site_id": "site-a", "page_uri": "/water", "section": "Static content"}
+        blog = {"site_id": "site-a", "page_uri": "/blog/café", "section": "Blog"}
+        other_site = {"site_id": "site-b", "page_uri": "/unrecognized", "section": "Noyo"}
+        publish_inventory([static, static, blog, other_site])
+        run("apply", "-f", str(ROOT / "config/analytics-public.yaml"))
+
+        def section_counts():
+            output = run("cat", "/analytics/public/daily-sections", "--format=table", "--sql",
+                         "SELECT section, SUM(views) AS views FROM source GROUP BY section ORDER BY section")
+            return dict(re.findall(
+                r"^\|\s*(Blog|Static content|Monitoring|Other / unclassified|Noyo)\s*\|\s*(\d+)\s*\|$",
+                output, re.MULTILINE,
+            ))
+
+        self.assertEqual(section_counts(), {
+            "Blog": "1", "Other / unclassified": "1", "Static content": "3",
+        })
+        public = run("cat", "/analytics/public/daily-sections", "--format=table")
+        for private in ["page_uri", "site_id", "catalog_id", "/unrecognized", "/water", "/blog/café"]:
+            self.assertNotIn(private, public)
+        self.assertIn("timestamp", public)
+        self.assertIn("section", public)
+        self.assertIn("views", public)
+
+        publish_inventory([{**static, "section": "Monitoring"}, other_site])
+        self.assertEqual(section_counts(), {
+            "Monitoring": "3", "Other / unclassified": "2",
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

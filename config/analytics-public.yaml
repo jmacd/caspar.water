@@ -1,0 +1,33 @@
+# Opt-in public projection. Copy the current publisher pages.jsonl into the pond
+# at /analytics/pages.jsonl before querying. Do not export the inventory or raw data.
+version: v1
+kind: mkdir
+metadata:
+  path: /analytics/public
+---
+version: v1
+kind: mknod
+metadata:
+  path: /analytics/public/daily-sections
+spec:
+  factory: sql-derived-series
+  config:
+    patterns:
+      daily: "series:///analytics/daily"
+      pages: "jsonlogs:///analytics/pages.jsonl"
+    query: >-
+      WITH inventory AS (
+        SELECT site_id, page_uri,
+          CASE WHEN COUNT(DISTINCT section) = 1 THEN MIN(section) END AS section
+        FROM pages
+        GROUP BY site_id, page_uri
+      )
+      SELECT daily.timestamp,
+        COALESCE(inventory.section, 'Other / unclassified') AS section,
+        SUM(daily.views) AS views
+      FROM daily
+      LEFT JOIN inventory
+        ON daily.site_id = inventory.site_id AND daily.page_uri = inventory.page_uri
+      WHERE daily.timestamp >= date_trunc('day', now()) - INTERVAL '29 days'
+        AND daily.timestamp < date_trunc('day', now()) + INTERVAL '1 day'
+      GROUP BY daily.timestamp, COALESCE(inventory.section, 'Other / unclassified')
