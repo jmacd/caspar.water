@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +22,10 @@ import (
 var statementPayeeParser string
 
 const statementCheckPayeesFile = "check-payees.json"
+
+var statementCheckMetadata = regexp.MustCompile(
+	`^[0-9]{3,10}[[:space:]]+([0-9]{2}/[0-9]{2}/[0-9]{4})[[:space:]]+\$([0-9][0-9,]*\.[0-9]{2})$`,
+)
 
 type statementAISettings struct {
 	Python, APIBase, APIVersion, Model, Provider string
@@ -33,16 +38,18 @@ type statementCheckPayee struct {
 }
 
 type statementCheckPayeeCache struct {
-	Version       int                   `json:"version"`
-	StatementHash string                `json:"statement_hash"`
-	Model         string                `json:"model"`
-	CreatedAt     string                `json:"created_at"`
-	Candidates    []int                 `json:"candidates"`
-	Payees        []statementCheckPayee `json:"payees"`
+	Version        int                   `json:"version"`
+	StatementHash  string                `json:"statement_hash"`
+	Model          string                `json:"model"`
+	CreatedAt      string                `json:"created_at"`
+	Candidates     []int                 `json:"candidates"`
+	DeclaredPayees []string              `json:"declared_payees,omitempty"`
+	Payees         []statementCheckPayee `json:"payees"`
 }
 
 type statementCheckPayeeRequest struct {
-	Rows []statementCheckPayeeRequestRow `json:"rows"`
+	Rows           []statementCheckPayeeRequestRow `json:"rows"`
+	DeclaredPayees []string                        `json:"declared_payees"`
 }
 
 type statementCheckPayeeRequestRow struct {
@@ -100,7 +107,16 @@ func statementRowIsCheck(row StatementRow) bool {
 			return true
 		}
 	}
-	return false
+	match := statementCheckMetadata.FindStringSubmatch(strings.TrimSpace(row.Description))
+	if match == nil {
+		return false
+	}
+	date, err := time.Parse("01/02/2006", match[1])
+	if err != nil || date.Format("2006-01-02") != row.Date {
+		return false
+	}
+	cents, err := ParseCents(strings.ReplaceAll(match[2], ",", ""))
+	return err == nil && cents == -row.Cents
 }
 
 func statementCheckPayeeCandidates(statement *Statement) []int {
@@ -147,6 +163,22 @@ func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCh
 		candidates[row] = true
 	}
 	seen := make(map[int]bool, len(cache.Payees))
+	declared := make(map[string]bool, len(cache.DeclaredPayees))
+	for index, payee := range cache.DeclaredPayees {
+		if payee == "" ||
+			strings.TrimSpace(payee) != payee ||
+			!singleLine(payee) ||
+			strings.ContainsAny(payee, ";|") {
+			return nil, fmt.Errorf("check payee extraction declared payee %d is invalid", index+1)
+		}
+		if declared[payee] {
+			return nil, fmt.Errorf("check payee extraction declared payee %q is duplicated", payee)
+		}
+		declared[payee] = true
+	}
+	if !slices.IsSorted(cache.DeclaredPayees) {
+		return nil, fmt.Errorf("check payee extraction declared payees are not sorted")
+	}
 	for _, suggestion := range cache.Payees {
 		if !candidates[suggestion.Row] || seen[suggestion.Row] {
 			return nil, fmt.Errorf("check payee extraction has an invalid or duplicate suggested row")
@@ -213,7 +245,11 @@ func (b *Books) extractStatementCheckPayees(
 	if err != nil {
 		return nil, fmt.Errorf("check payee extraction: %w", err)
 	}
-	request := statementCheckPayeeRequest{}
+	declaredPayees, err := b.declaredPayees()
+	if err != nil {
+		return nil, fmt.Errorf("load declared payees for check image context: %w", err)
+	}
+	request := statementCheckPayeeRequest{DeclaredPayees: declaredPayees}
 	for _, rowNumber := range candidates {
 		row := statement.Rows[rowNumber-1]
 		request.Rows = append(request.Rows, statementCheckPayeeRequestRow{
@@ -259,6 +295,9 @@ func (b *Books) extractStatementCheckPayees(
 	}
 	if cache.Version != 1 {
 		return nil, fmt.Errorf("check payee extraction did not return version 1")
+	}
+	if !slices.Equal(cache.DeclaredPayees, declaredPayees) {
+		return nil, fmt.Errorf("check payee extraction did not preserve its declared payee context")
 	}
 	applyStatementCheckPayees(statement, cache)
 	return data, nil

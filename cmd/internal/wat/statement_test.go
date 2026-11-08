@@ -365,12 +365,15 @@ func TestStatementAutomaticallyExtractsCheckPayees(t *testing.T) {
  "model":"ollama/test",
  "created_at":"2025-01-02T03:04:05Z",
  "candidates":[2],
+ "declared_payees":["Deposit","Electric company","Journal"],
  "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
 }`), 0600))
+	requestPath := filepath.Join(root, "check-payees-request.json")
 	fake := filepath.Join(root, "fake-statement-python")
 	require.NoError(t, os.WriteFile(fake, []byte(`#!/bin/sh
 set -eu
 if printf '%s' "$2" | grep -q CHECK_PAYEE_SYSTEM_PROMPT; then
+  cat > "$WAT_FAKE_REQUEST"
   cat "$WAT_FAKE_PAYEES"
 else
   cat "$WAT_FAKE_EXTRACTION"
@@ -378,6 +381,7 @@ fi
 `), 0700))
 	t.Setenv("WAT_FAKE_EXTRACTION", extractionPath)
 	t.Setenv("WAT_FAKE_PAYEES", payeesPath)
+	t.Setenv("WAT_FAKE_REQUEST", requestPath)
 	books.Config.Statement = StatementConfig{
 		Python: fake, APIBase: "http://invalid.test:11434", Model: "ollama/test",
 	}
@@ -389,6 +393,9 @@ fi
 	require.Equal(t, "Feiner Fixings", statement.checkPayees[1].Payee)
 	require.Contains(t, progress.String(), "sending statement page images")
 	require.Contains(t, progress.String(), "http://invalid.test:11434")
+	var request statementCheckPayeeRequest
+	require.NoError(t, json.Unmarshal([]byte(read(t, requestPath)), &request))
+	require.Equal(t, []string{"Deposit", "Electric company", "Journal"}, request.DeclaredPayees)
 	cache := filepath.Join(root, filepath.Dir(statement.Source), statementCheckPayeesFile)
 	require.FileExists(t, cache)
 
@@ -447,6 +454,7 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
  "model":"ollama/test",
  "created_at":"2025-01-02T03:04:05Z",
  "candidates":[2],
+ "declared_payees":["Deposit","Electric company","Journal"],
  "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
 }`), 0600))
 	fake := filepath.Join(root, "fake-check-payee-python")
@@ -476,6 +484,7 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
  "model":"azure/test",
  "created_at":"2025-01-02T03:04:05Z",
  "candidates":[1],
+ "declared_payees":["Alpha Labs"],
  "payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]
 }`
 	cache, err := decodeStatementCheckPayees([]byte(valid), statement)
@@ -499,6 +508,14 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 			"duplicate"},
 		{"invalid payee", strings.Replace(valid, "Feiner Fixings", "Feiner | Fixings", 1), "invalid payee"},
 		{"invalid confidence", strings.Replace(valid, "0.97", "1.01", 1), "invalid confidence"},
+		{"duplicate declared payee", strings.Replace(valid,
+			`"declared_payees":["Alpha Labs"]`,
+			`"declared_payees":["Alpha Labs","Alpha Labs"]`, 1),
+			"duplicated"},
+		{"unsorted declared payees", strings.Replace(valid,
+			`"declared_payees":["Alpha Labs"]`,
+			`"declared_payees":["Beta","Alpha"]`, 1),
+			"not sorted"},
 		{"unsupported version", strings.Replace(valid, `"version":1`, `"version":2`, 1), "unsupported version"},
 		{"extra field", strings.Replace(valid, `"model":"azure/test"`, `"model":"azure/test","unexpected":true`, 1), "unknown field"},
 	} {
@@ -506,6 +523,23 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 			_, err := decodeStatementCheckPayees([]byte(test.data), statement)
 			require.ErrorContains(t, err, test.message)
 		})
+	}
+}
+
+func TestStatementCheckRowDetection(t *testing.T) {
+	require.True(t, statementRowIsCheck(StatementRow{
+		Date: "2022-03-04", Description: "CHECK 1006", Cents: -321807,
+	}))
+	require.True(t, statementRowIsCheck(StatementRow{
+		Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.07", Cents: -321807,
+	}))
+	for _, row := range []StatementRow{
+		{Date: "2022-03-05", Description: "1006 03/04/2022 $3,218.07", Cents: -321807},
+		{Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.08", Cents: -321807},
+		{Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.07", Cents: 321807},
+		{Date: "2022-03-04", Description: "ORDER 1006 03/04/2022 $3,218.07", Cents: -321807},
+	} {
+		require.False(t, statementRowIsCheck(row), row.Description)
 	}
 }
 

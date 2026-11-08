@@ -534,11 +534,15 @@ complete PDF. The extracted opening balance, transactions, and closing balance
 must balance-verify. Missing text or a discrepancy is reported as an extraction
 failure.
 
-When an extracted debit row contains the word `CHECK`, Wat automatically sends
-the statement's rendered page images and deduplicated embedded images to the
-same configured model and asks for the exact name written on the check's payee
-line. Embedded images are upscaled before transmission so check text remains
-legible. This happens during new
+When an extracted debit row contains the word `CHECK`, or has the exact
+`NUMBER MM/DD/YYYY $AMOUNT` form with a date and amount matching the row, Wat
+automatically sends the statement's rendered page images and deduplicated
+embedded images to the same configured model and asks for the exact name written
+on the check's payee line. Embedded images are upscaled before transmission so
+check text remains legible. Wat also supplies the canonical names from
+`hledger payees --declared` as spelling hints. The model must still use visible
+check evidence and may return a new name when no declaration matches. This
+happens during new
 statement extraction and on the first open of an older cached statement, with
 no separate action. The validated suggestions are stored separately in
 `check-payees.json`, tied to the statement fingerprint and row numbers, and

@@ -208,6 +208,33 @@ func (b *Books) declaredAccounts() ([]string, error) {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), nil
 }
 
+func (b *Books) declaredPayees() ([]string, error) {
+	text, err := b.run(b.Config.Journal, "payees", "--declared")
+	if err != nil {
+		return nil, err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+	payees := strings.Split(text, "\n")
+	seen := make(map[string]bool, len(payees))
+	for index, payee := range payees {
+		if payee == "" ||
+			strings.TrimSpace(payee) != payee ||
+			!singleLine(payee) ||
+			strings.ContainsAny(payee, ";|") {
+			return nil, fmt.Errorf("declared payee %d has an invalid name", index+1)
+		}
+		if seen[payee] {
+			return nil, fmt.Errorf("declared payee %q is duplicated", payee)
+		}
+		seen[payee] = true
+	}
+	slices.Sort(payees)
+	return payees, nil
+}
+
 func (b *Books) Accounts() ([]string, error) {
 	accounts, err := b.PostingAccounts()
 	if err != nil {
