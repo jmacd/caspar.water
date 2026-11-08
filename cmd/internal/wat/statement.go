@@ -23,13 +23,15 @@ import (
 var statementParser string
 
 type Statement struct {
-	Hash, Source string
-	BankAccount  string
-	Period       *StatementPeriod
-	OpeningCents int64
-	ClosingCents int64
-	Rows         []StatementRow
-	Warnings     []string
+	Hash, Source      string
+	BankAccount       string
+	Period            *StatementPeriod
+	OpeningCents      int64
+	ClosingCents      int64
+	Rows              []StatementRow
+	Warnings          []string
+	checkPayees       map[int]statementCheckPayee
+	checkPayeesLoaded bool
 }
 
 type StatementPeriod struct {
@@ -196,7 +198,14 @@ func (b *Books) LoadStatement(path string, options StatementOptions, progress io
 			if options.Extraction != "" {
 				return nil, fmt.Errorf("statement already cached; omit --statement-extraction to reuse its stable row identities")
 			}
-			return b.cachedStatement(hash)
+			statement, err := b.cachedStatement(hash)
+			if err != nil {
+				return nil, err
+			}
+			if err := b.EnsureStatementCheckPayees(statement, progress); err != nil {
+				return nil, err
+			}
+			return statement, nil
 		} else if !os.IsNotExist(extractedErr) {
 			return nil, extractedErr
 		}
@@ -241,6 +250,18 @@ func (b *Books) LoadStatement(path string, options StatementOptions, progress io
 	data, err = bindStatementExtraction(data, statement.BankAccount)
 	if err != nil {
 		return nil, err
+	}
+	var checkPayees []byte
+	if options.Extraction == "" {
+		checkPayees, err = b.extractStatementCheckPayees(stagedPDF, statement, progress)
+		if err != nil {
+			return nil, err
+		}
+		if len(checkPayees) != 0 {
+			if err := createSyncedFile(filepath.Join(stage, statementCheckPayeesFile), checkPayees, 0600); err != nil {
+				return nil, err
+			}
+		}
 	}
 	extractionFile, err := os.CreateTemp(stage, ".source-")
 	if err != nil {
@@ -334,38 +355,24 @@ func (b *Books) extractStatement(path string, options StatementOptions, progress
 		}
 		return data, nil
 	}
-	settings := b.Config.Statement
-	python := settings.Python
-	if override := strings.TrimSpace(os.Getenv("WAT_STATEMENT_PYTHON")); override != "" {
-		python = override
-	}
-	apiBase := strings.TrimSpace(settings.APIBase)
-	apiVersion := strings.TrimSpace(settings.APIVersion)
-	model := strings.TrimSpace(settings.Model)
-	if apiBase == "" && strings.TrimSpace(settings.OllamaURL) != "" {
-		apiBase = strings.TrimSpace(settings.OllamaURL)
-		if model != "" && !strings.Contains(model, "/") {
-			model = "ollama/" + model
-		}
-	}
-	provider, _, hasProvider := strings.Cut(model, "/")
-	if python == "" || apiBase == "" || model == "" || !hasProvider {
-		return nil, fmt.Errorf("uncached PDF: configure statement.python (or WAT_STATEMENT_PYTHON), statement.api_base and a provider-prefixed statement.model; install cmd/wat/requirements-statement.txt in that Python environment")
-	}
-	if provider != "ollama" && provider != "azure" {
-		return nil, fmt.Errorf("uncached PDF: statement.model provider must be ollama or azure")
-	}
-	if provider == "azure" && apiVersion == "" {
-		return nil, fmt.Errorf("uncached PDF: configure statement.api_version for Azure")
-	}
-	if strings.ContainsAny(python, `/\`) && !filepath.IsAbs(python) {
-		python = filepath.Join(b.Config.root, python)
+	settings, err := b.statementAISettings()
+	if err != nil {
+		return nil, fmt.Errorf("uncached PDF: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, python, "-c", statementParser, path, apiBase, apiVersion, model)
+	cmd := exec.CommandContext(
+		ctx,
+		settings.Python,
+		"-c",
+		statementParser,
+		path,
+		settings.APIBase,
+		settings.APIVersion,
+		settings.Model,
+	)
 	cmd.Stderr = progress
-	fmt.Fprintf(progress, "Extracting bank statement with configured %s model %s; no journal entries will be written.\n", provider, model)
+	fmt.Fprintf(progress, "Extracting bank statement with configured %s model %s; no journal entries will be written.\n", settings.Provider, settings.Model)
 	data, err := cmd.Output()
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("statement extraction: %w", ctx.Err())
@@ -411,6 +418,15 @@ func (b *Books) ExtractPendingStatement(hash string, options StatementOptions, p
 	data, err = bindStatementExtraction(data, statement.BankAccount)
 	if err != nil {
 		return nil, err
+	}
+	if options.Extraction == "" {
+		checkPayees, err := b.extractStatementCheckPayees(filepath.Join(dir, "original.pdf"), statement, progress)
+		if err != nil {
+			return nil, err
+		}
+		if err := publishStatementCheckPayees(dir, checkPayees); err != nil {
+			return nil, err
+		}
 	}
 	temp, err := os.CreateTemp(dir, ".extracted-")
 	if err != nil {
@@ -590,7 +606,14 @@ func (b *Books) cachedStatement(hash string) (*Statement, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read cached statement: %w", err)
 	}
-	return b.decodeStatement(data, hash, dir)
+	statement, err := b.decodeStatement(data, hash, dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.loadStatementCheckPayees(statement, dir); err != nil {
+		return nil, err
+	}
+	return statement, nil
 }
 
 func (s *Statement) sortDate() string {
@@ -850,6 +873,7 @@ type StatementStatus struct {
 	PossibleMatch      bool
 	Suggestion         string
 	QuickBooksEvidence string
+	CheckPayeeEvidence string
 }
 
 func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
@@ -888,7 +912,7 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 					return nil, fmt.Errorf("statement row %d is recorded more than once", index+1)
 				}
 				if tx.Date != row.Date || amount != row.Cents || transactionTag(tx, "bank-description") != descriptionKey(row.Description) {
-					return nil, fmt.Errorf("recorded statement row %d no longer matches its bank date/amount", index+1)
+					return nil, b.statementRowMismatchError(index, row, tx, amount)
 				}
 				statuses[index].Recorded = true
 			}
@@ -924,6 +948,13 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 			return nil, err
 		}
 		statuses[index].QuickBooksEvidence = register.hint()
+		if suggestion, ok := s.checkPayees[index]; ok {
+			statuses[index].CheckPayeeEvidence = fmt.Sprintf(
+				"AI check image: %s (%.0f%% confidence)",
+				suggestion.Payee,
+				suggestion.Confidence*100,
+			)
+		}
 	}
 	return statuses, nil
 }
@@ -932,6 +963,51 @@ type statementDraft struct {
 	statement   *Statement
 	index       int
 	bankAccount string
+}
+
+func (b *Books) statementRowMismatchError(
+	index int,
+	row StatementRow,
+	tx journalTransaction,
+	amount int64,
+) error {
+	var mismatches []string
+	if tx.Date != row.Date {
+		mismatches = append(mismatches, "date")
+	}
+	if amount != row.Cents {
+		mismatches = append(mismatches, "bank amount")
+	}
+	if transactionTag(tx, "bank-description") != descriptionKey(row.Description) {
+		mismatches = append(mismatches, "original bank description link")
+	}
+	id := transactionTag(tx, "id")
+	if id == "" {
+		id = "(missing id)"
+	}
+	location := ""
+	if path := b.transactionFile(tx); path != "" && len(tx.Source) != 0 {
+		if relative, err := filepath.Rel(b.Config.root, path); err == nil && filepath.IsLocal(relative) {
+			path = filepath.ToSlash(relative)
+		}
+		location = fmt.Sprintf(" at %s:%d", path, tx.Source[0].Line)
+	}
+	return fmt.Errorf(
+		"recorded statement row %d does not match linked journal transaction %q%s\n"+
+			"statement row: %s | %s | %s USD\n"+
+			"journal entry: %s | %s | %s USD\n"+
+			"mismatched evidence: %s",
+		index+1,
+		id,
+		location,
+		row.Date,
+		row.Description,
+		formatCents(row.Cents),
+		tx.Date,
+		tx.Description,
+		formatCents(amount),
+		strings.Join(mismatches, ", "),
+	)
 }
 
 func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
@@ -963,7 +1039,11 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 		counteraccount = register.Account
 	}
 	draft.statement = &statementDraft{s, index, s.BankAccount}
-	entry := Entry{Date: row.Date, Payee: row.Description, Source: s.Source,
+	payee := row.Description
+	if suggestion, ok := s.checkPayees[index]; ok {
+		payee = suggestion.Payee
+	}
+	entry := Entry{Date: row.Date, Payee: payee, Source: s.Source,
 		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
 		Postings: []Posting{{s.BankAccount, formatCents(row.Cents)}, {counteraccount, formatCents(-row.Cents)}}}
 	if register.exact() {

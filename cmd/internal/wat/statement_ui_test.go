@@ -194,7 +194,14 @@ func TestStatementExtractionStatusShowsProgress(t *testing.T) {
 	require.Contains(t, status, "[/]")
 	require.Contains(t, status, "azure/gpt-5-mini")
 	require.Contains(t, status, "Elapsed 01:23")
+	require.Contains(t, status, "statement text")
+	require.Contains(t, status, "when check rows are present")
 	require.Contains(t, status, "No journal entries will be written")
+
+	status = statementPayeeExtractionStatus("2022-01.pdf", "azure/gpt-5-mini", "-", 62*time.Second)
+	require.Contains(t, status, "Extracting check payees from 2022-01.pdf")
+	require.Contains(t, status, "statement page images")
+	require.Contains(t, status, "Suggestions remain editable")
 }
 
 func TestFinishedStatementIsReadOnlyInStatementMenus(t *testing.T) {

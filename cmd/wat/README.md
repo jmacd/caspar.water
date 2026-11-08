@@ -525,14 +525,25 @@ Existing Ollama workspaces may retain `ollama_url` and a bare model name as a
 migration alias. New configurations use `api_base`; specifying both endpoint
 fields is an error.
 
-PDF extraction uses `bankstatementparser` with the configured text model.
+PDF extraction uses `bankstatementparser` with the configured model.
 Azure uses a short-lived `AZURE_AD_TOKEN`; Ollama uses its direct local HTTP
-bridge. The overall extraction limit is 20 minutes, and extraction never posts
-automatically.
+bridge. Text extraction has a 20-minute limit; check-image extraction has a
+separate 12-minute limit. Extraction never posts automatically.
 `wat` asks `bankstatementparser` to parse all embedded text available in the
 complete PDF. The extracted opening balance, transactions, and closing balance
 must balance-verify. Missing text or a discrepancy is reported as an extraction
-failure; `wat` does not select pages or switch to an image model.
+failure.
+
+When an extracted debit row contains the word `CHECK`, Wat automatically sends
+the statement's rendered page images to the same configured model and asks for
+the exact name written on the check's payee line. This happens during new
+statement extraction and on the first open of an older cached statement, with
+no separate action. The validated suggestions are stored separately in
+`check-payees.json`, tied to the statement fingerprint and row numbers, and
+prefill only the editable payee field. They do not alter extracted statement
+rows, reconciliation evidence, payee declarations, or journals. An exact
+QuickBooks register match takes precedence. The progress screen identifies that
+page images are being sent to the configured endpoint.
 Some statements present a dated zero-value beginning/ending balance as a row.
 `wat` omits such rows from the posting queue and shows an extraction notice;
 opening and closing balances remain part of mandatory arithmetic verification.

@@ -200,6 +200,11 @@ func TestCachedStatementsRejectInvalidCache(t *testing.T) {
 			require.NoError(t, os.Rename(path, path+".saved"))
 			require.NoError(t, os.Symlink(path+".saved", path))
 		}},
+		{"linked check payee cache", "not a regular file", func(t *testing.T, _ *Books, dir string) {
+			target := filepath.Join(dir, "check-payees.saved")
+			require.NoError(t, os.WriteFile(target, []byte("{}"), 0600))
+			require.NoError(t, os.Symlink(target, filepath.Join(dir, statementCheckPayeesFile)))
+		}},
 		{"linked cache directory", "not a regular directory", func(t *testing.T, _ *Books, dir string) {
 			require.NoError(t, os.Rename(dir, dir+".saved"))
 			require.NoError(t, os.Symlink(dir+".saved", dir))
@@ -289,7 +294,37 @@ func TestStatementSplitAndChangedRecordedRow(t *testing.T) {
 	require.NoError(t, err)
 	s.Rows[0].Description = "DIFFERENT SOURCE ROW"
 	_, err = books.StatementStatuses(s)
-	require.ErrorContains(t, err, "no longer matches")
+	require.ErrorContains(t, err, "recorded statement row 1 does not match linked journal transaction")
+	require.ErrorContains(t, err, draft.id)
+	require.ErrorContains(t, err, "statement row: 2021-04-01 | DIFFERENT SOURCE ROW | 100.00 USD")
+	require.ErrorContains(t, err, "journal entry: 2021-04-01 | OPENING DEPOSIT | 100.00 USD")
+	require.ErrorContains(t, err, "mismatched evidence: original bank description link")
+	require.ErrorContains(t, err, "books/bank-checking.journal:")
+}
+
+func TestChangedRecordedRowReportsExpectedAndActualDate(t *testing.T) {
+	books, s, _ := statementFixture(t)
+	draft, entry, err := books.StatementDraft(s, 1)
+	require.NoError(t, err)
+	entry.Postings[1].Account = "Expense:615.000:Utility"
+	_, err = draft.Preview(entry)
+	require.NoError(t, err)
+	_, err = draft.Save()
+	require.NoError(t, err)
+
+	journal := bankJournal(t, books, s.BankAccount)
+	text := read(t, journal)
+	require.NoError(t, os.WriteFile(
+		journal,
+		[]byte(strings.Replace(text, "2021-04-05", "2021-04-06", 1)),
+		0600,
+	))
+	_, err = books.StatementStatuses(s)
+	require.ErrorContains(t, err, "recorded statement row 2 does not match linked journal transaction")
+	require.ErrorContains(t, err, draft.id)
+	require.ErrorContains(t, err, "statement row: 2021-04-05 | POWER CO | -12.34 USD")
+	require.ErrorContains(t, err, "journal entry: 2021-04-06 | POWER CO | -12.34 USD")
+	require.ErrorContains(t, err, "mismatched evidence: date")
 }
 
 func TestStatementParserInvocation(t *testing.T) {
@@ -307,6 +342,150 @@ func TestStatementParserInvocation(t *testing.T) {
 	books.Config.Statement.Python = filepath.Join(root, "missing-python")
 	_, err = books.LoadStatement(pdf, StatementOptions{}, nil)
 	require.NoError(t, err, "the second run must use cached data, not invoke extraction")
+}
+
+func TestStatementAutomaticallyExtractsCheckPayees(t *testing.T) {
+	books, root := fixture(t, "")
+	pdfBytes := []byte("%PDF-1.7\nsynthetic check statement\n")
+	pdf := filepath.Join(root, "checks.pdf")
+	require.NoError(t, os.WriteFile(pdf, pdfBytes, 0600))
+	extraction := strings.Replace(
+		statementJSON,
+		`"description":"POWER CO"`,
+		`"description":"CHECK 1001"`,
+		1,
+	)
+	extractionPath := filepath.Join(root, "check-extraction.json")
+	require.NoError(t, os.WriteFile(extractionPath, []byte(extraction), 0600))
+	hash := statementHash(pdfBytes)
+	payeesPath := filepath.Join(root, "check-payees-response.json")
+	require.NoError(t, os.WriteFile(payeesPath, []byte(`{
+ "statement_hash":"`+hash+`",
+ "model":"ollama/test",
+ "created_at":"2025-01-02T03:04:05Z",
+ "candidates":[2],
+ "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
+}`), 0600))
+	fake := filepath.Join(root, "fake-statement-python")
+	require.NoError(t, os.WriteFile(fake, []byte(`#!/bin/sh
+set -eu
+if printf '%s' "$2" | grep -q CHECK_PAYEE_SYSTEM_PROMPT; then
+  cat "$WAT_FAKE_PAYEES"
+else
+  cat "$WAT_FAKE_EXTRACTION"
+fi
+`), 0700))
+	t.Setenv("WAT_FAKE_EXTRACTION", extractionPath)
+	t.Setenv("WAT_FAKE_PAYEES", payeesPath)
+	books.Config.Statement = StatementConfig{
+		Python: fake, APIBase: "http://invalid.test:11434", Model: "ollama/test",
+	}
+
+	var progress strings.Builder
+	statement, err := books.LoadStatement(pdf, StatementOptions{}, &progress)
+	require.NoError(t, err)
+	require.True(t, statement.checkPayeesLoaded)
+	require.Equal(t, "Feiner Fixings", statement.checkPayees[1].Payee)
+	require.Contains(t, progress.String(), "sending statement page images")
+	require.Contains(t, progress.String(), "http://invalid.test:11434")
+	cache := filepath.Join(root, filepath.Dir(statement.Source), statementCheckPayeesFile)
+	require.FileExists(t, cache)
+
+	_, entry, err := books.StatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "Feiner Fixings", entry.Payee)
+	statuses, err := books.StatementStatuses(statement)
+	require.NoError(t, err)
+	require.Contains(t, statuses[1].CheckPayeeEvidence, "Feiner Fixings")
+	require.Contains(t, statuses[1].CheckPayeeEvidence, "97% confidence")
+
+	writeStatementRegister(t, books,
+		"4/5/2021,Expense,1001,Electric Company,April power,Utilities,12.34,,87.66\n",
+	)
+	_, entry, err = books.StatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "Electric Company", entry.Payee, "an exact QuickBooks match is stronger evidence")
+
+	books.Config.Statement.Python = filepath.Join(root, "missing-python")
+	again, err := books.LoadStatement(pdf, StatementOptions{}, nil)
+	require.NoError(t, err, "the validated sidecar must prevent another model call")
+	require.Equal(t, "Feiner Fixings", again.checkPayees[1].Payee)
+}
+
+func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
+	books, root := fixture(t, "")
+	pdfBytes := []byte("%PDF-1.7\nolder cached check statement\n")
+	pdf := filepath.Join(root, "older-checks.pdf")
+	extractionPath := filepath.Join(root, "older-check-extraction.json")
+	require.NoError(t, os.WriteFile(pdf, pdfBytes, 0600))
+	require.NoError(t, os.WriteFile(extractionPath, []byte(strings.Replace(
+		statementJSON,
+		`"description":"POWER CO"`,
+		`"description":"CHECK 1001"`,
+		1,
+	)), 0600))
+	statement, err := books.LoadStatement(pdf, StatementOptions{Extraction: extractionPath}, nil)
+	require.NoError(t, err)
+	require.False(t, statement.checkPayeesLoaded)
+
+	response := filepath.Join(root, "older-check-payees.json")
+	require.NoError(t, os.WriteFile(response, []byte(`{
+ "statement_hash":"`+statement.Hash+`",
+ "model":"ollama/test",
+ "created_at":"2025-01-02T03:04:05Z",
+ "candidates":[2],
+ "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
+}`), 0600))
+	fake := filepath.Join(root, "fake-check-payee-python")
+	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\ncat \"$WAT_FAKE_PAYEES\"\n"), 0700))
+	t.Setenv("WAT_FAKE_PAYEES", response)
+	books.Config.Statement = StatementConfig{
+		Python: fake, APIBase: "http://invalid.test:11434", Model: "ollama/test",
+	}
+
+	require.NoError(t, books.EnsureStatementCheckPayees(statement, nil))
+	require.True(t, statement.checkPayeesLoaded)
+	require.Equal(t, "Feiner Fixings", statement.checkPayees[1].Payee)
+	require.FileExists(t, filepath.Join(root, filepath.Dir(statement.Source), statementCheckPayeesFile))
+}
+
+func TestStatementCheckPayeeCacheValidation(t *testing.T) {
+	statement := &Statement{
+		Hash: strings.Repeat("a", 64),
+		Rows: []StatementRow{
+			{Date: "2021-04-05", Description: "CHECK 1001", Cents: -1234},
+			{Date: "2021-04-06", Description: "CARD PURCHASE", Cents: -2000},
+		},
+	}
+	valid := `{
+ "statement_hash":"` + statement.Hash + `",
+ "model":"azure/test",
+ "created_at":"2025-01-02T03:04:05Z",
+ "candidates":[1],
+ "payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]
+}`
+	cache, err := decodeStatementCheckPayees([]byte(valid), statement)
+	require.NoError(t, err)
+	require.Equal(t, "Feiner Fixings", cache.Payees[0].Payee)
+
+	for _, test := range []struct {
+		name, data, message string
+	}{
+		{"wrong hash", strings.Replace(valid, statement.Hash, strings.Repeat("b", 64), 1), "fingerprint"},
+		{"wrong candidates", strings.Replace(valid, `"candidates":[1]`, `"candidates":[2]`, 1), "check rows"},
+		{"duplicate row", strings.Replace(valid,
+			`"payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]`,
+			`"payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97},{"row":1,"payee":"Other","confidence":0.8}]`, 1),
+			"duplicate"},
+		{"invalid payee", strings.Replace(valid, "Feiner Fixings", "Feiner | Fixings", 1), "invalid payee"},
+		{"invalid confidence", strings.Replace(valid, "0.97", "1.01", 1), "invalid confidence"},
+		{"extra field", strings.Replace(valid, `"model":"azure/test"`, `"model":"azure/test","unexpected":true`, 1), "unknown field"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeStatementCheckPayees([]byte(test.data), statement)
+			require.ErrorContains(t, err, test.message)
+		})
+	}
 }
 
 func TestStatementParserRuntimeOverride(t *testing.T) {

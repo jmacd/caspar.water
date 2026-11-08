@@ -3,6 +3,7 @@ package wat
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -60,6 +61,10 @@ func (ui *terminal) bankStatements() {
 				ui.message(" Cannot open bank statement ", err.Error(), ui.bankStatements)
 				return
 			}
+			if checkpoint != nil {
+				ui.showStatementFromBrowser(current)
+				return
+			}
 			ui.openStatementFromBrowser(current)
 		})
 	}
@@ -93,6 +98,14 @@ func statementAccountLabel(account string) string {
 }
 
 func (ui *terminal) openStatementFromBrowser(statement *Statement) {
+	if !statement.checkPayeesLoaded && len(statementCheckPayeeCandidates(statement)) != 0 {
+		ui.extractCachedStatementPayees(statement)
+		return
+	}
+	ui.showStatementFromBrowser(statement)
+}
+
+func (ui *terminal) showStatementFromBrowser(statement *Statement) {
 	previous, queue, back := ui.statement, ui.queue, ui.statementBack
 	ui.statement, ui.queue = statement, nil
 	ui.statementBack = func() {
@@ -100,6 +113,54 @@ func (ui *terminal) openStatementFromBrowser(statement *Statement) {
 		ui.bankStatements()
 	}
 	ui.statementList()
+}
+
+func (ui *terminal) extractCachedStatementPayees(statement *Statement) {
+	frames := []string{"|", "/", "-", "\\"}
+	started := time.Now()
+	name := filepath.Base(statement.Source)
+	status := tview.NewTextView().SetText(statementPayeeExtractionStatus(
+		name, ui.books.Config.Statement.Model, frames[0], 0,
+	))
+	ui.screen("Check payee extraction", status, "Extraction in progress")
+	var progress bytes.Buffer
+	result := make(chan error, 1)
+	go func() {
+		result <- ui.books.EnsureStatementCheckPayees(statement, &progress)
+	}()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	go func() {
+		defer ticker.Stop()
+		frame := 0
+		for {
+			select {
+			case err := <-result:
+				ui.app.QueueUpdateDraw(func() {
+					if err != nil {
+						detail := strings.TrimSpace(progress.String())
+						if detail != "" {
+							detail += "\n\n"
+						}
+						detail += err.Error() + "\n\nThe statement remains available without AI payee defaults."
+						ui.message(" Check payee extraction failed ", detail, func() {
+							ui.showStatementFromBrowser(statement)
+						})
+						return
+					}
+					ui.showStatementFromBrowser(statement)
+				})
+				return
+			case now := <-ticker.C:
+				frame = (frame + 1) % len(frames)
+				text := statementPayeeExtractionStatus(
+					name, ui.books.Config.Statement.Model, frames[frame], now.Sub(started),
+				)
+				ui.app.QueueUpdateDraw(func() {
+					status.SetText(text)
+				})
+			}
+		}
+	}()
 }
 
 func (ui *terminal) extractPendingStatement(pending *PendingStatement) {
@@ -156,7 +217,15 @@ type statementExtractionResult struct {
 func statementExtractionStatus(name, model, frame string, elapsed time.Duration) string {
 	totalSeconds := int(elapsed / time.Second)
 	return fmt.Sprintf(
-		"Extracting %s\n\n[%s] Reading embedded PDF text and waiting for model %s\n    Elapsed %02d:%02d\n\nNo journal entries will be written.",
+		"Extracting %s\n\n[%s] Reading embedded PDF text and any check images with model %s\n    Elapsed %02d:%02d\n\nThe configured endpoint receives statement text and, when check rows are present, page images. No journal entries will be written.",
+		name, frame, model, totalSeconds/60, totalSeconds%60,
+	)
+}
+
+func statementPayeeExtractionStatus(name, model, frame string, elapsed time.Duration) string {
+	totalSeconds := int(elapsed / time.Second)
+	return fmt.Sprintf(
+		"Extracting check payees from %s\n\n[%s] Reading statement page images with model %s\n    Elapsed %02d:%02d\n\nThe configured endpoint receives statement page images. Suggestions remain editable and no journal entries will be written.",
 		name, frame, model, totalSeconds/60, totalSeconds%60,
 	)
 }
@@ -193,6 +262,9 @@ func (ui *terminal) statementList() {
 			label = "POSSIBLE MATCH"
 		}
 		var hints []string
+		if status.CheckPayeeEvidence != "" {
+			hints = append(hints, status.CheckPayeeEvidence)
+		}
 		if status.QuickBooksEvidence != "" {
 			hints = append(hints, status.QuickBooksEvidence)
 		}
