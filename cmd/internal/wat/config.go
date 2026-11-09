@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,6 +27,8 @@ var (
 	filenameSeparatorPattern = regexp.MustCompile(`[._-]+`)
 	localAccountPartPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
+
+const maxStatementTransactionPromptLength = 4000
 
 type Config struct {
 	Version                int                 `yaml:"version"`
@@ -52,12 +56,18 @@ type BankAccountConfig struct {
 }
 
 type StatementConfig struct {
-	Python             string `yaml:"python"`
-	APIBase            string `yaml:"api_base"`
-	APIVersion         string `yaml:"api_version"`
-	Model              string `yaml:"model"`
-	OllamaURL          string `yaml:"ollama_url,omitempty"`
-	QuickBooksRegister string `yaml:"-"`
+	Python             string                       `yaml:"python"`
+	APIBase            string                       `yaml:"api_base"`
+	APIVersion         string                       `yaml:"api_version"`
+	Model              string                       `yaml:"model"`
+	OllamaURL          string                       `yaml:"ollama_url,omitempty"`
+	TransactionPrompts []StatementTransactionPrompt `yaml:"transaction_prompts,omitempty"`
+	QuickBooksRegister string                       `yaml:"-"`
+}
+
+type StatementTransactionPrompt struct {
+	Payee  string `yaml:"payee" json:"payee"`
+	Prompt string `yaml:"prompt" json:"prompt"`
 }
 
 func (b *BankAccountConfig) UnmarshalYAML(node *yaml.Node) error {
@@ -92,6 +102,35 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if strings.TrimSpace(cfg.Statement.APIBase) != "" && strings.TrimSpace(cfg.Statement.OllamaURL) != "" {
 		return cfg, fmt.Errorf("statement.api_base and legacy statement.ollama_url cannot both be set")
+	}
+	promptPayees := make(map[string]bool, len(cfg.Statement.TransactionPrompts))
+	for index := range cfg.Statement.TransactionPrompts {
+		rule := &cfg.Statement.TransactionPrompts[index]
+		rule.Prompt = strings.TrimSpace(rule.Prompt)
+		if rule.Payee == "" ||
+			strings.TrimSpace(rule.Payee) != rule.Payee ||
+			!singleLine(rule.Payee) ||
+			strings.ContainsAny(rule.Payee, ";|") {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d].payee must be a nonempty single-line payee name",
+				index,
+			)
+		}
+		if promptPayees[rule.Payee] {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d] duplicates payee %q",
+				index,
+				rule.Payee,
+			)
+		}
+		if !validStatementTransactionPrompt(rule.Prompt) {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d].prompt must contain 1-%d printable characters",
+				index,
+				maxStatementTransactionPromptLength,
+			)
+		}
+		promptPayees[rule.Payee] = true
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
@@ -241,6 +280,15 @@ func LoadConfig(path string) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func validStatementTransactionPrompt(prompt string) bool {
+	if prompt == "" || utf8.RuneCountInString(prompt) > maxStatementTransactionPromptLength {
+		return false
+	}
+	return !strings.ContainsFunc(prompt, func(r rune) bool {
+		return !unicode.IsPrint(r) && r != '\n' && r != '\t'
+	})
 }
 
 func bankJournalFilename(account string) string {

@@ -120,6 +120,21 @@ func TestConfig(t *testing.T) {
 		{name: "unknown", yaml: base + "typo: true\n"},
 		{name: "obsolete path", yaml: base + "journal: books/books.journal\n"},
 		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.200:SBMC:1234\n", valid: true},
+		{
+			name: "statement transaction prompt",
+			yaml: base + `statement:
+  transaction_prompts:
+    - payee: Feiner Fixings
+      prompt: |
+        Split the check between chlorine and operations based on the visible memo.
+`,
+			valid: true,
+		},
+		{name: "blank transaction prompt payee", yaml: base + "statement:\n  transaction_prompts:\n    - payee: ' '\n      prompt: Split it\n"},
+		{name: "invalid transaction prompt payee", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner | Fixings\n      prompt: Split it\n"},
+		{name: "blank transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: ' '\n"},
+		{name: "duplicate transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: First\n    - payee: Feiner Fixings\n      prompt: Second\n"},
+		{name: "oversized transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: " + strings.Repeat("x", maxStatementTransactionPromptLength+1) + "\n"},
 		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615.000:Electricity\n  - Expense:615.000:Electricity\n"},
 		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.200:First:1234\n  - Bank:131.200:Second:1234\n"},
 		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.200:First.Account\n  - Bank:131.200:First-Account\n"},

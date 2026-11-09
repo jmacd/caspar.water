@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,29 +28,42 @@ var statementCheckMetadata = regexp.MustCompile(
 	`^[0-9]{3,10}[[:space:]]+([0-9]{2}/[0-9]{2}/[0-9]{4})[[:space:]]+\$([0-9][0-9,]*\.[0-9]{2})$`,
 )
 
+var statementSuggestedAmount = regexp.MustCompile(`^[0-9]+\.[0-9]{2}$`)
+
 type statementAISettings struct {
 	Python, APIBase, APIVersion, Model, Provider string
 }
 
 type statementCheckPayee struct {
-	Row        int     `json:"row"`
-	Payee      string  `json:"payee"`
-	Confidence float64 `json:"confidence"`
+	Row        int                         `json:"row"`
+	Payee      string                      `json:"payee"`
+	Confidence float64                     `json:"confidence"`
+	Memo       string                      `json:"memo,omitempty"`
+	Postings   []statementSuggestedPosting `json:"postings,omitempty"`
+}
+
+type statementSuggestedPosting struct {
+	Account string `json:"account"`
+	Amount  string `json:"amount"`
 }
 
 type statementCheckPayeeCache struct {
-	Version        int                   `json:"version"`
-	StatementHash  string                `json:"statement_hash"`
-	Model          string                `json:"model"`
-	CreatedAt      string                `json:"created_at"`
-	Candidates     []int                 `json:"candidates"`
-	DeclaredPayees []string              `json:"declared_payees,omitempty"`
-	Payees         []statementCheckPayee `json:"payees"`
+	Version            int                          `json:"version"`
+	StatementHash      string                       `json:"statement_hash"`
+	Model              string                       `json:"model"`
+	CreatedAt          string                       `json:"created_at"`
+	Candidates         []int                        `json:"candidates"`
+	DeclaredPayees     []string                     `json:"declared_payees,omitempty"`
+	DeclaredAccounts   []string                     `json:"declared_accounts,omitempty"`
+	TransactionPrompts []StatementTransactionPrompt `json:"transaction_prompts,omitempty"`
+	Payees             []statementCheckPayee        `json:"payees"`
 }
 
 type statementCheckPayeeRequest struct {
-	Rows           []statementCheckPayeeRequestRow `json:"rows"`
-	DeclaredPayees []string                        `json:"declared_payees"`
+	Rows               []statementCheckPayeeRequestRow `json:"rows"`
+	DeclaredPayees     []string                        `json:"declared_payees"`
+	DeclaredAccounts   []string                        `json:"declared_accounts"`
+	TransactionPrompts []StatementTransactionPrompt    `json:"transaction_prompts"`
 }
 
 type statementCheckPayeeRequestRow struct {
@@ -179,6 +193,41 @@ func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCh
 	if !slices.IsSorted(cache.DeclaredPayees) {
 		return nil, fmt.Errorf("check payee extraction declared payees are not sorted")
 	}
+	accounts := make(map[string]bool, len(cache.DeclaredAccounts))
+	for index, account := range cache.DeclaredAccounts {
+		parsed, ok := parsePostingAccount(account)
+		if !ok || parsed.Category == "Bank" {
+			return nil, fmt.Errorf("check payee extraction declared account %d is invalid", index+1)
+		}
+		if accounts[account] {
+			return nil, fmt.Errorf("check payee extraction declared account %q is duplicated", account)
+		}
+		accounts[account] = true
+	}
+	if !slices.IsSorted(cache.DeclaredAccounts) {
+		return nil, fmt.Errorf("check payee extraction declared accounts are not sorted")
+	}
+	rules := make(map[string]bool, len(cache.TransactionPrompts))
+	for index, rule := range cache.TransactionPrompts {
+		if rule.Payee == "" ||
+			strings.TrimSpace(rule.Payee) != rule.Payee ||
+			!singleLine(rule.Payee) ||
+			strings.ContainsAny(rule.Payee, ";|") ||
+			!validStatementTransactionPrompt(rule.Prompt) ||
+			strings.TrimSpace(rule.Prompt) != rule.Prompt {
+			return nil, fmt.Errorf("check payee extraction transaction prompt %d is invalid", index+1)
+		}
+		if !declared[rule.Payee] {
+			return nil, fmt.Errorf(
+				"check payee extraction transaction prompt payee %q is undeclared",
+				rule.Payee,
+			)
+		}
+		if rules[rule.Payee] {
+			return nil, fmt.Errorf("check payee extraction transaction prompt payee %q is duplicated", rule.Payee)
+		}
+		rules[rule.Payee] = true
+	}
 	for _, suggestion := range cache.Payees {
 		if !candidates[suggestion.Row] || seen[suggestion.Row] {
 			return nil, fmt.Errorf("check payee extraction has an invalid or duplicate suggested row")
@@ -191,6 +240,61 @@ func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCh
 		}
 		if suggestion.Confidence < 0 || suggestion.Confidence > 1 {
 			return nil, fmt.Errorf("check payee extraction row %d has an invalid confidence", suggestion.Row)
+		}
+		if strings.TrimSpace(suggestion.Memo) != suggestion.Memo ||
+			!singleLine(suggestion.Memo) ||
+			strings.ContainsAny(suggestion.Memo, ";|") {
+			return nil, fmt.Errorf("check payee extraction row %d has an invalid memo", suggestion.Row)
+		}
+		if (suggestion.Memo != "" || len(suggestion.Postings) != 0) && !rules[suggestion.Payee] {
+			return nil, fmt.Errorf(
+				"check payee extraction row %d applied instructions for an unmatched payee",
+				suggestion.Row,
+			)
+		}
+		postingAccounts := make(map[string]bool, len(suggestion.Postings))
+		var total int64
+		for postingIndex, posting := range suggestion.Postings {
+			if !accounts[posting.Account] {
+				return nil, fmt.Errorf(
+					"check payee extraction row %d posting %d uses undeclared account %q",
+					suggestion.Row,
+					postingIndex+1,
+					posting.Account,
+				)
+			}
+			if postingAccounts[posting.Account] {
+				return nil, fmt.Errorf(
+					"check payee extraction row %d uses account %q more than once",
+					suggestion.Row,
+					posting.Account,
+				)
+			}
+			cents, err := ParseCents(posting.Amount)
+			if !statementSuggestedAmount.MatchString(posting.Amount) ||
+				err != nil ||
+				cents <= 0 ||
+				total > math.MaxInt64-cents {
+				return nil, fmt.Errorf(
+					"check payee extraction row %d posting %d has an invalid amount",
+					suggestion.Row,
+					postingIndex+1,
+				)
+			}
+			postingAccounts[posting.Account] = true
+			total += cents
+		}
+		if statement.Rows[suggestion.Row-1].Cents == math.MinInt64 {
+			return nil, fmt.Errorf(
+				"check payee extraction row %d bank amount exceeds supported range",
+				suggestion.Row,
+			)
+		}
+		if len(suggestion.Postings) != 0 && total != -statement.Rows[suggestion.Row-1].Cents {
+			return nil, fmt.Errorf(
+				"check payee extraction row %d split postings do not balance to the bank amount",
+				suggestion.Row,
+			)
 		}
 		seen[suggestion.Row] = true
 	}
@@ -225,7 +329,8 @@ func (b *Books) loadStatementCheckPayees(statement *Statement, dir string) error
 	if err != nil {
 		return err
 	}
-	if cache.Version == 0 {
+	if cache.Version == 0 ||
+		!slices.Equal(cache.TransactionPrompts, b.Config.Statement.TransactionPrompts) {
 		return nil
 	}
 	applyStatementCheckPayees(statement, cache)
@@ -249,9 +354,41 @@ func (b *Books) extractStatementCheckPayees(
 	if err != nil {
 		return nil, fmt.Errorf("load declared payees for check image context: %w", err)
 	}
-	request := statementCheckPayeeRequest{DeclaredPayees: declaredPayees}
+	if declaredPayees == nil {
+		declaredPayees = []string{}
+	}
+	for index, rule := range b.Config.Statement.TransactionPrompts {
+		if !slices.Contains(declaredPayees, rule.Payee) {
+			return nil, fmt.Errorf(
+				"statement.transaction_prompts[%d] payee %q is not declared in books/payees.journal",
+				index,
+				rule.Payee,
+			)
+		}
+	}
+	postingAccounts, err := b.PostingAccounts()
+	if err != nil {
+		return nil, fmt.Errorf("load declared accounts for transaction prompt context: %w", err)
+	}
+	declaredAccounts := []string{}
+	for _, account := range postingAccounts {
+		if account.Category != "Bank" {
+			declaredAccounts = append(declaredAccounts, account.Name)
+		}
+	}
+	request := statementCheckPayeeRequest{
+		DeclaredPayees:     declaredPayees,
+		DeclaredAccounts:   declaredAccounts,
+		TransactionPrompts: append([]StatementTransactionPrompt{}, b.Config.Statement.TransactionPrompts...),
+	}
 	for _, rowNumber := range candidates {
 		row := statement.Rows[rowNumber-1]
+		if row.Cents == math.MinInt64 {
+			return nil, fmt.Errorf(
+				"statement row %d amount exceeds supported check-image context",
+				rowNumber,
+			)
+		}
 		request.Rows = append(request.Rows, statementCheckPayeeRequestRow{
 			Row: rowNumber, Date: row.Date, Description: row.Description, Amount: formatCents(row.Cents),
 		})
@@ -298,6 +435,12 @@ func (b *Books) extractStatementCheckPayees(
 	}
 	if !slices.Equal(cache.DeclaredPayees, declaredPayees) {
 		return nil, fmt.Errorf("check payee extraction did not preserve its declared payee context")
+	}
+	if !slices.Equal(cache.DeclaredAccounts, declaredAccounts) {
+		return nil, fmt.Errorf("check payee extraction did not preserve its declared account context")
+	}
+	if !slices.Equal(cache.TransactionPrompts, b.Config.Statement.TransactionPrompts) {
+		return nil, fmt.Errorf("check payee extraction did not preserve its transaction prompts")
 	}
 	applyStatementCheckPayees(statement, cache)
 	return data, nil

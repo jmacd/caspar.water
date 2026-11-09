@@ -491,7 +491,21 @@ statement:
   api_base: https://example.openai.azure.com/
   api_version: 2025-04-01-preview
   model: azure/example-deployment
+  transaction_prompts:
+    - payee: Example Vendor
+      prompt: |
+        Use the visible check memo to propose an editable transaction memo and
+        split the total between the appropriate declared expense accounts.
 ```
+
+Each `transaction_prompts` rule selects one exact hledger-declared payee. The
+prompt is sent only as context for that matched payee and may ask the model to
+propose a memo and multiple counterpostings. Suggested accounts must be declared
+non-bank accounts, amounts must be positive exact USD values, and the split must
+balance exactly to the payment. These are nondeterministic editable defaults:
+nothing is written until the operator reviews the form and presses F2. Changing
+a rule invalidates the corresponding cached AI enrichment and reruns it when
+the statement is next opened.
 
 Pass an optional read-only QuickBooks bank-register export only for the Wat run
 that should use it:
@@ -546,10 +560,14 @@ happens during new
 statement extraction and on the first open of an older cached statement, with
 no separate action. The validated suggestions are stored separately in
 `check-payees.json`, tied to the statement fingerprint and row numbers, and
-prefill only the editable payee field. They do not alter extracted statement
-rows, reconciliation evidence, payee declarations, or journals. An exact
-QuickBooks register match takes precedence. The progress screen identifies that
-page images are being sent to the configured endpoint.
+prefill only editable fields. For an exact configured payee, the sidecar may
+also hold a validated memo and balanced split proposed from its
+`transaction_prompts` rule. They do not alter extracted statement rows,
+reconciliation evidence, payee declarations, or journals. An exact QuickBooks
+payee takes precedence and suppresses a split for a different payee; a nonempty
+QuickBooks memo takes precedence, while a matched AI split remains editable.
+The progress screen identifies that page images are being sent to the
+configured endpoint.
 Some statements present a dated zero-value beginning/ending balance as a row.
 `wat` omits such rows from the posting queue and shows an extraction notice;
 opening and closing balances remain part of mandatory arithmetic verification.

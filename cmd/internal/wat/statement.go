@@ -1040,19 +1040,43 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 	}
 	draft.statement = &statementDraft{s, index, s.BankAccount}
 	payee := row.Description
-	if suggestion, ok := s.checkPayees[index]; ok {
+	suggestion, hasSuggestion := s.checkPayees[index]
+	if hasSuggestion {
 		payee = suggestion.Payee
 	}
-	entry := Entry{Date: row.Date, Payee: payee, Source: s.Source,
-		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
-		Postings: []Posting{{s.BankAccount, formatCents(row.Cents)}, {counteraccount, formatCents(-row.Cents)}}}
-	if register.exact() {
-		if register.Payee != "" {
-			entry.Payee = register.Payee
-		}
-		entry.Description = register.Description
-		entry.Reference = register.Reference
+	description, reference := "", ""
+	if register.exact() && register.Payee != "" {
+		payee = register.Payee
 	}
+	applyInstructions := hasSuggestion && payee == suggestion.Payee
+	if applyInstructions {
+		description = suggestion.Memo
+	}
+	if register.exact() {
+		if register.Description != "" {
+			description = register.Description
+		}
+		reference = register.Reference
+	}
+	postings := []Posting{
+		{s.BankAccount, formatCents(row.Cents)},
+		{counteraccount, formatCents(-row.Cents)},
+	}
+	if applyInstructions && len(suggestion.Postings) != 0 {
+		postings = []Posting{{s.BankAccount, formatCents(row.Cents)}}
+		for _, posting := range suggestion.Postings {
+			if !slices.Contains(draft.accounts, posting.Account) {
+				return nil, Entry{}, fmt.Errorf(
+					"cached AI split references undeclared account %q",
+					posting.Account,
+				)
+			}
+			postings = append(postings, Posting{posting.Account, posting.Amount})
+		}
+	}
+	entry := Entry{Date: row.Date, Payee: payee, Description: description, Reference: reference, Source: s.Source,
+		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
+		Postings: postings}
 	return draft, entry, nil
 }
 

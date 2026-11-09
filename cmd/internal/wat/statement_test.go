@@ -346,6 +346,11 @@ func TestStatementParserInvocation(t *testing.T) {
 
 func TestStatementAutomaticallyExtractsCheckPayees(t *testing.T) {
 	books, root := fixture(t, "")
+	require.NoError(t, os.WriteFile(books.Config.Payees, []byte(`payee Deposit
+payee Electric company
+payee Feiner Fixings
+payee Journal
+`), 0600))
 	pdfBytes := []byte("%PDF-1.7\nsynthetic check statement\n")
 	pdf := filepath.Join(root, "checks.pdf")
 	require.NoError(t, os.WriteFile(pdf, pdfBytes, 0600))
@@ -359,15 +364,38 @@ func TestStatementAutomaticallyExtractsCheckPayees(t *testing.T) {
 	require.NoError(t, os.WriteFile(extractionPath, []byte(extraction), 0600))
 	hash := statementHash(pdfBytes)
 	payeesPath := filepath.Join(root, "check-payees-response.json")
-	require.NoError(t, os.WriteFile(payeesPath, []byte(`{
- "version":1,
- "statement_hash":"`+hash+`",
- "model":"ollama/test",
- "created_at":"2025-01-02T03:04:05Z",
- "candidates":[2],
- "declared_payees":["Deposit","Electric company","Journal"],
- "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
-}`), 0600))
+	postingAccounts, err := books.PostingAccounts()
+	require.NoError(t, err)
+	var declaredAccounts []string
+	for _, account := range postingAccounts {
+		if !strings.HasPrefix(account.Name, "Bank:") {
+			declaredAccounts = append(declaredAccounts, account.Name)
+		}
+	}
+	transactionPrompts := []StatementTransactionPrompt{{
+		Payee:  "Feiner Fixings",
+		Prompt: "Split the total between chlorine and operations.",
+	}}
+	response, err := json.Marshal(statementCheckPayeeCache{
+		Version:            1,
+		StatementHash:      hash,
+		Model:              "ollama/test",
+		CreatedAt:          "2025-01-02T03:04:05Z",
+		Candidates:         []int{2},
+		DeclaredPayees:     []string{"Deposit", "Electric company", "Feiner Fixings", "Journal"},
+		DeclaredAccounts:   declaredAccounts,
+		TransactionPrompts: transactionPrompts,
+		Payees: []statementCheckPayee{{
+			Row: 2, Payee: "Feiner Fixings", Confidence: 0.97,
+			Memo: "Chlorine and operations work",
+			Postings: []statementSuggestedPosting{
+				{Account: "Expense:615.000:Utility", Amount: "5.00"},
+				{Account: "Income:421.000:Misc", Amount: "7.34"},
+			},
+		}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(payeesPath, response, 0600))
 	requestPath := filepath.Join(root, "check-payees-request.json")
 	fake := filepath.Join(root, "fake-statement-python")
 	require.NoError(t, os.WriteFile(fake, []byte(`#!/bin/sh
@@ -384,6 +412,7 @@ fi
 	t.Setenv("WAT_FAKE_REQUEST", requestPath)
 	books.Config.Statement = StatementConfig{
 		Python: fake, APIBase: "http://invalid.test:11434", Model: "ollama/test",
+		TransactionPrompts: transactionPrompts,
 	}
 
 	var progress strings.Builder
@@ -395,29 +424,58 @@ fi
 	require.Contains(t, progress.String(), "http://invalid.test:11434")
 	var request statementCheckPayeeRequest
 	require.NoError(t, json.Unmarshal([]byte(read(t, requestPath)), &request))
-	require.Equal(t, []string{"Deposit", "Electric company", "Journal"}, request.DeclaredPayees)
+	require.Equal(t, []string{"Deposit", "Electric company", "Feiner Fixings", "Journal"}, request.DeclaredPayees)
+	require.Equal(t, declaredAccounts, request.DeclaredAccounts)
+	require.Equal(t, transactionPrompts, request.TransactionPrompts)
 	cache := filepath.Join(root, filepath.Dir(statement.Source), statementCheckPayeesFile)
 	require.FileExists(t, cache)
 
 	_, entry, err := books.StatementDraft(statement, 1)
 	require.NoError(t, err)
 	require.Equal(t, "Feiner Fixings", entry.Payee)
+	require.Equal(t, "Chlorine and operations work", entry.Description)
+	require.Equal(t, []Posting{
+		{Account: "Bank:131.200:Checking", Amount: "-12.34"},
+		{Account: "Expense:615.000:Utility", Amount: "5.00"},
+		{Account: "Income:421.000:Misc", Amount: "7.34"},
+	}, entry.Postings)
+	require.Empty(t, read(t, books.Config.ManualJournal), "AI defaults must not write journals")
 	statuses, err := books.StatementStatuses(statement)
 	require.NoError(t, err)
 	require.Contains(t, statuses[1].CheckPayeeEvidence, "Feiner Fixings")
 	require.Contains(t, statuses[1].CheckPayeeEvidence, "97% confidence")
+	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
+		Label: "Utilities", Account: "Expense:615.000:Utility",
+	}}))
+
+	writeStatementRegister(t, books,
+		"4/5/2021,Expense,1001,Feiner Fixings,April power,Utilities,12.34,,87.66\n",
+	)
+	_, entry, err = books.StatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "Feiner Fixings", entry.Payee)
+	require.Equal(t, "April power", entry.Description, "a nonempty QuickBooks memo is stronger evidence")
+	require.Len(t, entry.Postings, 3, "a QuickBooks account must not replace a matched AI split")
 
 	writeStatementRegister(t, books,
 		"4/5/2021,Expense,1001,Electric Company,April power,Utilities,12.34,,87.66\n",
 	)
+	books.quickBooksRegisterYear = make(map[int][]quickBooksRecord)
 	_, entry, err = books.StatementDraft(statement, 1)
 	require.NoError(t, err)
 	require.Equal(t, "Electric Company", entry.Payee, "an exact QuickBooks match is stronger evidence")
+	require.Equal(t, []Posting{
+		{Account: "Bank:131.200:Checking", Amount: "-12.34"},
+		{Account: "Expense:615.000:Utility", Amount: "12.34"},
+	}, entry.Postings, "a QuickBooks payee conflict must suppress the unrelated AI split")
 
 	books.Config.Statement.Python = filepath.Join(root, "missing-python")
 	again, err := books.LoadStatement(pdf, StatementOptions{}, nil)
 	require.NoError(t, err, "the validated sidecar must prevent another model call")
 	require.Equal(t, "Feiner Fixings", again.checkPayees[1].Payee)
+	books.Config.Statement.TransactionPrompts[0].Prompt = "Use a changed split instruction."
+	_, err = books.LoadStatement(pdf, StatementOptions{}, nil)
+	require.Error(t, err, "changing a transaction prompt must invalidate cached AI defaults")
 }
 
 func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
@@ -448,15 +506,28 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
 	require.False(t, statement.checkPayeesLoaded, "an older empty sidecar must be retried automatically")
 
 	response := filepath.Join(root, "older-check-payees.json")
-	require.NoError(t, os.WriteFile(response, []byte(`{
- "version":1,
- "statement_hash":"`+statement.Hash+`",
- "model":"ollama/test",
- "created_at":"2025-01-02T03:04:05Z",
- "candidates":[2],
- "declared_payees":["Deposit","Electric company","Journal"],
- "payees":[{"row":2,"payee":"Feiner Fixings","confidence":0.97}]
-}`), 0600))
+	postingAccounts, err := books.PostingAccounts()
+	require.NoError(t, err)
+	var declaredAccounts []string
+	for _, account := range postingAccounts {
+		if !strings.HasPrefix(account.Name, "Bank:") {
+			declaredAccounts = append(declaredAccounts, account.Name)
+		}
+	}
+	responseData, err := json.Marshal(statementCheckPayeeCache{
+		Version:          1,
+		StatementHash:    statement.Hash,
+		Model:            "ollama/test",
+		CreatedAt:        "2025-01-02T03:04:05Z",
+		Candidates:       []int{2},
+		DeclaredPayees:   []string{"Deposit", "Electric company", "Journal"},
+		DeclaredAccounts: declaredAccounts,
+		Payees: []statementCheckPayee{{
+			Row: 2, Payee: "Feiner Fixings", Confidence: 0.97,
+		}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(response, responseData, 0600))
 	fake := filepath.Join(root, "fake-check-payee-python")
 	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\ncat \"$WAT_FAKE_PAYEES\"\n"), 0700))
 	t.Setenv("WAT_FAKE_PAYEES", response)
@@ -468,6 +539,25 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
 	require.True(t, statement.checkPayeesLoaded)
 	require.Equal(t, "Feiner Fixings", statement.checkPayees[1].Payee)
 	require.FileExists(t, filepath.Join(cacheDir, statementCheckPayeesFile))
+}
+
+func TestStatementTransactionPromptRequiresDeclaredPayee(t *testing.T) {
+	books, _ := fixture(t, "")
+	books.Config.Statement = StatementConfig{
+		Python:  "python3",
+		APIBase: "http://invalid.test:11434",
+		Model:   "ollama/test",
+		TransactionPrompts: []StatementTransactionPrompt{{
+			Payee:  "Feiner Fixings",
+			Prompt: "Split chlorine from operations.",
+		}},
+	}
+	_, err := books.extractStatementCheckPayees("", &Statement{
+		Rows: []StatementRow{{
+			Date: "2021-04-05", Description: "CHECK 1001", Cents: -1234,
+		}},
+	}, nil)
+	require.ErrorContains(t, err, `payee "Feiner Fixings" is not declared`)
 }
 
 func TestStatementCheckPayeeCacheValidation(t *testing.T) {
@@ -484,16 +574,23 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
  "model":"azure/test",
  "created_at":"2025-01-02T03:04:05Z",
  "candidates":[1],
- "declared_payees":["Alpha Labs"],
- "payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]
+ "declared_payees":["Alpha Labs","Feiner Fixings"],
+ "declared_accounts":["Expense:615.000:Chlorine","Expense:615.000:Operations"],
+ "transaction_prompts":[{"payee":"Feiner Fixings","prompt":"Split chlorine from operations."}],
+ "payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97,"memo":"Treatment work","postings":[{"account":"Expense:615.000:Chlorine","amount":"5.00"},{"account":"Expense:615.000:Operations","amount":"7.34"}]}]
 }`
 	cache, err := decodeStatementCheckPayees([]byte(valid), statement)
 	require.NoError(t, err)
 	require.Equal(t, "Feiner Fixings", cache.Payees[0].Payee)
-	legacy, err := decodeStatementCheckPayees(
-		[]byte(strings.Replace(valid, `"version":1,`, "", 1)),
-		statement,
-	)
+	require.Equal(t, "Treatment work", cache.Payees[0].Memo)
+	require.Len(t, cache.Payees[0].Postings, 2)
+	legacy, err := decodeStatementCheckPayees([]byte(`{
+ "statement_hash":"`+statement.Hash+`",
+ "model":"azure/test",
+ "created_at":"2025-01-02T03:04:05Z",
+ "candidates":[1],
+ "payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]
+}`), statement)
 	require.NoError(t, err)
 	require.Zero(t, legacy.Version, "older caches must be eligible for automatic re-extraction")
 
@@ -503,19 +600,44 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 		{"wrong hash", strings.Replace(valid, statement.Hash, strings.Repeat("b", 64), 1), "fingerprint"},
 		{"wrong candidates", strings.Replace(valid, `"candidates":[1]`, `"candidates":[2]`, 1), "check rows"},
 		{"duplicate row", strings.Replace(valid,
-			`"payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97}]`,
-			`"payees":[{"row":1,"payee":"Feiner Fixings","confidence":0.97},{"row":1,"payee":"Other","confidence":0.8}]`, 1),
+			`"payees":[`,
+			`"payees":[{"row":1,"payee":"Other","confidence":0.8},`, 1),
 			"duplicate"},
-		{"invalid payee", strings.Replace(valid, "Feiner Fixings", "Feiner | Fixings", 1), "invalid payee"},
+		{"invalid payee", strings.Replace(valid,
+			`"row":1,"payee":"Feiner Fixings"`,
+			`"row":1,"payee":"Feiner | Fixings"`, 1),
+			"invalid payee"},
 		{"invalid confidence", strings.Replace(valid, "0.97", "1.01", 1), "invalid confidence"},
 		{"duplicate declared payee", strings.Replace(valid,
-			`"declared_payees":["Alpha Labs"]`,
-			`"declared_payees":["Alpha Labs","Alpha Labs"]`, 1),
+			`"declared_payees":["Alpha Labs","Feiner Fixings"]`,
+			`"declared_payees":["Alpha Labs","Alpha Labs","Feiner Fixings"]`, 1),
 			"duplicated"},
 		{"unsorted declared payees", strings.Replace(valid,
-			`"declared_payees":["Alpha Labs"]`,
-			`"declared_payees":["Beta","Alpha"]`, 1),
+			`"declared_payees":["Alpha Labs","Feiner Fixings"]`,
+			`"declared_payees":["Feiner Fixings","Alpha Labs"]`, 1),
 			"not sorted"},
+		{"duplicate declared account", strings.Replace(valid,
+			`"declared_accounts":["Expense:615.000:Chlorine","Expense:615.000:Operations"]`,
+			`"declared_accounts":["Expense:615.000:Chlorine","Expense:615.000:Chlorine"]`, 1),
+			"duplicated"},
+		{"duplicate transaction prompt", strings.Replace(valid,
+			`"transaction_prompts":[{"payee":"Feiner Fixings","prompt":"Split chlorine from operations."}]`,
+			`"transaction_prompts":[{"payee":"Feiner Fixings","prompt":"First."},{"payee":"Feiner Fixings","prompt":"Second."}]`, 1),
+			"duplicated"},
+		{"unknown posting account", strings.Replace(valid,
+			`"account":"Expense:615.000:Chlorine"`,
+			`"account":"Expense:615.000:Unknown"`, 1),
+			"undeclared account"},
+		{"duplicate posting account", strings.Replace(valid,
+			`"account":"Expense:615.000:Operations"`,
+			`"account":"Expense:615.000:Chlorine"`, 1),
+			"more than once"},
+		{"inexact posting amount", strings.Replace(valid, `"amount":"5.00"`, `"amount":"5.0"`, 1), "invalid amount"},
+		{"unbalanced postings", strings.Replace(valid, `"amount":"7.34"`, `"amount":"7.33"`, 1), "do not balance"},
+		{"instructions without matched payee", strings.Replace(valid,
+			`"payee":"Feiner Fixings","confidence":0.97`,
+			`"payee":"Other","confidence":0.97`, 1),
+			"unmatched payee"},
 		{"unsupported version", strings.Replace(valid, `"version":1`, `"version":2`, 1), "unsupported version"},
 		{"extra field", strings.Replace(valid, `"model":"azure/test"`, `"model":"azure/test","unexpected":true`, 1), "unknown field"},
 	} {
