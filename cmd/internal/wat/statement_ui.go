@@ -3,6 +3,7 @@ package wat
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,11 +26,8 @@ func (ui *terminal) bankStatements() {
 		ui.message(" Bank statements ", "No bank statements are available. Add PDF files to the configured statement inbox, then start wat again.", ui.menu)
 		return
 	}
-	list := themedList().ShowSecondaryText(true)
-	list.SetBorder(true).SetTitle(fmt.Sprintf(
-		" Bank statements | %d extracted | %d ready - recorded does not mean reconciled ",
-		len(statements), len(pending),
-	))
+	list := themedList().ShowSecondaryText(false)
+	reconciled := 0
 	for _, statement := range statements {
 		statuses, err := ui.books.StatementStatuses(statement)
 		if err != nil {
@@ -51,30 +49,36 @@ func (ui *terminal) bankStatements() {
 		if statement.Period != nil {
 			period = statement.Period.Start + " to " + statement.Period.End
 		}
-		state := fmt.Sprintf("%d recorded, %d pending", recorded, len(statuses)-recorded)
-		hint := statement.Source
+		state := fmt.Sprintf("%d/%d RECORDED", recorded, len(statuses))
 		if checkpoint != nil {
+			reconciled++
 			state = "RECONCILED"
-			hint = "Finished " + checkpoint.FinishedAt + " | read-only | " + statement.Source
 		}
-		label := fmt.Sprintf("EXTRACTED | %s | %s | %s | %s", statement.BankAccount, period, state, statement.Hash[:12])
-		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+		label := fmt.Sprintf("%-14s  %s  %s", state, period, statementAccountLabel(statement.BankAccount))
+		list.AddItem(tview.Escape(label), "", 0, func() {
 			current, err := ui.books.cachedStatement(statement.Hash)
 			if err != nil {
 				ui.message(" Cannot open bank statement ", err.Error(), ui.bankStatements)
+				return
+			}
+			if checkpoint != nil {
+				ui.showStatementFromBrowser(current)
 				return
 			}
 			ui.openStatementFromBrowser(current)
 		})
 	}
 	for _, statement := range pending {
-		label := fmt.Sprintf("READY TO EXTRACT | %s | %s", statement.Name, statement.Hash[:12])
-		hint := "Enter to extract this complete PDF"
-		list.AddItem(tview.Escape(label), tview.Escape(hint), 0, func() {
+		label := fmt.Sprintf("%-14s  %s", "READY", statement.Name)
+		list.AddItem(tview.Escape(label), "", 0, func() {
 			ui.extractPendingStatement(statement)
 		})
 	}
-	list.AddItem("Back to menu", "Saved entries and statement caches are unchanged", 'q', ui.menu)
+	list.AddItem("Back to menu", "", 'q', ui.menu)
+	list.SetBorder(true).SetTitle(fmt.Sprintf(
+		" Bank statements | %d reconciled | %d unfinished | %d ready ",
+		reconciled, len(statements)-reconciled, len(pending),
+	))
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ui.menu()
@@ -85,7 +89,23 @@ func (ui *terminal) bankStatements() {
 	ui.screen("Bank statements", list, "Enter Open / extract one statement | Esc Menu")
 }
 
+func statementAccountLabel(account string) string {
+	parts := strings.Split(account, ":")
+	if len(parts) > 2 {
+		return strings.Join(parts[2:], ":")
+	}
+	return account
+}
+
 func (ui *terminal) openStatementFromBrowser(statement *Statement) {
+	if !statement.checkPayeesLoaded && len(statementCheckPayeeCandidates(statement)) != 0 {
+		ui.extractCachedStatementPayees(statement)
+		return
+	}
+	ui.showStatementFromBrowser(statement)
+}
+
+func (ui *terminal) showStatementFromBrowser(statement *Statement) {
 	previous, queue, back := ui.statement, ui.queue, ui.statementBack
 	ui.statement, ui.queue = statement, nil
 	ui.statementBack = func() {
@@ -93,6 +113,54 @@ func (ui *terminal) openStatementFromBrowser(statement *Statement) {
 		ui.bankStatements()
 	}
 	ui.statementList()
+}
+
+func (ui *terminal) extractCachedStatementPayees(statement *Statement) {
+	frames := []string{"|", "/", "-", "\\"}
+	started := time.Now()
+	name := filepath.Base(statement.Source)
+	status := tview.NewTextView().SetText(statementPayeeExtractionStatus(
+		name, ui.books.Config.Statement.Model, frames[0], 0,
+	))
+	ui.screen("Check payee extraction", status, "Extraction in progress")
+	var progress bytes.Buffer
+	result := make(chan error, 1)
+	go func() {
+		result <- ui.books.EnsureStatementCheckPayees(statement, &progress)
+	}()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	go func() {
+		defer ticker.Stop()
+		frame := 0
+		for {
+			select {
+			case err := <-result:
+				ui.app.QueueUpdateDraw(func() {
+					if err != nil {
+						detail := strings.TrimSpace(progress.String())
+						if detail != "" {
+							detail += "\n\n"
+						}
+						detail += err.Error() + "\n\nThe statement remains available without AI payee defaults."
+						ui.message(" Check payee extraction failed ", detail, func() {
+							ui.showStatementFromBrowser(statement)
+						})
+						return
+					}
+					ui.showStatementFromBrowser(statement)
+				})
+				return
+			case now := <-ticker.C:
+				frame = (frame + 1) % len(frames)
+				text := statementPayeeExtractionStatus(
+					name, ui.books.Config.Statement.Model, frames[frame], now.Sub(started),
+				)
+				ui.app.QueueUpdateDraw(func() {
+					status.SetText(text)
+				})
+			}
+		}
+	}()
 }
 
 func (ui *terminal) extractPendingStatement(pending *PendingStatement) {
@@ -149,7 +217,15 @@ type statementExtractionResult struct {
 func statementExtractionStatus(name, model, frame string, elapsed time.Duration) string {
 	totalSeconds := int(elapsed / time.Second)
 	return fmt.Sprintf(
-		"Extracting %s\n\n[%s] Reading embedded PDF text and waiting for model %s\n    Elapsed %02d:%02d\n\nNo journal entries will be written.",
+		"Extracting %s\n\n[%s] Reading embedded PDF text and any check images with model %s\n    Elapsed %02d:%02d\n\nThe configured endpoint receives statement text and, when check rows are present, page images. No journal entries will be written.",
+		name, frame, model, totalSeconds/60, totalSeconds%60,
+	)
+}
+
+func statementPayeeExtractionStatus(name, model, frame string, elapsed time.Duration) string {
+	totalSeconds := int(elapsed / time.Second)
+	return fmt.Sprintf(
+		"Extracting check payees from %s\n\n[%s] Reading statement page images with model %s\n    Elapsed %02d:%02d\n\nThe configured endpoint receives statement page images. Suggestions remain editable and no journal entries will be written.",
 		name, frame, model, totalSeconds/60, totalSeconds%60,
 	)
 }
@@ -185,7 +261,20 @@ func (ui *terminal) statementList() {
 		} else if status.PossibleMatch {
 			label = "POSSIBLE MATCH"
 		}
-		hint := "Suggested counteraccount: " + status.Suggestion
+		var hints []string
+		if status.CheckPayeeEvidence != "" {
+			hints = append(hints, status.CheckPayeeEvidence)
+		}
+		if status.QuickBooksEvidence != "" {
+			hints = append(hints, status.QuickBooksEvidence)
+		}
+		if status.Suggestion != "" {
+			hints = append(hints, "Learned account: "+status.Suggestion)
+		}
+		hint := strings.Join(hints, " | ")
+		if hint == "" {
+			hint = "No exact register match or learned account"
+		}
 		if status.Recorded {
 			hint = "Enter to revise the existing entry (working journal only)"
 		}
@@ -218,6 +307,39 @@ func (ui *terminal) statementList() {
 		})
 		list.SetCurrentItem(len(ui.statement.Rows))
 		footer = "Enter/n " + label + " | i Source/notices | Esc Menu"
+	}
+	if checkpoint != nil {
+		list.AddItem(
+			"Reopen reconciliation",
+			"Remove Finish checkpoint; recorded entries remain and become editable",
+			'u',
+			func() {
+				modal := themedModal().
+					SetText("Reopen this reconciliation?\n\nIts recorded entries will remain in the journal and become editable. Any later finished reconciliation for the same bank account will also be reopened.").
+					AddButtons([]string{"Cancel", "Reopen"})
+				modal.SetDoneFunc(func(index int, _ string) {
+					if index != 1 {
+						ui.statementList()
+						return
+					}
+					reopened, err := ui.books.ReopenReconciliation(ui.statement)
+					if err != nil {
+						ui.message(" Cannot reopen reconciliation ", err.Error(), ui.statementList)
+						return
+					}
+					message := "Removed the Finish checkpoint. Recorded entries remain unchanged and editable."
+					if len(reopened) > 1 {
+						message = fmt.Sprintf(
+							"Reopened %d dependent reconciliations. Recorded entries remain unchanged and editable.",
+							len(reopened),
+						)
+					}
+					ui.message(" Reconciliation reopened ", message, ui.statementList)
+				})
+				ui.app.SetRoot(modal, true).SetFocus(modal)
+			},
+		)
+		footer += " | u Reopen"
 	}
 	list.AddItem("Statement notices / source", "Extraction warnings and PDF location; balance checks are not proof of reconciliation", 'i', func() {
 		period := "Statement dates unavailable"

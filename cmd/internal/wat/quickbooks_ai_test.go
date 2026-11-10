@@ -17,7 +17,9 @@ import (
 
 func testQuickBooksGroup(id string, records ...quickBooksRecord) quickBooksTransactionGroup {
 	return quickBooksTransactionGroup{
-		ID: id, Date: records[0].Date, MatchBasis: "single", Records: records,
+		ID: id, Date: records[0].Date, MatchBasis: "single",
+		SourceAmountsMayOverlap: quickBooksSourceAmountsMayOverlap(records),
+		Records:                 records,
 	}
 }
 
@@ -33,8 +35,8 @@ func TestQuickBooksOllamaCompletion(t *testing.T) {
 		require.Equal(t, "json", payload.Format)
 		content := `{"candidates":[{"group_id":"group-1","date":"2021-01-02","payee":"Vendor",` +
 			`"description":"","reference":"","confidence":"high","postings":[` +
-			`{"account":"Expense:615:Electricity","amount":"10.00"},` +
-			`{"account":"Bank:131.2:SBMC:0000","amount":"-10.00"}]}],` +
+			`{"account":"Expense:615.000:Electricity","amount":"10.00"},` +
+			`{"account":"Bank:131.200:SBMC:0000","amount":"-10.00"}]}],` +
 			`"unresolved":[],"warnings":[]}`
 		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"message": map[string]string{"role": "assistant", "content": content},
@@ -48,7 +50,7 @@ func TestQuickBooksOllamaCompletion(t *testing.T) {
 	response, err := books.quickBooksCompletion(context.Background(), quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -63,7 +65,7 @@ func TestQuickBooksOllamaCompletion(t *testing.T) {
 	text, err := renderQuickBooksCandidates(response, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -75,7 +77,7 @@ func TestQuickBooksOllamaCompletion(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Contains(t, text, "2021-01-02 Vendor")
-	require.Contains(t, text, "Expense:615:Electricity  $10.00")
+	require.Contains(t, text, "Expense:615.000:Electricity  $10.00")
 	require.NotContains(t, text, "source:")
 }
 
@@ -85,15 +87,15 @@ func TestQuickBooksCandidatesRejectUnbalancedModelOutput(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "low",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "10.00"},
-				{Account: "Bank:131.2:SBMC:0000", Amount: "-9.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "10.00"},
+				{Account: "Bank:131.200:SBMC:0000", Amount: "-9.00"},
 			},
 		}},
 		Warnings: []string{},
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -112,15 +114,15 @@ func TestQuickBooksCandidatesRejectUnknownAccount(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "low",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:999:Invented", Amount: "10.00"},
-				{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+				{Account: "Expense:999.000:Invented", Amount: "10.00"},
+				{Account: "Bank:131.200:SBMC:0000", Amount: "-10.00"},
 			},
 		}},
 		Warnings: []string{},
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -139,7 +141,7 @@ func TestQuickBooksCandidatesRequireHumanApprovedMapping(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "high",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:664:Maintenance", Amount: "10.00"},
+				{Account: "Expense:664.000:Maintenance", Amount: "10.00"},
 				{Account: "Equity:Owner", Amount: "-10.00"},
 			},
 		}},
@@ -148,10 +150,10 @@ func TestQuickBooksCandidatesRequireHumanApprovedMapping(t *testing.T) {
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Utility", "Expense:664:Maintenance", "Equity:Owner",
+			"Expense:615.000:Utility", "Expense:664.000:Maintenance", "Equity:Owner",
 		},
 		AccountMappings: []quickBooksAccountMapping{{
-			Label: "Utilities", Account: "Expense:615:Utility",
+			Label: "Utilities", Account: "Expense:615.000:Utility",
 		}},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -161,7 +163,7 @@ func TestQuickBooksCandidatesRequireHumanApprovedMapping(t *testing.T) {
 			},
 		)},
 	})
-	require.ErrorContains(t, err, `omits human-approved mapped account "Expense:615:Utility"`)
+	require.ErrorContains(t, err, `omits human-approved mapped account "Expense:615.000:Utility"`)
 }
 
 func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
@@ -169,15 +171,15 @@ func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
 		GroupID: "group-1",
 		Date:    "2021-01-02", Payee: "Vendor", Confidence: "medium",
 		Postings: []quickBooksAIPosting{
-			{Account: "Expense:615:Electricity", Amount: "10.0"},
-			{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+			{Account: "Expense:615.000:Electricity", Amount: "10.0"},
+			{Account: "Bank:131.200:SBMC:0000", Amount: "-10.00"},
 		},
 	}
 	reversed := candidate
 	reversed.GroupID = "group-2"
 	reversed.Postings = []quickBooksAIPosting{
-		{Account: "Bank:131.2:SBMC:0000", Amount: "-10.0"},
-		{Account: "Expense:615:Electricity", Amount: "10.00"},
+		{Account: "Bank:131.200:SBMC:0000", Amount: "-10.0"},
+		{Account: "Expense:615.000:Electricity", Amount: "10.00"},
 	}
 	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{candidate, reversed},
@@ -186,7 +188,7 @@ func TestQuickBooksCandidatesRejectCanonicalDuplicate(t *testing.T) {
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{
 			testQuickBooksGroup(
@@ -214,15 +216,15 @@ func TestQuickBooksCandidatesRejectAmountAbsentFromSource(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "medium",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "11.00"},
-				{Account: "Bank:131.2:SBMC:0000", Amount: "-11.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "11.00"},
+				{Account: "Bank:131.200:SBMC:0000", Amount: "-11.00"},
 			},
 		}},
 		Warnings: []string{},
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -232,7 +234,12 @@ func TestQuickBooksCandidatesRejectAmountAbsentFromSource(t *testing.T) {
 			},
 		)},
 	})
-	require.ErrorContains(t, err, "total 11.00 is not present")
+	require.ErrorContains(
+		t,
+		err,
+		`total 11.00 is not present in cited transaction group "group-1"; `+
+			`source amounts: 10.00`,
+	)
 }
 
 func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
@@ -241,7 +248,7 @@ func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "medium",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "10.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "10.00"},
 				{Account: "Equity:Owner", Amount: "-10.00"},
 			},
 		}},
@@ -249,7 +256,7 @@ func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
 	}, quickBooksAIInput{
 		Year:               2021,
 		Month:              "2021-01",
-		ConfiguredAccounts: []string{"Expense:615:Electricity", "Equity:Owner"},
+		ConfiguredAccounts: []string{"Expense:615.000:Electricity", "Equity:Owner"},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
 			quickBooksRecord{
@@ -262,7 +269,11 @@ func TestQuickBooksCandidatesRejectOmittedSplitAmount(t *testing.T) {
 			},
 		)},
 	})
-	require.ErrorContains(t, err, "omits cited QuickBooks transaction amount 4.00")
+	require.ErrorContains(
+		t,
+		err,
+		`omits QuickBooks transaction amount 4.00 from cited group "group-1"`,
+	)
 }
 
 func TestQuickBooksCandidatesAcceptCompleteSplitAmounts(t *testing.T) {
@@ -338,40 +349,113 @@ func TestQuickBooksUnresolvedRendersEditableTemplate(t *testing.T) {
 	requireHledgerParses(t, text)
 }
 
-func TestQuickBooksUnresolvedPreservesSplitPostings(t *testing.T) {
+func TestQuickBooksUnresolvedMayEntryRendersUnsignedSourceEvidence(t *testing.T) {
 	text, err := renderQuickBooksCandidates(quickBooksAIResponse{
 		Candidates: []quickBooksAICandidate{},
 		Unresolved: []quickBooksAIUnresolved{{
-			GroupID: "group-1", Date: "2021-07-30",
-			Description: "Incomplete journal entry",
+			GroupID: "group-1", Date: "2021-05-09",
+			Description: "Paint over graffiti, fire extinguisher, roof on pump house",
 			KnownPostings: []quickBooksAIKnownPosting{
+				{QuickBooksAccount: "Labor invested", Amount: "-299.00"},
 				{QuickBooksAccount: "Maintenance", Amount: "499.00"},
-				{QuickBooksAccount: "Invested labor", Amount: "-299.00"},
 			},
-			MissingFact: "The remaining journal line is unavailable.",
-			Question:    "What account received the remaining 200.00 credit?",
+			MissingFact: "Posting directions and the materials component are unavailable.",
+			Question:    "What are the complete postings for this transaction?",
 		}},
 		Warnings: []string{},
 	}, quickBooksAIInput{
-		Year: 2021, Month: "2021-07",
+		Year: 2021, Month: "2021-05",
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
 			quickBooksRecord{
-				ID: "expense:2", Date: "2021-07-30",
-				Fields: map[string]string{"Amount": "499.00"},
+				ID: "income:4", Source: "income.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "299.00"},
 			},
 			quickBooksRecord{
-				ID: "income:2", Date: "2021-07-30",
-				Fields: map[string]string{"Amount": "-299.00"},
+				ID: "expense:5", Source: "expenses.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "499.00"},
 			},
 		)},
 	})
 	require.NoError(t, err)
-	require.Contains(t, text, "; Sources: expense:2, income:2 | QuickBooks: Maintenance, Invested labor")
-	require.Contains(t, text, "    [TODO:Account-1]  $499.00")
-	require.Contains(t, text, "    [TODO:Account-2]  $-299.00")
-	require.Contains(t, text, "    [TODO:Counterposting]  $-200.00")
+	require.Contains(t, text, "; UNCERTAIN: cross-report source amounts may overlap")
+	require.Contains(t, text, "; Sources: income:4, expense:5 | QuickBooks: Labor invested, Maintenance")
+	require.Contains(t, text, "    (TODO:Source-Magnitude:Account-1)  $299.00")
+	require.Contains(t, text, "    (TODO:Source-Magnitude:Account-2)  $499.00")
+	require.NotContains(t, text, "798.00")
+	require.NotContains(t, text, "TODO:Counterposting")
 	requireHledgerParses(t, text)
+}
+
+func TestQuickBooksCandidatesRejectOverlappingCrossReportAmounts(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Candidates: []quickBooksAICandidate{{
+			GroupID: "group-1",
+			Date:    "2021-05-09", Payee: "Owner", Confidence: "low",
+			Postings: []quickBooksAIPosting{
+				{Account: "Equity:Labor", Amount: "299.00"},
+				{Account: "Expense:Maintenance", Amount: "499.00"},
+				{Account: "Equity:Owner", Amount: "-798.00"},
+			},
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-05",
+		ConfiguredAccounts: []string{
+			"Equity:Labor", "Expense:Maintenance", "Equity:Owner",
+		},
+		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
+			"group-1",
+			quickBooksRecord{
+				ID: "income:4", Source: "income.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "299.00"},
+			},
+			quickBooksRecord{
+				ID: "expense:5", Source: "expenses.xlsx", Date: "2021-05-09",
+				Fields: map[string]string{"Amount": "499.00"},
+			},
+		)},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`cross-report source amounts may overlap; it must remain unresolved`,
+	)
+}
+
+func TestQuickBooksUnresolvedWrongGroupAmountReportsAllowedAmounts(t *testing.T) {
+	_, err := renderQuickBooksCandidates(quickBooksAIResponse{
+		Unresolved: []quickBooksAIUnresolved{{
+			GroupID: "group-1",
+			Date:    "2021-01-15",
+			KnownPostings: []quickBooksAIKnownPosting{{
+				QuickBooksAccount: "Land",
+				Amount:            "150000.00",
+			}},
+			MissingFact: "The remaining transaction lines are unavailable.",
+			Question:    "Which transaction group contains this split line?",
+		}},
+		Warnings: []string{},
+	}, quickBooksAIInput{
+		Year: 2021, Month: "2021-01",
+		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
+			"group-1",
+			quickBooksRecord{
+				ID: "assets:2", Date: "2021-01-15",
+				Fields: map[string]string{"Amount": "25000.00"},
+			},
+			quickBooksRecord{
+				ID: "assets:3", Date: "2021-01-15",
+				Fields: map[string]string{"Amount": "400000.00"},
+			},
+		)},
+	})
+	require.ErrorContains(
+		t,
+		err,
+		`unresolved item 1 amount 150000.00 is not present in cited transaction `+
+			`group "group-1"; source amounts: 25000.00, 400000.00`,
+	)
 }
 
 func requireHledgerParses(t *testing.T, text string) {
@@ -510,7 +594,7 @@ func TestQuickBooksCandidatesRejectAmbiguousGroup(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "high",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "10.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "10.00"},
 				{Account: "Equity:Owner", Amount: "-10.00"},
 			},
 		}},
@@ -519,7 +603,7 @@ func TestQuickBooksCandidatesRejectAmbiguousGroup(t *testing.T) {
 	}, quickBooksAIInput{
 		Year:               2021,
 		Month:              "2021-01",
-		ConfiguredAccounts: []string{"Expense:615:Electricity", "Equity:Owner"},
+		ConfiguredAccounts: []string{"Expense:615.000:Electricity", "Equity:Owner"},
 		Groups:             []quickBooksTransactionGroup{group},
 	})
 	require.ErrorContains(t, err, "ambiguous transaction group")
@@ -531,8 +615,8 @@ func TestQuickBooksCandidatesRejectReusedGroup(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "high",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "10.00"},
-				{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "10.00"},
+				{Account: "Bank:131.200:SBMC:0000", Amount: "-10.00"},
 			},
 		}},
 		Unresolved: []quickBooksAIUnresolved{{
@@ -546,7 +630,7 @@ func TestQuickBooksCandidatesRejectReusedGroup(t *testing.T) {
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
@@ -565,8 +649,8 @@ func TestQuickBooksCandidatesRejectBankWithoutCashEvidence(t *testing.T) {
 			GroupID: "group-1",
 			Date:    "2021-01-02", Payee: "Vendor", Confidence: "high",
 			Postings: []quickBooksAIPosting{
-				{Account: "Expense:615:Electricity", Amount: "10.00"},
-				{Account: "Bank:131.2:SBMC:0000", Amount: "-10.00"},
+				{Account: "Expense:615.000:Electricity", Amount: "10.00"},
+				{Account: "Bank:131.200:SBMC:0000", Amount: "-10.00"},
 			},
 		}},
 		Unresolved: []quickBooksAIUnresolved{},
@@ -574,9 +658,9 @@ func TestQuickBooksCandidatesRejectBankWithoutCashEvidence(t *testing.T) {
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
-		BankAccounts: []string{"Bank:131.2:SBMC:0000"},
+		BankAccounts: []string{"Bank:131.200:SBMC:0000"},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
 			quickBooksRecord{
@@ -588,7 +672,7 @@ func TestQuickBooksCandidatesRejectBankWithoutCashEvidence(t *testing.T) {
 	require.ErrorContains(
 		t,
 		err,
-		`posts to bank account "Bank:131.2:SBMC:0000" without a cited cash-source row`,
+		`posts to bank account "Bank:131.200:SBMC:0000" without a cited cash-source row`,
 	)
 }
 
@@ -598,7 +682,7 @@ func TestQuickBooksUnresolvedRejectsBankWithoutCashEvidence(t *testing.T) {
 		Unresolved: []quickBooksAIUnresolved{{
 			GroupID: "group-1", Date: "2021-01-02",
 			KnownPostings: []quickBooksAIKnownPosting{{
-				Account: "Bank:131.2:SBMC:0000", Amount: "-10.00",
+				Account: "Bank:131.200:SBMC:0000", Amount: "-10.00",
 			}},
 			MissingFact: "Missing expense account", Question: "Which expense account?",
 		}},
@@ -606,9 +690,9 @@ func TestQuickBooksUnresolvedRejectsBankWithoutCashEvidence(t *testing.T) {
 	}, quickBooksAIInput{
 		Year: 2021, Month: "2021-01",
 		ConfiguredAccounts: []string{
-			"Expense:615:Electricity", "Bank:131.2:SBMC:0000",
+			"Expense:615.000:Electricity", "Bank:131.200:SBMC:0000",
 		},
-		BankAccounts: []string{"Bank:131.2:SBMC:0000"},
+		BankAccounts: []string{"Bank:131.200:SBMC:0000"},
 		Groups: []quickBooksTransactionGroup{testQuickBooksGroup(
 			"group-1",
 			quickBooksRecord{
@@ -620,7 +704,7 @@ func TestQuickBooksUnresolvedRejectsBankWithoutCashEvidence(t *testing.T) {
 	require.ErrorContains(
 		t,
 		err,
-		`presents bank account "Bank:131.2:SBMC:0000" without a cited cash-source row`,
+		`presents bank account "Bank:131.200:SBMC:0000" without a cited cash-source row`,
 	)
 }
 
@@ -637,13 +721,25 @@ func TestParseQuickBooksCents(t *testing.T) {
 	}
 }
 
+func TestQuickBooksSourceAmountsIncludesDecreaseAndIncrease(t *testing.T) {
+	amounts, err := quickBooksSourceAmounts([]quickBooksRecord{
+		{ID: "assets:2", Fields: map[string]string{"Decrease": "25000.00"}},
+		{ID: "assets:3", Fields: map[string]string{"Increase": "150000.00"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[int64]bool{
+		2500000:  true,
+		15000000: true,
+	}, amounts)
+}
+
 func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 	prior := testEntry()
 	prior.Date = "2022-01-02"
 	priorText := prior.journalText("later-example")
 	books, root := fixture(t, priorText)
 	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
-		Label: "Power", Account: "Expense:615:Utility",
+		Label: "Power", Account: "Expense:615.000:Utility",
 	}}))
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -658,14 +754,14 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(payload.Messages[1].Content), &modelInput))
 		require.Len(t, modelInput.Groups, 1)
 		require.Equal(t, []quickBooksAccountMapping{{
-			Label: "Power", Account: "Expense:615:Utility",
+			Label: "Power", Account: "Expense:615.000:Utility",
 		}}, modelInput.AccountMappings)
 		content := fmt.Sprintf(`{"candidates":[{"group_id":%q,`,
 			modelInput.Groups[0].ID) +
 			`"date":"2021-03-02","payee":"Electric company",` +
 			`"description":"Power bill","reference":"44","confidence":"high","postings":[` +
-			`{"account":"Expense:615:Utility","amount":"25.00"},` +
-			`{"account":"Bank:131.2:Checking","amount":"-25.00"}]}],` +
+			`{"account":"Expense:615.000:Utility","amount":"25.00"},` +
+			`{"account":"Bank:131.200:Checking","amount":"-25.00"}]}],` +
 			`"unresolved":[],"warnings":[]}`
 		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"message": map[string]string{"role": "assistant", "content": content},
@@ -685,7 +781,7 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Contains(t, journal, "2021-03-02 Electric company | Power bill")
-	require.Contains(t, journal, "Expense:615:Utility  $25.00")
+	require.Contains(t, journal, "Expense:615.000:Utility  $25.00")
 	require.NotContains(t, journal, "register.csv")
 	require.Contains(t, progress.String(), "Generated 1 balanced QuickBooks candidates")
 	require.Equal(t, priorText, read(t, books.Config.ManualJournal),
@@ -695,7 +791,7 @@ func TestGenerateQuickBooksJournalEndToEnd(t *testing.T) {
 func TestGenerateQuickBooksJournalCorrectsOmittedDisposition(t *testing.T) {
 	books, root := fixture(t, "")
 	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{{
-		Label: "Power", Account: "Expense:615:Utility",
+		Label: "Power", Account: "Expense:615.000:Utility",
 	}}))
 
 	requests := 0
@@ -729,8 +825,8 @@ func TestGenerateQuickBooksJournalCorrectsOmittedDisposition(t *testing.T) {
 			modelInput.Groups[0].ID) +
 			`"date":"2021-09-02","payee":"Electric company",` +
 			`"description":"Power bill","reference":"44","confidence":"high","postings":[` +
-			`{"account":"Expense:615:Utility","amount":"25.00"},` +
-			`{"account":"Bank:131.2:Checking","amount":"-25.00"}]}],` +
+			`{"account":"Expense:615.000:Utility","amount":"25.00"},` +
+			`{"account":"Bank:131.200:Checking","amount":"-25.00"}]}],` +
 			`"unresolved":[],"warnings":[]}`
 		require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"message": map[string]string{"role": "assistant", "content": content},

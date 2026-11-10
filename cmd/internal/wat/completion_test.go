@@ -9,10 +9,10 @@ import (
 )
 
 func TestMatchingAccounts(t *testing.T) {
-	bank := "Bank:131.2:Checking-2021"
-	land := "Asset:121:Land-131"
-	plant := "Asset:101:307-Wells"
-	accounts := []string{bank, land, plant, "Asset:307:Well", "Expense:408:Tax"}
+	bank := "Bank:131.200:Checking-2021"
+	land := "Asset:121.000:Land-131"
+	plant := "Asset:101.000:307-Wells"
+	accounts := []string{bank, land, plant, "Asset:307.000:Well", "Expense:408.000:Tax"}
 	for _, test := range []struct {
 		query string
 		want  []string
@@ -24,13 +24,13 @@ func TestMatchingAccounts(t *testing.T) {
 		{"101", []string{plant}},
 		{"2", nil},
 		{"2021", nil},
-		{"307", []string{"Asset:307:Well"}},
+		{"307", []string{"Asset:307.000:Well"}},
 		{"131-Cash", nil},
 		{"131.3", nil},
 		{"cash", nil},
 		{"PROPERTY", nil},
 		{"checking-2021", []string{bank}},
-		{"well", []string{plant, "Asset:307:Well"}},
+		{"well", []string{plant, "Asset:307.000:Well"}},
 		{"missing", nil},
 		{"", nil},
 		{"  ", nil},
@@ -60,20 +60,20 @@ func TestMatchingText(t *testing.T) {
 
 func TestCompletionHistory(t *testing.T) {
 	books, _ := fixture(t, `2020-06-01 Old supplier | Meter purchase
-    Bank:131.2:Checking  $-1.00
-    Expense:615:Utility  $1.00
+    Bank:131.200:Checking  $-1.00
+    Expense:615.000:Utility  $1.00
 
 2021-01-01 Electric company | Power bill
-    Bank:131.2:Checking  $-1.00
-    Expense:615:Utility  $1.00
+    Bank:131.200:Checking  $-1.00
+    Expense:615.000:Utility  $1.00
 
 2021-02-01 Electric company | Power bill
-    Bank:131.2:Checking  $-1.00
-    Expense:615:Utility  $1.00
+    Bank:131.200:Checking  $-1.00
+    Expense:615.000:Utility  $1.00
 
 2021-03-01 Payee only
-    Bank:131.2:Checking  $-1.00
-    Expense:615:Utility  $1.00
+    Bank:131.200:Checking  $-1.00
+    Expense:615.000:Utility  $1.00
 `)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)

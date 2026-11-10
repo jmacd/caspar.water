@@ -12,10 +12,11 @@ import (
 )
 
 type Books struct {
-	Config      Config
-	binary      string
-	chart       accountChart
-	chartStates map[string]fileState
+	Config                 Config
+	binary                 string
+	chart                  accountChart
+	chartStates            map[string]fileState
+	quickBooksRegisterYear map[int][]quickBooksRecord
 }
 
 type journalTransaction struct {
@@ -129,6 +130,7 @@ func Open(cfg Config) (*Books, error) {
 	}
 	books := &Books{
 		Config: cfg, binary: binary, chart: chart, chartStates: chartStates,
+		quickBooksRegisterYear: make(map[int][]quickBooksRecord),
 	}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
@@ -180,7 +182,14 @@ func (b *Books) Check() error {
 	if err != nil {
 		return err
 	}
-	return checkPostingAccounts(transactions, accounts)
+	if err := checkPostingAccounts(transactions, accounts); err != nil {
+		return err
+	}
+	if err := checkTransactionDescriptions(transactions); err != nil {
+		return err
+	}
+	_, err = b.run(b.Config.Journal, "check", "--strict", "payees")
+	return err
 }
 
 func (b *Books) checkSyntax(journal string) error {
@@ -199,6 +208,33 @@ func (b *Books) declaredAccounts() ([]string, error) {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), nil
 }
 
+func (b *Books) declaredPayees() ([]string, error) {
+	text, err := b.run(b.Config.Journal, "payees", "--declared")
+	if err != nil {
+		return nil, err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+	payees := strings.Split(text, "\n")
+	seen := make(map[string]bool, len(payees))
+	for index, payee := range payees {
+		if payee == "" ||
+			strings.TrimSpace(payee) != payee ||
+			!singleLine(payee) ||
+			strings.ContainsAny(payee, ";|") {
+			return nil, fmt.Errorf("declared payee %d has an invalid name", index+1)
+		}
+		if seen[payee] {
+			return nil, fmt.Errorf("declared payee %q is duplicated", payee)
+		}
+		seen[payee] = true
+	}
+	slices.Sort(payees)
+	return payees, nil
+}
+
 func (b *Books) Accounts() ([]string, error) {
 	accounts, err := b.PostingAccounts()
 	if err != nil {
@@ -215,7 +251,7 @@ func checkPostingAccounts(transactions []journalTransaction, accounts []string) 
 	for _, tx := range transactions {
 		for _, posting := range tx.Postings {
 			if !slices.Contains(accounts, posting.Account) {
-				return fmt.Errorf("%s %s: posting account %q must be a declared Category:CPUC-number:LocalName account; revise this entry", tx.Date, tx.Description, posting.Account)
+				return fmt.Errorf("%s %s: posting account %q must be a declared Category:xxx.yyy:LocalName account; revise this entry", tx.Date, tx.Description, posting.Account)
 			}
 		}
 	}

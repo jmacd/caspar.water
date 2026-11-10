@@ -11,15 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testAccountChart = `version: 1
+const testAccountChart = `version: 2
 accounts:
-  - category: Asset
-    number: "131.2"
-    name: Cash-in-Bank
-    comment: Cash held in a financial institution.
-  - category: Equity
-    number: "218"
-    name: Proprietary-Capital
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+      comment: Cash held in a financial institution.
+  Equity:
+    - number: "218"
+      name: Proprietary-Capital
 `
 
 func TestHelpDoesNotRequireBooks(t *testing.T) {
@@ -29,6 +29,8 @@ func TestHelpDoesNotRequireBooks(t *testing.T) {
 	root.SetArgs([]string{"--config", "missing.yaml", "--help"})
 	require.NoError(t, root.Execute())
 	require.Contains(t, output.String(), "Water Accounting Terminal")
+	require.Contains(t, output.String(), "--quickbooks-register")
+	require.Contains(t, output.String(), "reopen-reconciliation")
 }
 
 func TestQuickBooksHelpIncludesMappingReview(t *testing.T) {
@@ -50,7 +52,7 @@ func TestStatementFlagAndCache(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
 	require.NoError(t, os.Mkdir(filepath.Join(root, "reference"), 0700))
 	for name, text := range map[string]string{
-		"wat.yaml":                 "version: 3\nname: Test\nchart_defs:\n  - reference/cpuc-u39w.yaml\naccounts:\n  - Equity:218:Owner\nbank_accounts:\n  - Bank:131.2:Checking\n",
+		"wat.yaml":                 "version: 3\nname: Test\nchart_defs:\n  - reference/cpuc-u39w.yaml\naccounts:\n  - Equity:218.000:Owner\nbank_accounts:\n  - Bank:131.200:Checking\n",
 		"reference/cpuc-u39w.yaml": testAccountChart,
 		"books/manual.journal":     "",
 		"statement.pdf":            "%PDF-1.7\nsynthetic\n",
@@ -84,12 +86,20 @@ func TestStatementFlagAndCache(t *testing.T) {
 	accounts.SetOut(&accountsOutput)
 	accounts.SetArgs([]string{"--config", config, "accounts"})
 	require.NoError(t, accounts.Execute())
-	require.Contains(
-		t,
-		accountsOutput.String(),
-		"Bank:131.2:Checking\tAsset:131.2:Cash-in-Bank\t"+
-			"Cash held in a financial institution.",
-	)
+	lines := strings.Split(strings.TrimSpace(accountsOutput.String()), "\n")
+	require.Len(t, lines, 4)
+	require.Contains(t, lines[0], "LOCAL ACCOUNT")
+	require.Contains(t, lines[0], "CPUC TITLE")
+	bankTitle := strings.Index(lines[1], "Cash in Bank")
+	bankComment := strings.Index(lines[2], "Cash held in a financial institution.")
+	equityTitle := strings.Index(lines[3], "Proprietary Capital")
+	require.Positive(t, bankTitle)
+	require.Equal(t, bankTitle, equityTitle, "variable-width local accounts must align")
+	require.Equal(t, bankTitle, bankComment, "comment must align below CPUC title")
+	require.Empty(t, strings.TrimSpace(lines[2][:bankComment]), "comment line must leave local account blank")
+	require.NotContains(t, lines[0], "COMMENT")
+	require.NotContains(t, accountsOutput.String(), "Cash-in-Bank")
+	require.NotContains(t, accountsOutput.String(), "\t")
 	override := command()
 	override.SetOut(&bytes.Buffer{})
 	override.SetArgs([]string{
@@ -167,8 +177,8 @@ func TestCheckAndReports(t *testing.T) {
 	for name, text := range map[string]string{
 		"wat.yaml": "version: 3\nname: Test\nchart_defs:\n" +
 			"  - reference/cpuc-u39w.yaml\naccounts:\n" +
-			"  - Equity:218:Owner\nbank_accounts:\n" +
-			"  - Bank:131.2:Checking\n",
+			"  - Equity:218.000:Owner\nbank_accounts:\n" +
+			"  - Bank:131.200:Checking\n",
 		"reference/cpuc-u39w.yaml": testAccountChart,
 		"books/manual.journal":     "",
 	} {

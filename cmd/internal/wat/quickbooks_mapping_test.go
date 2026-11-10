@@ -13,13 +13,13 @@ func TestQuickBooksMappingsRoundTrip(t *testing.T) {
 	books, _ := fixture(t, "")
 	require.Empty(t, mustQuickBooksMappings(t, books))
 	require.NoError(t, books.saveQuickBooksMappings([]quickBooksAccountMapping{
-		{Label: "Utilities", Account: "Expense:615:Utility"},
-		{Label: "Checking", Account: "Bank:131.2:Checking"},
+		{Label: "Utilities", Account: "Expense:615.000:Utility"},
+		{Label: "Checking", Account: "Bank:131.200:Checking"},
 	}))
 	mappings := mustQuickBooksMappings(t, books)
 	require.Equal(t, []quickBooksAccountMapping{
-		{Label: "Checking", Account: "Bank:131.2:Checking"},
-		{Label: "Utilities", Account: "Expense:615:Utility"},
+		{Label: "Checking", Account: "Bank:131.200:Checking"},
+		{Label: "Utilities", Account: "Expense:615.000:Utility"},
 	}, mappings)
 	info, err := os.Stat(books.Config.QuickBooksMappings)
 	require.NoError(t, err)
@@ -32,17 +32,17 @@ func TestQuickBooksMappingsRejectInvalidPolicy(t *testing.T) {
 	require.ErrorContains(
 		t,
 		books.saveQuickBooksMappings([]quickBooksAccountMapping{{
-			Label: "Insurance", Account: "Expense:684:Insurance",
+			Label: "Insurance", Account: "Expense:684.000:Insurance",
 		}}),
 		"unconfigured account",
 	)
 	require.NoError(t, os.WriteFile(
 		books.Config.QuickBooksMappings,
-		[]byte("version: 1\nmappings:\n  - label: Insurance\n    account: Expense:684:Insurance\n"),
+		[]byte("version: 1\nmappings:\n  - label: Insurance\n    account: Expense:684.000:Insurance\n"),
 		0600,
 	))
 	mappings := mustQuickBooksMappings(t, books)
-	require.Equal(t, "Expense:684:Insurance", mappings[0].Account)
+	require.Equal(t, "Expense:684.000:Insurance", mappings[0].Account)
 	review, err := books.quickBooksMappingReview(nil, 2021)
 	require.NoError(t, err)
 	require.Equal(t, []string{"Insurance"}, review.labels)
@@ -75,10 +75,10 @@ func TestQuickBooksMappingReviewInventoriesLabels(t *testing.T) {
 		review.details["Utilities"],
 	)
 	require.False(t, review.dirty())
-	review.mappings["Utilities"] = "Expense:615:Utility"
+	review.mappings["Utilities"] = "Expense:615.000:Utility"
 	require.True(t, review.dirty())
 	require.Equal(t, []quickBooksAccountMapping{{
-		Label: "Utilities", Account: "Expense:615:Utility",
+		Label: "Utilities", Account: "Expense:615.000:Utility",
 	}}, review.savedMappings())
 }
 
@@ -113,13 +113,13 @@ func TestQuickBooksMappedAccountsUsesOneDecisionLabelPerRecord(t *testing.T) {
 		},
 	)
 	accounts, err := quickBooksMappedAccounts(group, []quickBooksAccountMapping{
-		{Label: "Utilities", Account: "Expense:615:Utility"},
-		{Label: "Checking", Account: "Bank:131.2:Checking"},
+		{Label: "Utilities", Account: "Expense:615.000:Utility"},
+		{Label: "Checking", Account: "Bank:131.200:Checking"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, map[string]bool{
-		"Expense:615:Utility": true,
-		"Bank:131.2:Checking": true,
+		"Expense:615.000:Utility": true,
+		"Bank:131.200:Checking":   true,
 	}, accounts)
 }
 

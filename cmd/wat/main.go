@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/jmacd/caspar.water/cmd/internal/wat"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ func command() *cobra.Command {
 	var cfg wat.Config
 	var books *wat.Books
 	var statement, statementInbox, extraction string
+	var quickBooksRegister string
 	var statements bool
 	var statementCheck bool
 	var quickBooksYear int
@@ -38,7 +40,12 @@ func command() *cobra.Command {
 				return err
 			}
 			cfg = loaded
-			if cmd.Name() == "config-path" {
+			if quickBooksRegister != "" {
+				if err := cfg.SetQuickBooksRegister(quickBooksRegister); err != nil {
+					return err
+				}
+			}
+			if cmd.Name() == "config-path" || cmd.Name() == "reopen-reconciliation" {
 				return nil
 			}
 			books, err = wat.Open(cfg)
@@ -112,6 +119,7 @@ func command() *cobra.Command {
 	root.Flags().BoolVar(&statements, "statements", false, "review PDF file arguments in supplied order, one at a time")
 	root.Flags().StringVar(&extraction, "statement-extraction", "", "seed a new statement cache from reviewed bankstatementparser JSON")
 	root.Flags().BoolVar(&statementCheck, "statement-check", false, "extract/validate a statement and print progress without opening the terminal")
+	root.Flags().StringVar(&quickBooksRegister, "quickbooks-register", "", "use a QuickBooks bank register for statement defaults")
 	root.AddCommand(&cobra.Command{
 		Use:   "config-path chart-defs",
 		Short: "Print validated workspace-relative configuration paths",
@@ -127,42 +135,63 @@ func command() *cobra.Command {
 			}
 			return nil
 		},
+	}, &cobra.Command{
+		Use:   "reopen-reconciliation SELECTOR",
+		Short: "Undo Finish for a statement and later dependent reconciliations",
+		Long: "Reopen a finished reconciliation selected by transaction ID, statement hash prefix, " +
+			"period start/end date, or START..END. Recorded journal entries remain unchanged.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reopened, err := wat.ReopenReconciliationBySelector(cfg, args[0])
+			if err != nil {
+				return err
+			}
+			for _, checkpoint := range reopened {
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"Reopened reconciliation %s to %s for %s; recorded entries remain unchanged.\n",
+					checkpoint.Period.Start,
+					checkpoint.Period.End,
+					checkpoint.BankAccount,
+				)
+			}
+			return nil
+		},
 	})
 	root.AddCommand(&cobra.Command{
 		Use:   "check",
-		Short: "Validate the complete books and posting account depth",
+		Short: "Validate books, declared payees, and posting account depth",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := books.Check(); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Books pass hledger strict checks and CPUC account-mapping checks (not a reconciliation or completeness check).")
+			fmt.Fprintln(cmd.OutOrStdout(), "Books pass hledger strict/payee checks and CPUC account-mapping checks (not a reconciliation or completeness check).")
 			return nil
 		},
 	}, &cobra.Command{
 		Use:   "accounts",
-		Short: "List local posting accounts and their formal CPUC designations",
+		Short: "List local posting accounts and CPUC titles",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			accounts, err := books.PostingAccounts()
 			if err != nil {
 				return err
 			}
+			output := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+			fmt.Fprintln(output, "LOCAL ACCOUNT\tCPUC TITLE")
 			for _, account := range accounts {
 				fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"%s\t%s:%s:%s",
+					output,
+					"%s\t%s\n",
 					account.Name,
-					account.FormalCategory,
-					account.Number,
-					account.FormalName,
+					strings.ReplaceAll(account.FormalName, "-", " "),
 				)
 				if account.FormalComment != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "\t%s", account.FormalComment)
+					fmt.Fprintf(output, "\t%s\n", account.FormalComment)
 				}
-				fmt.Fprintln(cmd.OutOrStdout())
 			}
-			return nil
+			return output.Flush()
 		},
 	}, &cobra.Command{
 		Use:   "report NAME",

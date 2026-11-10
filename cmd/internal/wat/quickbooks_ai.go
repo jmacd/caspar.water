@@ -43,7 +43,7 @@ Return one JSON object with exactly these fields:
       "known_postings": [{
         "account": "exact configured account or empty string",
         "quickbooks_account": "source QuickBooks account label",
-        "amount": "signed decimal USD without $"
+        "amount": "signed decimal USD without $; use a positive magnitude when source_amounts_may_overlap=true"
       }],
       "missing_fact": "single-line description of evidence that is unavailable",
       "question": "single-line question a human must answer"
@@ -56,6 +56,10 @@ The input contains one month of deterministic transaction_groups gathered from
 multiple QuickBooks account reports and a bank register. Records already grouped
 together are appearances of the same transaction. Never merge groups, split a
 group, or redo grouping. A group with ambiguous=true must be unresolved. Treat
+source_amounts_may_overlap=true as evidence that cross-report amounts may be
+aggregate and component views rather than additive postings; such a group must
+be unresolved. Report only positive source magnitudes for that group, and ask
+which amounts are totals or components and what the complete split was. Treat
 the bank register as the cash-side chronology. Use later journal examples to
 learn payee/account mappings, but never copy their dates or amounts.
 
@@ -573,6 +577,14 @@ func renderQuickBooksCandidates(
 				group.ID,
 			)
 		}
+		if group.SourceAmountsMayOverlap {
+			return "", fmt.Errorf(
+				"%s uses transaction group %q whose cross-report source amounts may overlap; "+
+					"it must remain unresolved",
+				disposition,
+				group.ID,
+			)
+		}
 		sourceRecords := group.Records
 		requiredAccounts, err := quickBooksMappedAccounts(group, input.AccountMappings)
 		if err != nil {
@@ -670,16 +682,21 @@ func renderQuickBooksCandidates(
 		}
 		if len(sourceAmounts) == 1 && !sourceAmounts[positiveTotal] {
 			return "", fmt.Errorf(
-				"%s total %s is not present in its cited QuickBooks transaction amounts",
-				disposition, formatCents(positiveTotal),
+				"%s total %s is not present in cited transaction group %q; "+
+					"source amounts: %s",
+				disposition,
+				formatCents(positiveTotal),
+				group.ID,
+				formatQuickBooksAmountSet(sourceAmounts),
 			)
 		}
 		for sourceAmount := range sourceAmounts {
 			if !postingAmounts[sourceAmount] {
 				return "", fmt.Errorf(
-					"%s omits cited QuickBooks transaction amount %s",
+					"%s omits QuickBooks transaction amount %s from cited group %q",
 					disposition,
 					formatCents(sourceAmount),
+					group.ID,
 				)
 			}
 		}
@@ -806,8 +823,12 @@ func renderQuickBooksCandidates(
 			for knownAmount := range knownAmounts {
 				if !sourceAmounts[knownAmount] {
 					return "", fmt.Errorf(
-						"%s amount %s is not present in its cited QuickBooks transaction amounts",
-						disposition, formatCents(knownAmount),
+						"%s amount %s is not present in cited transaction group %q; "+
+							"source amounts: %s",
+						disposition,
+						formatCents(knownAmount),
+						group.ID,
+						formatQuickBooksAmountSet(sourceAmounts),
 					)
 				}
 			}
@@ -823,9 +844,10 @@ func renderQuickBooksCandidates(
 			for sourceAmount := range sourceAmounts {
 				if !knownAmounts[sourceAmount] {
 					return "", fmt.Errorf(
-						"%s omits cited QuickBooks transaction amount %s",
+						"%s omits QuickBooks transaction amount %s from cited group %q",
 						disposition,
 						formatCents(sourceAmount),
+						group.ID,
 					)
 				}
 			}
@@ -840,6 +862,7 @@ func renderQuickBooksCandidates(
 			unresolved,
 			knownCents,
 			knownTotal,
+			group.SourceAmountsMayOverlap,
 			quickBooksGroupSourceIDs(group),
 		))
 	}
@@ -863,6 +886,7 @@ func renderQuickBooksUnresolved(
 	unresolved quickBooksAIUnresolved,
 	knownCents []int64,
 	knownTotal int64,
+	sourceAmountsMayOverlap bool,
 	sourceIDs []string,
 ) string {
 	var output strings.Builder
@@ -874,6 +898,11 @@ func renderQuickBooksUnresolved(
 				posting.QuickBooksAccount,
 			)
 		}
+	}
+	if sourceAmountsMayOverlap {
+		output.WriteString(
+			"; UNCERTAIN: cross-report source amounts may overlap; do not add or balance them automatically.\n",
+		)
 	}
 	fmt.Fprintf(&output, "; Sources: %s", strings.Join(sourceIDs, ", "))
 	if len(quickBooksAccounts) != 0 {
@@ -906,18 +935,35 @@ func renderQuickBooksUnresolved(
 	}
 	output.WriteByte('\n')
 	for index, posting := range unresolved.KnownPostings {
-		account := posting.Account
-		if account == "" {
-			account = fmt.Sprintf("TODO:Account-%d", index+1)
+		if !sourceAmountsMayOverlap {
+			account := posting.Account
+			if account == "" {
+				account = fmt.Sprintf("TODO:Account-%d", index+1)
+			}
+			fmt.Fprintf(
+				&output,
+				"    [%s]  $%s\n",
+				account,
+				formatCents(knownCents[index]),
+			)
+			continue
+		}
+		magnitude := knownCents[index]
+		if magnitude < 0 {
+			magnitude = -magnitude
 		}
 		fmt.Fprintf(
 			&output,
-			"    [%s]  $%s\n",
-			account,
-			formatCents(knownCents[index]),
+			"    (TODO:Source-Magnitude:Account-%d)  $%s",
+			index+1,
+			formatCents(magnitude),
 		)
+		if posting.QuickBooksAccount != "" {
+			fmt.Fprintf(&output, "  ; QuickBooks: %s", posting.QuickBooksAccount)
+		}
+		output.WriteByte('\n')
 	}
-	if knownTotal != 0 {
+	if !sourceAmountsMayOverlap && knownTotal != 0 {
 		fmt.Fprintf(
 			&output,
 			"    [TODO:Counterposting]  $%s\n",
@@ -941,7 +987,8 @@ func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error)
 	for _, record := range records {
 		for name, value := range record.Fields {
 			switch normalizeQuickBooksHeader(name) {
-			case "amount", "payment", "deposit", "debit", "credit":
+			case "amount", "payment", "deposit", "debit", "credit",
+				"decrease", "increase":
 			default:
 				continue
 			}
@@ -961,6 +1008,22 @@ func quickBooksSourceAmounts(records []quickBooksRecord) (map[int64]bool, error)
 		}
 	}
 	return amounts, nil
+}
+
+func formatQuickBooksAmountSet(amounts map[int64]bool) string {
+	values := make([]int64, 0, len(amounts))
+	for amount := range amounts {
+		values = append(values, amount)
+	}
+	slices.Sort(values)
+	formatted := make([]string, len(values))
+	for index, amount := range values {
+		formatted[index] = formatCents(amount)
+	}
+	if len(formatted) == 0 {
+		return "none"
+	}
+	return strings.Join(formatted, ", ")
 }
 
 func parseQuickBooksCents(value string) (int64, error) {

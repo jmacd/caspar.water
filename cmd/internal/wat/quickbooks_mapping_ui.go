@@ -190,7 +190,7 @@ func (ui *terminal) quickBooksMappingAccount(
 		description := fmt.Sprintf(
 			"%s:%s:%s",
 			account.FormalCategory,
-			account.Number,
+			account.FormalNumber,
 			account.FormalName,
 		)
 		if account.FormalComment != "" {

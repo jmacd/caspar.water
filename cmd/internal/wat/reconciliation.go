@@ -193,6 +193,51 @@ func (b *Books) loadCheckpoint(statement *Statement) (*ReconciliationCheckpoint,
 	return &checkpoint, nil
 }
 
+func (b *Books) rawReconciliationCheckpoints() ([]*ReconciliationCheckpoint, error) {
+	root, err := b.statementCacheRoot()
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("list reconciliation checkpoints: %w", err)
+	}
+	var checkpoints []*ReconciliationCheckpoint
+	for _, entry := range dirs {
+		hash := entry.Name()
+		fingerprint, err := hex.DecodeString(hash)
+		if err != nil || len(fingerprint) != sha256.Size || hash != strings.ToLower(hash) {
+			continue
+		}
+		path := b.reconciliationPath(hash, "reconciliation.json")
+		var checkpoint ReconciliationCheckpoint
+		if err := decodeJSONFile(path, &checkpoint); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read reconciliation checkpoint %s: %w", hash, err)
+		}
+		if checkpoint.Version != reconciliationVersion ||
+			checkpoint.StatementHash != hash ||
+			checkpoint.BankAccount == "" ||
+			checkpoint.Period.Start == "" ||
+			checkpoint.Period.End == "" {
+			return nil, fmt.Errorf("reconciliation checkpoint %s has invalid identity evidence", hash)
+		}
+		checkpoints = append(checkpoints, &checkpoint)
+	}
+	slices.SortStableFunc(checkpoints, func(a, b *ReconciliationCheckpoint) int {
+		if byAccount := strings.Compare(a.BankAccount, b.BankAccount); byAccount != 0 {
+			return byAccount
+		}
+		return strings.Compare(a.Period.Start, b.Period.Start)
+	})
+	return checkpoints, nil
+}
+
 func (b *Books) checkpoints() ([]*ReconciliationCheckpoint, error) {
 	statements, err := b.CachedStatements()
 	if err != nil {
@@ -212,6 +257,148 @@ func (b *Books) checkpoints() ([]*ReconciliationCheckpoint, error) {
 		return strings.Compare(a.Period.Start, b.Period.Start)
 	})
 	return checkpoints, nil
+}
+
+func (b *Books) ReopenReconciliation(statement *Statement) ([]*ReconciliationCheckpoint, error) {
+	checkpoint, err := b.loadCheckpoint(statement)
+	if err != nil {
+		return nil, err
+	}
+	if checkpoint == nil {
+		return nil, fmt.Errorf("statement reconciliation is not finished")
+	}
+	checkpoints, err := b.rawReconciliationCheckpoints()
+	if err != nil {
+		return nil, err
+	}
+	return b.reopenReconciliationCascade(checkpoint, checkpoints)
+}
+
+func ReopenReconciliationBySelector(
+	cfg Config,
+	selector string,
+) ([]*ReconciliationCheckpoint, error) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" || !singleLine(selector) {
+		return nil, fmt.Errorf("reconciliation selector must be nonempty and single-line")
+	}
+	books := &Books{Config: cfg}
+	checkpoints, err := books.rawReconciliationCheckpoints()
+	if err != nil {
+		return nil, err
+	}
+	var matches []*ReconciliationCheckpoint
+	for _, checkpoint := range checkpoints {
+		if reconciliationSelectorMatches(checkpoint, selector) {
+			matches = append(matches, checkpoint)
+		}
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no finished reconciliation matches %q", selector)
+	}
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("reconciliation selector %q matches %d checkpoints", selector, len(matches))
+	}
+	return books.reopenReconciliationCascade(matches[0], checkpoints)
+}
+
+func reconciliationSelectorMatches(checkpoint *ReconciliationCheckpoint, selector string) bool {
+	if selector == checkpoint.StatementHash ||
+		(len(selector) >= 8 && strings.HasPrefix(checkpoint.StatementHash, selector)) ||
+		selector == checkpoint.Period.Start ||
+		selector == checkpoint.Period.End ||
+		selector == checkpoint.Period.Start+".."+checkpoint.Period.End {
+		return true
+	}
+	for _, item := range checkpoint.Transactions {
+		if item.ID == selector {
+			return true
+		}
+	}
+	for _, item := range checkpoint.Outstanding {
+		if item.ID == selector {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Books) reopenReconciliationCascade(
+	target *ReconciliationCheckpoint,
+	checkpoints []*ReconciliationCheckpoint,
+) ([]*ReconciliationCheckpoint, error) {
+	var reopen []*ReconciliationCheckpoint
+	for _, checkpoint := range checkpoints {
+		if checkpoint.BankAccount == target.BankAccount &&
+			checkpoint.Period.Start >= target.Period.Start {
+			reopen = append(reopen, checkpoint)
+		}
+	}
+	slices.SortStableFunc(reopen, func(a, b *ReconciliationCheckpoint) int {
+		return strings.Compare(b.Period.Start, a.Period.Start)
+	})
+	for _, checkpoint := range reopen {
+		if err := b.reopenReconciliationCheckpoint(checkpoint); err != nil {
+			return nil, fmt.Errorf(
+				"reopen reconciliation %s to %s: %w",
+				checkpoint.Period.Start,
+				checkpoint.Period.End,
+				err,
+			)
+		}
+	}
+	slices.Reverse(reopen)
+	return reopen, nil
+}
+
+func (b *Books) reopenReconciliationCheckpoint(
+	checkpoint *ReconciliationCheckpoint,
+) (err error) {
+	lockPath := b.reconciliationPath(checkpoint.StatementHash, ".reconcile-lock")
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("acquire reconciliation lock: %w", err)
+	}
+	if err := lock.Close(); err != nil {
+		return errors.Join(err, os.Remove(lockPath))
+	}
+	defer func() {
+		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			err = errors.Join(err, removeErr)
+		}
+	}()
+
+	selected := make([]string, 0, len(checkpoint.Outstanding))
+	for _, item := range checkpoint.Outstanding {
+		selected = append(selected, item.ID)
+	}
+	slices.Sort(selected)
+	workPath := b.reconciliationPath(checkpoint.StatementHash, "reconciliation-work.json")
+	if len(selected) != 0 {
+		if err := writePrivateJSON(workPath, reconciliationWork{
+			Version: reconciliationVersion, StatementHash: checkpoint.StatementHash, Outstanding: selected,
+		}); err != nil {
+			return fmt.Errorf("restore outstanding selections: %w", err)
+		}
+	} else if err := os.Remove(workPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale reconciliation work: %w", err)
+	}
+
+	checkpointPath := b.reconciliationPath(checkpoint.StatementHash, "reconciliation.json")
+	info, err := os.Lstat(checkpointPath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("reconciliation checkpoint must be a nonsymlink regular file")
+	}
+	if err := os.Remove(checkpointPath); err != nil {
+		return err
+	}
+	if err := syncDirectory(filepath.Dir(checkpointPath)); err != nil {
+		return fmt.Errorf("sync reopened reconciliation: %w", err)
+	}
+	return nil
 }
 
 func (b *Books) lockedTransactions() (map[string]*ReconciliationCheckpoint, error) {

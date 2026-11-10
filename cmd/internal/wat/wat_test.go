@@ -12,21 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testChart = `version: 1
+const testChart = `version: 2
 accounts:
-  - category: Asset
-    number: "131.2"
-    name: Cash-in-Bank
-    comment: Cash held in a financial institution.
-  - category: Equity
-    number: "218"
-    name: Proprietary-Capital
-  - category: Expense
-    number: "615"
-    name: Power
-  - category: Income
-    number: "421"
-    name: Non-Utility-income
+  Asset:
+    - number: "131.2"
+      name: Cash-in-Bank
+      comment: Cash held in a financial institution.
+  Equity:
+    - number: "218"
+      name: Proprietary-Capital
+  Expense:
+    - number: "615"
+      name: Power
+  Income:
+    - number: "421"
+      name: Non-Utility-income
 `
 
 func fixture(t *testing.T, journal string) (*Books, string) {
@@ -43,14 +43,18 @@ name: Test Water
 chart_defs:
   - reference/cpuc-u39w.yaml
 accounts:
-  - Equity:218:Owner
-  - Expense:615:Utility
-  - Income:421:Misc
+  - Equity:218.000:Owner
+  - Expense:615.000:Utility
+  - Income:421.000:Misc
 bank_accounts:
-  - Bank:131.2:Checking
+  - Bank:131.200:Checking
 `,
 		"reference/cpuc-u39w.yaml": testChart,
-		"books/manual.journal":     journal,
+		"books/payees.journal": `payee Deposit
+payee Electric company
+payee Journal
+`,
+		"books/manual.journal": journal,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
 	}
@@ -65,7 +69,7 @@ func testEntry() Entry {
 	return Entry{
 		Date: "2021-04-05", Payee: "Electric company", Description: "Power bill",
 		Reference: "check-7", Source: "sources/power.pdf",
-		Postings: []Posting{{Account: "Expense:615:Utility", Amount: "12.34"}, {Account: "Bank:131.2:Checking", Amount: "-12.34"}},
+		Postings: []Posting{{Account: "Expense:615.000:Utility", Amount: "12.34"}, {Account: "Bank:131.200:Checking", Amount: "-12.34"}},
 	}
 }
 
@@ -112,22 +116,39 @@ func TestConfig(t *testing.T) {
 		{name: "empty charts", yaml: base + "chart_defs: []\n"},
 		{name: "duplicate chart", yaml: base + "chart_defs:\n  - reference/chart.yaml\n  - reference/./chart.yaml\n"},
 		{name: "chart conflicts with manual journal", yaml: base + "chart_defs:\n  - books/manual.journal\n"},
-		{name: "ordinary account", yaml: base + "accounts:\n  - Expense:615:Electricity\n", valid: true},
+		{name: "ordinary account", yaml: base + "accounts:\n  - Expense:615.000:Electricity\n", valid: true},
 		{name: "unknown", yaml: base + "typo: true\n"},
 		{name: "obsolete path", yaml: base + "journal: books/books.journal\n"},
-		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.2:SBMC:1234\n", valid: true},
-		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615:Electricity\n  - Expense:615:Electricity\n"},
-		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.2:First:1234\n  - Bank:131.2:Second:1234\n"},
-		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.2:First.Account\n  - Bank:131.2:First-Account\n"},
+		{name: "bank account", yaml: base + "bank_accounts:\n  - Bank:131.200:SBMC:1234\n", valid: true},
+		{
+			name: "statement transaction prompt",
+			yaml: base + `statement:
+  transaction_prompts:
+    - payee: Feiner Fixings
+      prompt: |
+        Split the check between chlorine and operations based on the visible memo.
+`,
+			valid: true,
+		},
+		{name: "blank transaction prompt payee", yaml: base + "statement:\n  transaction_prompts:\n    - payee: ' '\n      prompt: Split it\n"},
+		{name: "invalid transaction prompt payee", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner | Fixings\n      prompt: Split it\n"},
+		{name: "blank transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: ' '\n"},
+		{name: "duplicate transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: First\n    - payee: Feiner Fixings\n      prompt: Second\n"},
+		{name: "oversized transaction prompt", yaml: base + "statement:\n  transaction_prompts:\n    - payee: Feiner Fixings\n      prompt: " + strings.Repeat("x", maxStatementTransactionPromptLength+1) + "\n"},
+		{name: "duplicate account", yaml: base + "accounts:\n  - Expense:615.000:Electricity\n  - Expense:615.000:Electricity\n"},
+		{name: "duplicate bank identifier", yaml: base + "bank_accounts:\n  - Bank:131.200:First:1234\n  - Bank:131.200:Second:1234\n"},
+		{name: "duplicate bank filename", yaml: base + "bank_accounts:\n  - Bank:131.200:First.Account\n  - Bank:131.200:First-Account\n"},
 		{name: "azure statement", yaml: base + "statement:\n  python: python3\n  api_base: https://example.openai.azure.com/\n  api_version: 2025-04-01-preview\n  model: azure/example\n", valid: true},
+		{name: "statement register is not configuration", yaml: base + "statement:\n  quickbooks_register: ../register.xls\n"},
+		{name: "vendor registry is not configuration", yaml: base + "vendors: [vendors.csv]\n"},
 		{name: "duplicate statement endpoint", yaml: base + "statement:\n  api_base: https://example.openai.azure.com/\n  ollama_url: http://localhost:11434\n  model: azure/example\n"},
 		{name: "blank bank account", yaml: base + "bank_accounts:\n  - ' '\n"},
-		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.2:Checking\n"},
-		{name: "multiline bank account", yaml: base + "bank_accounts:\n  - \"Bank:131.2:Checking\\nEquity:218:Owner\"\n"},
-		{name: "virtual bank account", yaml: base + "bank_accounts:\n  - '[Bank:131.2:Checking]'\n"},
-		{name: "bank mapping object", yaml: base + "bank_accounts:\n  - account: Bank:131.2:Checking\n"},
-		{name: "bank in ordinary accounts", yaml: base + "accounts:\n  - Bank:131.2:Checking\n"},
-		{name: "path separator", yaml: base + "accounts:\n  - Expense:615:Power/Bill\n"},
+		{name: "non-Bank statement account", yaml: base + "bank_accounts:\n  - Asset:131.200:Checking\n"},
+		{name: "multiline bank account", yaml: base + "bank_accounts:\n  - \"Bank:131.200:Checking\\nEquity:218.000:Owner\"\n"},
+		{name: "virtual bank account", yaml: base + "bank_accounts:\n  - '[Bank:131.200:Checking]'\n"},
+		{name: "bank mapping object", yaml: base + "bank_accounts:\n  - account: Bank:131.200:Checking\n"},
+		{name: "bank in ordinary accounts", yaml: base + "accounts:\n  - Bank:131.200:Checking\n"},
+		{name: "path separator", yaml: base + "accounts:\n  - Expense:615.000:Power/Bill\n"},
 		{name: "documents", yaml: base + "---\nname: other\n"},
 		{name: "version", yaml: strings.Replace(base, "version: 3", "version: 2", 1)},
 		{name: "missing name", yaml: strings.Replace(base, "name: Water\n", "", 1)},
@@ -170,6 +191,123 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestSetQuickBooksRegister(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Chdir(root)
+	var cfg Config
+	require.NoError(t, cfg.SetQuickBooksRegister("register.xls"))
+	require.Equal(t, filepath.Join(root, "register.xls"), cfg.Statement.QuickBooksRegister)
+	require.ErrorContains(t, cfg.SetQuickBooksRegister("register.pdf"), ".csv, .xls, or .xlsx")
+	require.ErrorContains(t, cfg.SetQuickBooksRegister(" register.xls"), "single-line file path")
+}
+
+func TestYearlyManualJournalConfiguration(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "wat.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`version: 3
+name: Water
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
+`), 0600))
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(cfg.root, "books", "manual-2022.journal"), cfg.ManualJournal)
+	require.Equal(
+		t,
+		[]string{filepath.Join(cfg.root, "books", "manual-2021.journal")},
+		cfg.HistoricalJournals,
+	)
+	require.True(t, cfg.writableJournal(cfg.ManualJournal))
+	require.False(t, cfg.writableJournal(cfg.HistoricalJournals[0]))
+}
+
+func TestManualJournalPathValidation(t *testing.T) {
+	base := "version: 3\nname: Water\n"
+	for _, tc := range []struct {
+		name, yaml, message string
+	}{
+		{
+			name:    "manual outside books",
+			yaml:    "manual_journal: manual-2022.journal\n",
+			message: "must name a journal inside books",
+		},
+		{
+			name:    "manual wrong extension",
+			yaml:    "manual_journal: books/manual-2022.txt\n",
+			message: "must name a .journal or .ledger file",
+		},
+		{
+			name: "active also historical",
+			yaml: "manual_journal: books/manual-2022.journal\n" +
+				"historical_journals:\n  - books/manual-2022.journal\n",
+			message: "conflicts with another configured journal",
+		},
+		{
+			name: "normalized historical duplicate",
+			yaml: "historical_journals:\n" +
+				"  - books/manual-2021.journal\n" +
+				"  - books/archive/../manual-2021.journal\n",
+			message: "conflicts with another configured journal",
+		},
+		{
+			name:    "generated journal",
+			yaml:    "manual_journal: books/accounts.journal\n",
+			message: "conflicts with a generated workspace journal",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "wat.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(base+tc.yaml), 0600))
+			_, err := LoadConfig(path)
+			require.ErrorContains(t, err, tc.message)
+		})
+	}
+}
+
+func TestYearlyManualJournalWorkspace(t *testing.T) {
+	if _, err := exec.LookPath("hledger"); err != nil {
+		t.Skip("hledger integration tests require hledger on PATH")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "books"), 0700))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "reference"), 0700))
+	for name, text := range map[string]string{
+		"wat.yaml": `version: 3
+name: Test Water
+chart_defs:
+  - reference/cpuc-u39w.yaml
+accounts:
+  - Equity:218.000:Owner
+  - Expense:615.000:Utility
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
+`,
+		"reference/cpuc-u39w.yaml": testChart,
+		"books/manual-2021.journal": `2021-04-05 Electric company
+    ; id: historical-entry
+    Expense:615.000:Utility  $12.34
+    Equity:218.000:Owner  $-12.34
+`,
+		"books/manual-2022.journal": "",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0600))
+	}
+	cfg, err := LoadConfig(filepath.Join(root, "wat.yaml"))
+	require.NoError(t, err)
+	books, err := Open(cfg)
+	require.NoError(t, err)
+	require.Contains(t, read(t, cfg.Journal), "include manual-2021.journal\n")
+	require.Contains(t, read(t, cfg.Journal), "include manual-2022.journal\n")
+	draft, err := books.NewDraft()
+	require.NoError(t, err)
+	require.Equal(t, cfg.ManualJournal, draft.target)
+	_, _, err = books.EditDraft("historical-entry")
+	require.ErrorContains(t, err, "other included journals are read-only")
+}
+
 func TestWorkspaceFilesAreGeneratedFromConfiguration(t *testing.T) {
 	books, _ := fixture(t, "")
 	require.Equal(t, string(generatedAccounts(books.Config)), read(t, books.Config.LocalAccounts))
@@ -194,13 +332,13 @@ func TestWorkspaceRejectsSymlinkedGeneratedFiles(t *testing.T) {
 
 func TestBankAccountConfiguration(t *testing.T) {
 	books, _ := fixture(t, "")
-	for _, account := range []string{"Bank:131.2:Checking", "Bank:131.2:Missing", "Bank:999:Unknown"} {
+	for _, account := range []string{"Bank:131.200:Checking", "Bank:131.200:Missing", "Bank:999.000:Unknown"} {
 		t.Run(account, func(t *testing.T) {
 			cfg := books.Config
 			cfg.BankAccounts[0].Account = account
 			cfg.BankAccounts[0].Journal = filepath.Join(cfg.root, booksDirectory, bankJournalFilename(account))
 			_, err := Open(cfg)
-			if account != "Bank:999:Unknown" {
+			if account != "Bank:999.000:Unknown" {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, "not in the CPUC chart")
@@ -258,7 +396,7 @@ func TestEntryBalanceStatus(t *testing.T) {
 }
 
 func TestEntryValidation(t *testing.T) {
-	accounts := []string{"Expense:615:Utility", "Bank:131.2:Checking"}
+	accounts := []string{"Expense:615.000:Utility", "Bank:131.200:Checking"}
 	for _, tc := range []struct {
 		name   string
 		change func(*Entry)
@@ -275,10 +413,10 @@ func TestEntryValidation(t *testing.T) {
 		{"one-leg", func(e *Entry) { e.Postings = e.Postings[:1] }},
 		{"overflow", func(e *Entry) {
 			e.Postings = []Posting{
-				{"Bank:131.2:Checking", "92233720368547758.07"},
-				{"Bank:131.2:Checking", "0.01"},
-				{"Bank:131.2:Checking", "-92233720368547758.07"},
-				{"Bank:131.2:Checking", "-0.01"},
+				{"Bank:131.200:Checking", "92233720368547758.07"},
+				{"Bank:131.200:Checking", "0.01"},
+				{"Bank:131.200:Checking", "-92233720368547758.07"},
+				{"Bank:131.200:Checking", "-0.01"},
 			}
 		}},
 	} {
@@ -291,13 +429,13 @@ func TestEntryValidation(t *testing.T) {
 	}
 	entry := testEntry()
 	entry.Date = "2022-01-01"
-	entry.Postings = []Posting{{"Expense:615:Utility", "6"}, {"Expense:615:Utility", "6.34"}, {"Bank:131.2:Checking", "-12.34"}}
+	entry.Postings = []Posting{{"Expense:615.000:Utility", "6"}, {"Expense:615.000:Utility", "6.34"}, {"Bank:131.200:Checking", "-12.34"}}
 	text, err := entry.render(accounts, "test-id")
 	require.NoError(t, err)
 	require.Contains(t, text, "2022-01-01 Electric company | Power bill")
 	require.Contains(t, text, "; id: test-id")
 	require.Contains(t, text, "; source: sources/power.pdf")
-	require.Contains(t, text, "Bank:131.2:Checking  $-12.34")
+	require.Contains(t, text, "Bank:131.200:Checking  $-12.34")
 }
 
 func TestSavePreservesBytesAndBackup(t *testing.T) {
@@ -357,7 +495,7 @@ func TestStaleDraftAndLock(t *testing.T) {
 }
 
 func TestAssertionFailureDoesNotChangeBooks(t *testing.T) {
-	original := "2021-12-31 Bank checkpoint\n    Bank:131.2:Checking  $0 = $0\n    Equity:218:Owner  $0\n"
+	original := "2021-12-31 Bank checkpoint\n    Bank:131.200:Checking  $0 = $0\n    Equity:218.000:Owner  $0\n"
 	books, _ := fixture(t, original)
 	draft, err := books.NewDraft()
 	require.NoError(t, err)
@@ -400,16 +538,16 @@ func TestUnsupportedIncludes(t *testing.T) {
 func TestReportsIncludeAllAccountingDates(t *testing.T) {
 	books, _ := fixture(t, "")
 	history := `2020-12-31 Opening
-    Bank:131.2:Checking  $100
-    Equity:218:Owner  $-100
+    Bank:131.200:Checking  $100
+    Equity:218.000:Owner  $-100
 
 2021-04-05 Power
-    Expense:615:Utility  $10
-    Bank:131.2:Checking  $-10
+    Expense:615.000:Utility  $10
+    Bank:131.200:Checking  $-10
 
 2022-01-01 Future
-    Bank:131.2:Checking  $900
-    Income:421:Misc  $-900
+    Bank:131.200:Checking  $900
+    Income:421.000:Misc  $-900
 `
 	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(history), 0600))
 	for _, name := range []string{"trial-balance", "balance-sheet"} {
@@ -417,7 +555,7 @@ func TestReportsIncludeAllAccountingDates(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, report, "$990")
 		if name == "balance-sheet" {
-			require.Contains(t, report, "Equity:218:Owner")
+			require.Contains(t, report, "Equity:218.000:Owner")
 			require.Contains(t, report, "$100")
 		}
 	}

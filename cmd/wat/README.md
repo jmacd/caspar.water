@@ -17,12 +17,12 @@ For a persistent test workspace, run:
 ./cmd/wat/run.sh report journal
 ```
 
-The script creates git-ignored `local/wat-test` and `local/wat-inbox`
-directories on first use, builds a Linux accounting image, and initializes the
-persistent Pond at `local/wat-pond`. The first Pond run imports the complete
-existing `local/wat-test` workspace, so work from the earlier direct runner is
-preserved. Before every later run, the runner copies changed
-`local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
+The script requires an existing git-ignored `local/wat-test/wat.yaml`; it does
+not install a demo workspace. It creates `local/wat-inbox` and initializes the
+persistent Pond at `local/wat-pond`, then builds a Linux accounting image. The
+first Pond run imports the complete existing `local/wat-test` workspace, so work
+from the earlier direct runner is preserved. Before every later run, the runner
+copies changed `local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
 refreshes the exec factory definition. These are the host-editable inputs;
 manual/bank journals, generated files, and statement caches remain Pond-owned.
 Edit the YAML or chart while Wat is stopped, then restart it. Each run stages
@@ -78,12 +78,15 @@ or financial activity are fabricated.
 version: 3
 name: Caspar Water
 chart_defs: [reference/cpuc-u39w.yaml]
+manual_journal: books/manual-2022.journal
+historical_journals:
+  - books/manual-2021.journal
 accounts:
-  - Asset:151:Admin-Supplies
-  - Expense:615:Electricity
-  - Equity:218:Owner-Equity
+  - Asset:151.000:Admin-Supplies
+  - Expense:615.000:Electricity
+  - Equity:218.000:Owner-Equity
 bank_accounts:
-  - Bank:131.2:SBMC:0000
+  - Bank:131.200:SBMC:0000
 ```
 
 The live books layout is fixed; the reference chart path is configured:
@@ -92,8 +95,21 @@ The live books layout is fixed; the reference chart path is configured:
 - additional reference YAML files may be added to `chart_defs`; account numbers
   must remain unique across the merged definitions.
 - `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
+- `books/payees.journal` is an ordinary hledger journal containing native
+  `payee NAME` directives. It may include additional `.journal` files using
+  hledger's `include` directive.
 - `books/books.journal` is the generated hledger include file.
-- `books/manual.journal` receives ordinary entries.
+- `manual_journal` names the active writable journal that receives ordinary
+  entries; it defaults to `books/manual.journal`.
+- `historical_journals` names fixed, read-only journals included in every check
+  and report. At year rollover, move the previous `manual_journal` path into
+  this list and configure a new active yearly file.
+- `wat check` runs hledger's native `payees` check, so every transaction payee
+  must be declared with a `payee` directive. Every transaction description
+  must use exactly `PAYEE | MEMO`, with one spaced separator and nonempty
+  fields. `Journal` and `Deposit` are ordinary declared payees whose memo is
+  the complete explanation; neither requires special metadata. Wat additionally
+  requires `Deposit` to have a `Bank:` posting and no `Expense:` posting.
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
@@ -105,14 +121,24 @@ missing and remain ordinary plain-text hledger files. All workspace files and
 directories must be nonsymlink paths. Unknown configuration keys and additional
 YAML documents are errors.
 
-An account must use `Category:CPUC-number:LocalName[:MoreNames...]`, and its CPUC
-number and category must agree with the merged `chart_defs`. Every definition
-path must be relative to the workspace, and CPUC numbers must be unique across
-all files. `Bank` accounts must map to an Asset number. Their final component is
-the unique statement identifier suffix: an extracted identifier ending in
-`0000` binds to the configured account with that suffix. A missing or ambiguous match is an error;
-Wat never guesses a journal. The bound account is stored in the private
-extraction cache.
+An account must use `Category:xxx.yyy:LocalName[:MoreNames...]`. `xxx` is the
+three-digit CPUC family and `yyy` combines one formal branch digit with a
+two-digit local number. For a CPUC leaf such as `615`, local codes `615.000`
+through `615.099` map to that leaf. When the chart defines formal branches such
+as `131.1` and `131.2`, local codes must use the matching ranges `131.100`-
+`131.199` or `131.200`-`131.299`; the `.0yy` range is not allowed for that
+family. An unused branch digit from `.4xx` through `.9xx` is a local extension
+of the CPUC parent when that family has formal subaccounts. Exact formal
+branches always win: if `265.4` is formal, `265.4yy` maps to it, while an unused
+`265.5yy` maps to parent `265`. Undefined `.1xx`-`.3xx` branches remain errors,
+and a CPUC leaf without formal subaccounts continues to use only `.0yy`. The
+resolved CPUC category must agree with the posting category.
+Every definition path must be relative to the workspace, and CPUC numbers must
+be unique across all files. `Bank` accounts must resolve to an Asset account.
+Their final component is the unique statement identifier suffix: an extracted
+identifier ending in `0000` binds to the configured account with that suffix.
+A missing or ambiguous match is an error; Wat never guesses a journal. The
+bound account is stored in the private extraction cache.
 
 Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
@@ -127,16 +153,17 @@ processed one month at a time by the configured Azure or Ollama model. Existing
 transactions after that year are supplied as account-classification examples.
 The model must use exact configured Wat accounts and produce balanced entries;
 Wat rejects invented accounts, unbalanced postings, malformed dates, duplicate
-candidates, configured-bank postings without a cited cash-source row, incomplete
-group coverage, reused group IDs, omitted split amounts, and non-JSON responses.
-Every dated source row belongs to one immutable deterministic transaction
-group, and every group must become exactly one balanced candidate or unresolved
-item. Unresolved items preserve all known split postings and render as one
-compact review comment, a `;` separator, and an uncommented pending transaction
-template. Balanced virtual placeholder postings make the template valid hledger
-syntax for text-editor highlighting without making it an accepted real entry.
-A reviewer must replace the placeholders and remove the brackets before moving
-the completed entry into the books.
+candidates that post to a configured bank without a cited cash-source row,
+incomplete group coverage, reused group IDs, omitted split amounts, and non-JSON
+responses. Every dated source row belongs to one immutable deterministic
+transaction group, and every group must become exactly one balanced candidate
+or unresolved item. Ordinary unresolved items preserve signed account-side
+postings and use balanced virtual placeholders for an editable hledger
+template. When one transaction group spans multiple non-cash report files, Wat
+marks that its source amounts may overlap as aggregate and component views,
+renders only unbalanced `(TODO:Source-Magnitude:...)` evidence, and refuses to
+manufacture a counterposting. A reviewer must replace all placeholders with
+complete supported postings before moving an entry into the books.
 
 The local runner scans its read-only inbox when no filenames are supplied:
 
@@ -156,9 +183,10 @@ model:
 Inspection reports content hashes, normalized headers and row classes, date
 coverage, annual counts, report sections, totals, and selected-year transaction
 types. It also groups selected-year rows conservatively before any model call,
-reports group counts by month and match basis, and lists every multi-row or
-ambiguous group with its contributing source rows. Finally, it inventories
-report sections and account, account-name, and distribution-account labels for
+reports group counts by month and match basis, counts groups whose cross-report
+source amounts may overlap, and lists every multi-row group with its
+classification and contributing source rows. Finally, it inventories report
+sections and account, account-name, and distribution-account labels for
 deterministic mapping review. It does not call a model or modify the books.
 
 Review those source categories in Wat instead of deciding mappings in a prompt:
@@ -203,29 +231,34 @@ for the replacement journal.
 The master chart stores structured CPUC accounts:
 
 ```yaml
-version: 1
+version: 2
 accounts:
-  - category: Asset
-    number: "104"
-    name: Water-Plant-Purchased-or-Sold
-    comment: Optional operator-facing explainer text.
+  Asset:
+    - name: Water-Plant-Purchased-or-Sold
+      number: "104"
+      comment: Optional operator-facing explainer text.
+
+  Expense:
+    - name: Electricity
+      number: "615"
 ```
 
 The formal account identity is displayed as
-`Asset:104:Water-Plant-Purchased-or-Sold`. Category, number, name, and optional
-single-line comment are validated strictly. Wat prints the comment with account
+`Asset:104:Water-Plant-Purchased-or-Sold`. Category sections, number, name, and
+optional single-line comment are validated strictly. Wat prints the comment with
+account
 listings and mapping choices.
 
-Local posting accounts in `wat.yaml` use the shorter
-`Category:CPUC-number:LocalName[:MoreNames...]` form. Wat materializes them as
-these declarations in generated `books/accounts.journal`:
+Local posting accounts in `wat.yaml` use
+`Category:xxx.yyy:LocalName[:MoreNames...]`. Wat materializes them as these
+declarations in generated `books/accounts.journal`:
 
 ```journal
 account Bank  ; type: A
-account Bank:131.2:SBMC:0000
-account Expense:650.1:Feiner-Fixings
-account Equity:218:Owner
-account Liability:241:Due-to-Owner
+account Bank:131.200:SBMC:0000
+account Expense:650.100:Feiner-Fixings
+account Equity:218.000:Owner
+account Liability:241.000:Due-to-Owner
 ```
 
 The ordinary categories are exactly `Asset`, `Equity`, `Liability`, `Expense`,
@@ -234,15 +267,24 @@ statements. It needs the hledger `type: A` declaration shown above so standard
 balance-sheet reports classify it as an asset.
 
 `wat` resolves the number in each local account through the configured chart.
-`Expense:650.1:Feiner-Fixings`, for example, maps to formal CPUC designation
+`Expense:650.100:Feiner-Fixings`, for example, maps to formal CPUC designation
 `Expense:650.1:Contract-Water-Quality-and-Testing-Work`. Unknown numbers,
-category mismatches, and `Bank` accounts whose number is not an Asset are errors.
-The long formal name is therefore not repeated in every posting while remaining
-available whenever needed:
+unsupported low branch digits, `.0yy` codes on a family with formal subaccounts,
+category mismatches, and `Bank` accounts that do not resolve to an Asset are
+errors. A high branch already defined by CPUC remains formal; only unused
+`.4xx`-`.9xx` branches are local extensions of a CPUC parent that has formal
+subaccounts. The long formal name is therefore not repeated in every posting
+while remaining available whenever needed:
 
 ```sh
 go run ./cmd/wat --config wat/wat.yaml accounts
 ```
+
+The command prints aligned `LOCAL ACCOUNT` and `CPUC TITLE` columns. Formal chart
+names are presented as human titles, replacing YAML hyphens with spaces; for
+example, `Water-Plant-Purchased-or-Sold` is displayed as
+`Water Plant Purchased or Sold`. An optional chart comment appears on the next
+line under the CPUC title, with the local-account column blank.
 
 Account completion and the F4 cheatsheet show only declared local accounts.
 Completion can match either the local name or formal CPUC designation while
@@ -410,8 +452,27 @@ On startup, `wat` verifies that each finished checkpoint still matches its
 cached statement and that every locked journal transaction still exists
 unchanged. Direct text edits cannot be physically prevented, but a deletion or
 change is reported and the books refuse to open until the inconsistency is
-resolved. There is intentionally no ordinary Edit or Reconcile action after
-Finish. An explicit reopen/rollback workflow is not implemented.
+resolved.
+
+To undo a premature Finish while the books still open normally, select the
+finished statement and choose **Reopen reconciliation (u)**. Wat removes the
+checkpoint while retaining every recorded journal entry and restoring saved
+outstanding selections. The entries become editable and the statement can be
+reconciled and finished again. Reopening an earlier statement also reopens all
+later finished statements for the same bank account because their opening
+balances depend on the earlier checkpoint.
+
+If normal startup is blocked because a reconciled transaction or statement was
+already edited, use the transaction ID printed in the error:
+
+```sh
+./wat/run.sh reopen-reconciliation 33a486a16f493c7cf76b7c6500da2924
+```
+
+The selector may also be a unique statement-hash prefix, period start/end date,
+or `START..END`. This recovery command intentionally loads only workspace
+configuration and checkpoint metadata, bypassing normal reconciliation
+verification. It does not modify or remove journal entries.
 
 For a new PDF, install the optional Python parser in a separate environment
 (Python 3.13 is supported by the pinned hybrid dependencies):
@@ -430,7 +491,40 @@ statement:
   api_base: https://example.openai.azure.com/
   api_version: 2025-04-01-preview
   model: azure/example-deployment
+  transaction_prompts:
+    - payee: Example Vendor
+      prompt: |
+        Use the visible check memo to propose an editable transaction memo and
+        split the total between the appropriate declared expense accounts.
 ```
+
+Each `transaction_prompts` rule selects one exact hledger-declared payee. The
+prompt is sent only as context for that matched payee and may ask the model to
+propose a memo and multiple counterpostings. Suggested accounts must be declared
+non-bank accounts, amounts must be positive exact USD values, and the split must
+balance exactly to the payment. These are nondeterministic editable defaults:
+nothing is written until the operator reviews the form and presses F2. Changing
+a rule invalidates the corresponding cached AI enrichment and reruns it when
+the statement is next opened.
+
+Pass an optional read-only QuickBooks bank-register export only for the Wat run
+that should use it:
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml \
+  --quickbooks-register ../caspar_water_bank/Bank_Register.xls
+```
+
+The CLI path is relative to the current directory. For a pending statement row,
+Wat uses only a unique match with the same date and signed payment/deposit
+amount. Check/reference or description evidence resolves otherwise-duplicate
+matches; unresolved ambiguity is shown and leaves the form blank. An exact
+match prefills its payee, memo, and reference. Its QuickBooks account prefills a
+counteraccount only after that label has been approved with
+`quickbooks --review`; unmapped labels remain explicit in the statement row
+hint. The operator must still review the form and press F2. Spreadsheet
+registers require the paired `pond` CLI through `WAT_POND`; CSV registers do
+not.
 
 For a local Ollama model, use a provider-prefixed model and omit `api_version`:
 
@@ -445,14 +539,35 @@ Existing Ollama workspaces may retain `ollama_url` and a bare model name as a
 migration alias. New configurations use `api_base`; specifying both endpoint
 fields is an error.
 
-PDF extraction uses `bankstatementparser` with the configured text model.
+PDF extraction uses `bankstatementparser` with the configured model.
 Azure uses a short-lived `AZURE_AD_TOKEN`; Ollama uses its direct local HTTP
-bridge. The overall extraction limit is 20 minutes, and extraction never posts
-automatically.
+bridge. Text extraction has a 20-minute limit; check-image extraction has a
+separate 12-minute limit. Extraction never posts automatically.
 `wat` asks `bankstatementparser` to parse all embedded text available in the
 complete PDF. The extracted opening balance, transactions, and closing balance
 must balance-verify. Missing text or a discrepancy is reported as an extraction
-failure; `wat` does not select pages or switch to an image model.
+failure.
+
+When an extracted debit row contains the word `CHECK`, or has the exact
+`NUMBER MM/DD/YYYY $AMOUNT` form with a date and amount matching the row, Wat
+automatically sends the statement's rendered page images and deduplicated
+embedded images to the same configured model and asks for the exact name written
+on the check's payee line. Embedded images are upscaled before transmission so
+check text remains legible. Wat also supplies the canonical names from
+`hledger payees --declared` as spelling hints. The model must still use visible
+check evidence and may return a new name when no declaration matches. This
+happens during new
+statement extraction and on the first open of an older cached statement, with
+no separate action. The validated suggestions are stored separately in
+`check-payees.json`, tied to the statement fingerprint and row numbers, and
+prefill only editable fields. For an exact configured payee, the sidecar may
+also hold a validated memo and balanced split proposed from its
+`transaction_prompts` rule. They do not alter extracted statement rows,
+reconciliation evidence, payee declarations, or journals. An exact QuickBooks
+payee takes precedence and suppresses a split for a different payee; a nonempty
+QuickBooks memo takes precedence, while a matched AI split remains editable.
+The progress screen identifies that page images are being sent to the
+configured endpoint.
 Some statements present a dated zero-value beginning/ending balance as a row.
 `wat` omits such rows from the posting queue and shows an extraction notice;
 opening and closing balances remain part of mandatory arithmetic verification.
@@ -480,14 +595,15 @@ contributes to the running balances. Up/Down selects a row, Enter revises it, an
 to the menu. These key instructions appear once in the footer rather than on
 every transaction.
 
-`books/manual.journal` and the derived bank journals are writable sections.
+The configured `manual_journal` and the derived bank journals are writable
+sections. Configured `historical_journals` are fixed and read-only.
 Transactions are revised in the same source journal: ordinary entries stay in
-the manual journal, and statement-derived entries stay in their bank journal.
+the active manual journal, and statement-derived entries stay in their bank journal.
 Entries in other included journals remain read-only.
 Existing books are not migrated or changed just by opening this screen.
-Deletion, period closing, and reopening or rolling back a finished reconciliation
-are not implemented. A transaction becomes reconciled only through the explicit
-Finish action described above.
+Deletion and period closing are not implemented. A transaction becomes
+reconciled only through the explicit Finish action described above; reopening
+removes that checkpoint without reversing journal entries.
 
 A revision preserves the transaction's stable `id`, replaces only its original
 source range, and leaves all bytes outside that range intact. It never appends
@@ -518,7 +634,7 @@ transactions across all included journals, including earlier years. Suggestions
 refresh when you start a new transaction; no separate history database is kept.
 Account suggestions come from declared local accounts that resolve through the
 configured CPUC chart. Start with digits to match the CPUC-number prefix (`13`
-matches `131.2`, but not a `13` later in a local name); start with other text to
+matches `131.200`, but not a `13` later in a local name); start with other text to
 search the local account and its formal CPUC designation, ignoring case.
 
 Use **Ctrl-N/Ctrl-P** to cycle suggestions and **Enter** to accept the highlighted
@@ -541,8 +657,9 @@ amounts or overflow show an explicit unavailable-balance message rather than an
 incorrect total. A balanced amount total alone does not mean the entry is valid.
 
 Enter the actual transaction date in `YYYY-MM-DD` form. Enter the payee,
-optional description, reference, and source
-reference. Every saved entry
+description/memo, reference, and source reference. `wat check` requires the
+rendered `PAYEE | MEMO` form and requires the payee to be declared in
+`books/payees.journal`. Every saved entry
 also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
@@ -628,8 +745,8 @@ External editors do not honor that lock. Changes are rechecked immediately befor
 replacement, but there is no cross-program filesystem compare-and-swap: do not
 edit the books concurrently with a save.
 
-Passing `wat check` establishes syntax, declared accounts/commodities, posting
-account depth, balance
+Passing `wat check` establishes syntax, declared accounts/commodities/payees,
+posting account depth, balance
 assertions, and balanced entries, not correct classification, completeness,
 regulatory compliance, or a new bank reconciliation. Existing reconciliation
 checkpoint integrity is verified when the books open. There is no implicit
