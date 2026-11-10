@@ -1,5 +1,5 @@
-# Opt-in public projection. Copy the current publisher pages.jsonl into the pond
-# at /analytics/pages.jsonl before querying. Do not export the inventory or raw data.
+# Opt-in public projection. Copy the current publisher pages.parquet as an ordinary
+# file at /analytics/pages.parquet, not a table or series. Do not export it or raw data.
 version: v1
 kind: mkdir
 metadata:
@@ -14,7 +14,7 @@ spec:
   config:
     patterns:
       daily: "series:///analytics/daily"
-      pages: "jsonlogs:///analytics/pages.jsonl"
+      pages: "file+table:///analytics/pages.parquet"
     query: >-
       WITH inventory AS (
         SELECT site_id, page_uri,

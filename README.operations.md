@@ -313,24 +313,29 @@ analytics:
 
 For Noyo, use its own site ID/endpoint, `default_section: Noyo`, and no section
 overrides. These are configuration examples, not enabled deployment settings.
-Sitegen emits `_analytics/pages.jsonl` for each independently instrumented site.
+Sitegen emits `_analytics/pages.parquet` for each independently instrumented site,
+with non-null UTF-8 `site_id`, `page_uri`, and `section` columns even when empty.
 After successful publication, copy that site's inventory into its owning
 analytics pond and install the optional public projection:
 
 ```sh
-pond copy host:///path/to/published/_analytics/pages.jsonl /analytics/pages.jsonl
+pond copy host:///path/to/published/_analytics/pages.parquet /analytics/pages.parquet
 pond apply -f config/analytics-public.yaml
 pond cat /analytics/public/daily-sections --format=table
 ```
 
-Use ordinary data-file copy, not series append: only the current inventory should
-classify the reporting window. These facts then replicate with the pond.
+Use ordinary data-file copy, not `host+table` or `host+series`: only the current
+inventory should classify the reporting window. The query uses the existing
+`file+table:///analytics/pages.parquet` cast to read current file content.
+These facts then replicate with the pond.
 The query emits only UTC day, section, and reported views over the last 30 UTC
 calendar days. Unrecognized paths contribute to Other / unclassified without
 exposing their names. Classification follows the current inventory: retired
 pages move to Other and changed section assignments reclassify displayed history.
 Duplicate keys do not multiply counts; conflicting section labels become Other.
-Missing inventory is a report error, not fabricated zero activity.
+A valid zero-row inventory replaces previous classifications and moves retained
+views into Other; it does not mean zero activity. Missing or unreadable inventory
+is a report error, not an empty inventory.
 
 This prepares the public dataset, not the dashboard. The enclosing site should
 import the source ponds, combine their daily section counts, and export only

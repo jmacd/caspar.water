@@ -158,9 +158,9 @@ http://127.0.0.1:{self.port} {{
             "RUST_LOG": "warn",
         }
 
-        def run(*args):
+        def run(*args, binary=False):
             result = subprocess.run(
-                [str(pond), *args], env=env, text=True, capture_output=True, timeout=120,
+                [str(pond), *args], env=env, text=not binary, capture_output=True, timeout=120,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return result.stdout
@@ -222,11 +222,17 @@ http://127.0.0.1:{self.port} {{
                     **template, "ts": timestamp, "page_uri": "/water",
                 }) + "\n")
         ingest_and_count(9)
-        inventory = self.work / "pages.jsonl"
+        inventory_source = self.work / "pages-source.jsonl"
+        inventory = self.work / "pages.parquet"
 
         def publish_inventory(rows):
-            inventory.write_text("".join(json.dumps(row) + "\n" for row in rows))
-            run("copy", inventory.as_uri().replace("file:", "host:"), "/analytics/pages.jsonl")
+            inventory_source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            run("copy", inventory_source.as_uri().replace("file:", "host:"),
+                "/analytics/pages-source.jsonl")
+            inventory.write_bytes(run(
+                "cat", "jsonlogs:///analytics/pages-source.jsonl", "--format=raw", binary=True,
+            ))
+            run("copy", inventory.as_uri().replace("file:", "host:"), "/analytics/pages.parquet")
 
         static = {"site_id": "site-a", "page_uri": "/water", "section": "Static content"}
         blog = {"site_id": "site-a", "page_uri": "/blog/café", "section": "Blog"}
@@ -256,6 +262,39 @@ http://127.0.0.1:{self.port} {{
         self.assertEqual(section_counts(), {
             "Monitoring": "3", "Other / unclassified": "2",
         })
+
+        empty_page = self.work / "empty-page.md"
+        empty_page.write_text("---\ntitle: Excluded page\nanalytics: false\n---\nNo analytics.\n")
+        run("copy", empty_page.as_uri().replace("file:", "host:"), "/empty-page.md")
+        empty_config = self.work / "empty-site.yaml"
+        empty_config.write_text(
+            "site: {title: Empty inventory}\n"
+            "analytics: {enabled: true, site_id: site-a}\n"
+            "documentation: {version: 1, source_root: /}\n"
+            "routes:\n"
+            "  - {name: home, type: static, slug: '', page: /empty-page.md}\n"
+        )
+        empty_site = self.work / "empty-site"
+        run("mknod", "sitegen", "/etc/empty-site", "--config-path", str(empty_config))
+        run("run", "/etc/empty-site", "build", str(empty_site))
+        empty_inventory = empty_site / "_analytics/pages.parquet"
+        run("copy", empty_inventory.as_uri().replace("file:", "host:"),
+            "/analytics/pages.parquet")
+        self.assertEqual(section_counts(), {"Other / unclassified": "5"})
+
+        publish_inventory([static, blog])
+        self.assertEqual(section_counts(), {
+            "Blog": "1", "Other / unclassified": "1", "Static content": "3",
+        })
+
+        inventory.write_bytes(b"not Parquet")
+        run("copy", inventory.as_uri().replace("file:", "host:"), "/analytics/pages.parquet")
+        failed = subprocess.run(
+            [str(pond), "cat", "/analytics/public/daily-sections", "--format=table"],
+            env=env, text=True, capture_output=True, timeout=120,
+        )
+        self.assertNotEqual(failed.returncode, 0, failed.stdout)
+        self.assertIn("Parquet", failed.stderr)
 
 
 if __name__ == "__main__":
