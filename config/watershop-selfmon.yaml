@@ -89,6 +89,8 @@ spec:
 #
 # run-selfmon.sh runs each of these via `pond run /system/etc/measure/<pond> push`
 # in a loop matching env/*.env.
+# RFC3339 bounds apply to newly ingested records; old unbounded versions remain
+# unchanged. Deploy a binary supporting this timestamp mode before this config.
 
 version: v1
 kind: mknod
@@ -100,6 +102,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/_self.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/_self.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -111,6 +115,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/limits.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/limits.jsonl"
     pond_path:        /measure
+    timestamp_field:  timestamp
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -122,6 +128,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -133,6 +141,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -144,6 +154,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -155,6 +167,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -166,6 +180,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/site-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/site-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -177,6 +193,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/site-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/site-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -188,6 +206,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/water-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/water-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -199,6 +219,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/water-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/water-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -210,6 +232,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 # Aggregated traffic series for sitegen / ad-hoc charting.
 #
