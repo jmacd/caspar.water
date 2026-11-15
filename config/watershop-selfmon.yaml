@@ -595,6 +595,10 @@ spec:
       - name: "azure-access"
         factory: "sql-derived-series"
         config:
+          # Requires timestamp-local support for non-limiting ORDER BY.
+          locality:
+            type: timestamp-local
+            event_time: timestamp
           patterns:
             # Include the selfmon unit as a permanent schema-bearing source
             # even before the first post-reset production run has logged an
