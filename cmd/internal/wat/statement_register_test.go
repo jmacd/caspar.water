@@ -85,6 +85,18 @@ func TestStatementRegisterStrengthensAmbiguousMatchByReference(t *testing.T) {
 	require.Equal(t, matches[1:], strengthenStatementRegisterMatches(row, matches))
 }
 
+func TestStatementRegisterBlankReferencePreservesStatementCheckNumber(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	statement.Rows[1].Description = "CHECK 1013"
+	writeStatementRegister(t, books,
+		"4/5/2021,Expense,,Electric Company,April power,Utilities,12.34,,87.66\n",
+	)
+	_, entry, err := books.StatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "Electric Company", entry.Payee)
+	require.Equal(t, "1013", entry.Reference)
+}
+
 func TestStatementRegisterNoMatchPreservesLearnedDefault(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	writeStatementRegister(t, books,

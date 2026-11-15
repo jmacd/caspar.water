@@ -39,7 +39,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 		list.InputHandler()(tcell.NewEventKey(key, r, tcell.ModNone), func(tview.Primitive) {})
 	}
 	ui.menu()
-	press(tcell.KeyRune, '5')
+	press(tcell.KeyRune, '1')
 	list := ui.app.GetFocus().(*tview.List)
 	require.Equal(t, 2, list.GetItemCount())
 	label, source := list.GetItemText(0)
@@ -67,7 +67,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	require.Nil(t, ui.statement, "return from the browser must restore the previous active statement")
 	press(tcell.KeyEscape, 0)
 	list = ui.app.GetFocus().(*tview.List)
-	label, _ = list.GetItemText(4)
+	label, _ = list.GetItemText(0)
 	require.Equal(t, "Bank statements", label)
 	require.Equal(t, saved, read(t, journal), "opening and navigating must not duplicate entries")
 }
@@ -158,7 +158,7 @@ func TestBankStatementsMenuEmptyAndInvalidCache(t *testing.T) {
 		books, _ := fixture(t, "")
 		ui := &terminal{app: tview.NewApplication(), books: books}
 		ui.menu()
-		ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, '5', tcell.ModNone), func(tview.Primitive) {})
+		ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModNone), func(tview.Primitive) {})
 		button, ok := ui.app.GetFocus().(*tview.Button)
 		require.True(t, ok)
 		require.Equal(t, "OK", button.GetLabel())

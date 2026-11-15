@@ -151,7 +151,7 @@ func (ui *terminal) message(title, text string, back func()) {
 func (ui *terminal) menu() {
 	list := themedList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Water Accounting Terminal ")
-	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
+	list.AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '1', ui.bankStatements).
 		AddItem("Review / revise journal", "Browse entries; revise entries in the working journal", '2', ui.journalEntries).
 		AddItem("Reports", "Trial balance, balance sheet, income statement", '3', ui.reports).
 		AddItem("Check books", "Run hledger strict/payee validation and CPUC account-mapping checks", '4', func() {
@@ -161,7 +161,7 @@ func (ui *terminal) menu() {
 			}
 			ui.message(" Check books ", "The books pass hledger strict/payee checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
-		AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '5', ui.bankStatements).
+		AddItem("Record a transaction", "Balanced postings with a live balance", '5', ui.entry).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
 	footer := "Enter Select | 1-5 Shortcut | q Quit"
 	if ui.statement != nil {

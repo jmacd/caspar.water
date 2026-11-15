@@ -167,6 +167,13 @@ or modifying saved entries. Bare numeric withdrawal descriptions such as
 image must establish the payee. Differences in a caption's formatting or date
 do not prevent inspection.
 
+Statement references are retained in the entry's Reference field. When the
+extraction has no separate reference, recognizable check numbers are taken
+from the bank description (bare numbers, labeled checks, or check captions).
+Revising an older statement entry with a blank Reference also offers that
+default; an existing saved reference is preserved. Changes are written only
+when you Save.
+
 Check numbers never establish vendor identity or an account assignment, even
 when they are equal or sequential. Rows and historical payees containing only
 check references are excluded from account learning; an identified payee from

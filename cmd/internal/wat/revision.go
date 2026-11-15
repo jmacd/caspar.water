@@ -302,6 +302,9 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 		if err := draft.checkStatement(*found); err != nil {
 			return nil, Entry{}, err
 		}
+		if entry.Reference == "" {
+			entry.Reference = statementRowReference(statement.Rows[index-1])
+		}
 		if entry.Source == "" {
 			return nil, Entry{}, fmt.Errorf("recorded entry must retain its source tag before it can be revised")
 		}

@@ -30,6 +30,10 @@ var statementCheckMetadata = regexp.MustCompile(
 
 var statementCheckNumber = regexp.MustCompile(`^#?[[:space:]]*[0-9]{1,10}$`)
 
+var statementLabeledCheckNumber = regexp.MustCompile(
+	`(?i)^(?:check|cheque|chk)[[:space:]]*(?:(?:no\.?|number)[[:space:]]*)?#?[[:space:]]*([0-9]{1,10})(?:[[:space:]]|$)`,
+)
+
 var statementSuggestedAmount = regexp.MustCompile(`^[0-9]+\.[0-9]{2}$`)
 
 type statementAISettings struct {
@@ -127,6 +131,26 @@ func statementRowIsCheck(row StatementRow) bool {
 		}
 	}
 	return statementCheckMetadata.MatchString(strings.TrimSpace(row.Description))
+}
+
+func statementRowReference(row StatementRow) string {
+	if row.Reference != "" {
+		return row.Reference
+	}
+	if row.Cents >= 0 {
+		return ""
+	}
+	description := strings.TrimSpace(row.Description)
+	if statementCheckNumber.MatchString(description) {
+		return strings.TrimSpace(strings.TrimPrefix(description, "#"))
+	}
+	if match := statementLabeledCheckNumber.FindStringSubmatch(description); match != nil {
+		return match[1]
+	}
+	if statementCheckMetadata.MatchString(description) {
+		return strings.Fields(description)[0]
+	}
+	return ""
 }
 
 func statementCheckPayeeCandidates(statement *Statement) []int {

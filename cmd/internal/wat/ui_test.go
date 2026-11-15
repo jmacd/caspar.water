@@ -123,7 +123,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 		}
 	}
 	require.Contains(t, next().text, "Water Accounting Terminal")
-	frame := key(tcell.KeyRune, '1')
+	frame := key(tcell.KeyRune, '5')
 	require.Contains(t, frame.text, "UNSAVED")
 	require.Equal(t, "Date (YYYY-MM-DD)", frame.focus)
 	frame = key(tcell.KeyF2, 0)
@@ -239,7 +239,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	require.Contains(t, frame.text, "Review / revise journal")
 	require.Equal(t, saved, read(t, books.Config.ManualJournal), "cancelling a revision must preserve the saved entry")
 	key(tcell.KeyEscape, 0)
-	key(tcell.KeyRune, '1')
+	key(tcell.KeyRune, '5')
 	key(tcell.KeyTab, 0)
 	typeText("elect")
 	frame = key(tcell.KeyEnter, 0)
@@ -253,7 +253,7 @@ func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	frame = key(tcell.KeyEscape, 0)
 	require.Contains(t, frame.text, "Water Accounting Terminal")
 	require.Equal(t, saved, read(t, books.Config.ManualJournal))
-	key(tcell.KeyRune, '1')
+	key(tcell.KeyRune, '5')
 	for _, value := range []string{
 		"2021-04-06", "Electric company", "Direct save", "", "",
 		"Expense:615.000:Utility", "12.34", "Bank:131.200:Checking", "-12.34",
@@ -316,7 +316,7 @@ func TestEmptyJournalBrowserCanReturnToMenu(t *testing.T) {
 			menu, ok := ui.app.GetFocus().(*tview.List)
 			require.True(t, ok)
 			label, _ := menu.GetItemText(0)
-			require.Equal(t, "Record a transaction", label)
+			require.Equal(t, "Bank statements", label)
 		})
 	}
 }

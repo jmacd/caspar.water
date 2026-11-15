@@ -44,6 +44,7 @@ type StatementPeriod struct {
 type StatementRow struct {
 	Date, Description string
 	Cents             int64
+	Reference         string
 }
 
 type StatementOptions struct {
@@ -683,6 +684,7 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 			Currency    string `json:"currency"`
 			Amount      string `json:"amount"`
 			AccountID   string `json:"account_id"`
+			Reference   string `json:"reference"`
 		} `json:"transactions"`
 		Verification *struct {
 			Opening string `json:"opening_balance"`
@@ -758,8 +760,13 @@ func (b *Books) decodeStatement(data []byte, hash, dir string) (*Statement, erro
 		if strings.TrimSpace(tx.Description) == "" || !singleLine(tx.Description) || strings.ContainsAny(tx.Description, ";|") {
 			return nil, fmt.Errorf("statement row %d requires a single-line description without journal delimiters ';' or '|'", i+1)
 		}
+		if !singleLine(tx.Reference) || strings.Contains(tx.Reference, ",") {
+			return nil, fmt.Errorf("statement row %d requires a single-line reference without commas", i+1)
+		}
 		total.Add(total, big.NewInt(cents))
-		result.Rows = append(result.Rows, StatementRow{tx.Date, tx.Description, cents})
+		result.Rows = append(result.Rows, StatementRow{
+			Date: tx.Date, Description: tx.Description, Cents: cents, Reference: strings.TrimSpace(tx.Reference),
+		})
 	}
 	if total.Cmp(big.NewInt(closing)) != 0 {
 		return nil, fmt.Errorf("statement transactions do not match opening and closing balances; review the extraction against the PDF")
@@ -1071,7 +1078,7 @@ func (b *Books) statementEntry(s *Statement, index int, status StatementStatus, 
 	if hasSuggestion {
 		payee = suggestion.Payee
 	}
-	description, reference := "", ""
+	description, reference := "", statementRowReference(row)
 	if register.exact() && register.Payee != "" {
 		payee = register.Payee
 	}
@@ -1083,7 +1090,9 @@ func (b *Books) statementEntry(s *Statement, index int, status StatementStatus, 
 		if register.Description != "" {
 			description = register.Description
 		}
-		reference = register.Reference
+		if register.Reference != "" {
+			reference = register.Reference
+		}
 	}
 	postings := []Posting{
 		{s.BankAccount, formatCents(row.Cents)},

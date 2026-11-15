@@ -668,6 +668,54 @@ func TestStatementCheckRowDetection(t *testing.T) {
 	}
 }
 
+func TestStatementReferencesFromExtractionAndCheckDescriptions(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	dir := filepath.Dir(filepath.Join(books.Config.root, statement.Source))
+	for _, test := range []struct {
+		description, reference, amount, want string
+	}{
+		{"1013", "", "-12.34", "1013"},
+		{" # 001013 ", "", "-12.34", "001013"},
+		{"CHECK 1014", "", "-12.34", "1014"},
+		{"Cheque No. 1015", "", "-12.34", "1015"},
+		{"CHK #1016 monthly service", "", "-12.34", "1016"},
+		{"1017 04/05/2021 $12.34", "", "-12.34", "1017"},
+		{"CHECK 1013", "bank-reference", "-12.34", "bank-reference"},
+		{"POWER CO", " transfer-18 ", "-12.34", "transfer-18"},
+		{"POWER CO 12.34", "", "-12.34", ""},
+		{"ORDER 1013", "", "-12.34", ""},
+		{"1013", "", "12.34", ""},
+	} {
+		t.Run(test.description+test.reference+test.amount, func(t *testing.T) {
+			var data map[string]any
+			require.NoError(t, json.Unmarshal([]byte(statementJSON), &data))
+			tx := data["transactions"].([]any)[1].(map[string]any)
+			tx["description"], tx["amount"] = test.description, test.amount
+			if test.reference != "" {
+				tx["reference"] = test.reference
+			} else {
+				tx["reference"] = nil
+			}
+			if test.amount == "12.34" {
+				data["verification"].(map[string]any)["closing_balance"] = "92.34"
+			}
+			encoded, err := json.Marshal(data)
+			require.NoError(t, err)
+			decoded, err := books.decodeStatement(encoded, statement.Hash, dir)
+			require.NoError(t, err)
+			_, entry, err := books.StatementDraft(decoded, 1)
+			require.NoError(t, err)
+			require.Equal(t, test.want, entry.Reference)
+			require.Equal(t, descriptionKey(test.description), entry.BankDescription, "reference defaults must not alter provenance")
+			require.Equal(t, test.description, decoded.Rows[1].Description)
+		})
+	}
+	invalid := strings.Replace(statementJSON, `"description":"POWER CO"`, `"reference":"bad,ref","description":"POWER CO"`, 1)
+	_, err := books.decodeStatement([]byte(invalid), statement.Hash, dir)
+	require.ErrorContains(t, err, "reference")
+	require.Empty(t, read(t, bankJournal(t, books, statement.BankAccount)))
+}
+
 func TestStatementParserRuntimeOverride(t *testing.T) {
 	books, _, _ := statementFixture(t)
 	root := books.Config.root
