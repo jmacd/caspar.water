@@ -89,6 +89,8 @@ spec:
 #
 # run-selfmon.sh runs each of these via `pond run /system/etc/measure/<pond> push`
 # in a loop matching env/*.env.
+# Keep ingestion, projections, and join scopes in sync with Terraform's instances.
+# Check with: python3 config/scripts/test-selfmon.py (requires PyYAML).
 # RFC3339 bounds apply to newly ingested records; old unbounded versions remain
 # unchanged. Deploy a binary supporting this timestamp mode before this config.
 
@@ -231,6 +233,19 @@ spec:
   config:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl"
+    pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/analytics-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/analytics-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/analytics-staging.jsonl"
     pond_path:        /measure
     timestamp_field:  ts
     timestamp_unit:   rfc3339
@@ -826,6 +841,16 @@ spec:
             m: "jsonlogs:///measure/watershop-selfmon.jsonl"
           query: *pondseries
 
+      - name: "p-analytics-staging"
+        factory: "sql-derived-series"
+        config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
+          patterns:
+            m: "jsonlogs:///measure/analytics-staging.jsonl"
+          query: *pondseries
+
       # ── Cross-pond perf series ───────────────────────────────────
       # FULL OUTER JOIN on timestamp, with each input scope-prefixed
       # to <pond>.<param>.<unit>.  This is what sitegen exports and
@@ -854,11 +879,13 @@ spec:
               scope: "water-prod"
             - pattern: "series:///derived/p-watershop-selfmon"
               scope: "watershop-selfmon"
+            - pattern: "series:///derived/p-analytics-staging"
+              scope: "analytics-staging"
 ---
 # Materialize the `perf` join into a physical table:series.
 #
-# `/derived/perf` is DYNAMIC: every read re-runs ten sql-derived-series
-# queries over jsonlogs and FULL OUTER JOINs them.  That is fine for a
+# `/derived/perf` is DYNAMIC: every read re-runs the per-pond sql-derived-series
+# queries over jsonlogs and FULL OUTER JOINs them. That is fine for a
 # one-shot read but it is a terrible thing to put underneath a
 # temporal-reduce, which is exactly the bottleneck that made the noyo
 # subsite export ~90% of a site publish.
@@ -956,7 +983,7 @@ spec:
 # Nothing here needs that tuning.
 #
 # Aggregations omit `columns`, which applies them to every numeric column
-# -- the join is ~94 columns and grows whenever a pond is added.
+# -- the column count grows whenever a pond is added.
 # chart.js already understands the `.avg`/`.min`/`.max` suffixes that
 # temporal-reduce appends.
 #
