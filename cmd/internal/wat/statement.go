@@ -960,9 +960,10 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 }
 
 type statementDraft struct {
-	statement   *Statement
-	index       int
-	bankAccount string
+	statement         *Statement
+	index             int
+	bankAccount       string
+	accountSuggestion string
 }
 
 func (b *Books) statementRowMismatchError(
@@ -1038,7 +1039,7 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 	if register.Account != "" {
 		counteraccount = register.Account
 	}
-	draft.statement = &statementDraft{s, index, s.BankAccount}
+	draft.statement = &statementDraft{statement: s, index: index, bankAccount: s.BankAccount}
 	payee := row.Description
 	suggestion, hasSuggestion := s.checkPayees[index]
 	if hasSuggestion {

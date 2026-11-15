@@ -144,6 +144,22 @@ Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
 A statement may cross a calendar-year boundary.
 
+When you open a pending statement row without an existing account default,
+Wat uses the configured statement model to suggest an account from accepted
+same-bank, same-direction journal history. The request includes the bank row,
+its suggested payee, declared payees, configured nonbank accounts, and journal
+description/account examples. This recognizes vendor aliases and descriptions
+that include the payment amount without changing the original bank evidence.
+Browsing statements does not make these requests, and workspaces without a
+configured statement model remain manual.
+
+An AI account suggestion must cite a single-account journal example and use an
+exact configured account. Ambiguous or split-account history should produce no
+default. The entry form labels the suggestion and its explanation; all fields
+remain editable, and only Save records an entry. Model failures are displayed
+explicitly and allow manual entry. Esc cancels an in-progress request and opens
+the manual entry form.
+
 ## QuickBooks reconstruction
 
 `wat quickbooks` generates an editable candidate journal from a directory of

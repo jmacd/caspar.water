@@ -2,6 +2,7 @@ package wat
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -274,6 +275,9 @@ func (ui *terminal) statementList() {
 		hint := strings.Join(hints, " | ")
 		if hint == "" {
 			hint = "No exact register match or learned account"
+			if ui.books.statementAccountAIConfigured() && !status.Recorded {
+				hint += "; Enter for AI suggestion"
+			}
 		}
 		if status.Recorded {
 			hint = "Enter to revise the existing entry (working journal only)"
@@ -428,6 +432,10 @@ func (ui *terminal) statementOpen(index int) {
 			ui.message(" Cannot start statement row ", err.Error(), ui.statementList)
 			return
 		}
+		if len(entry.Postings) == 2 && entry.Postings[1].Account == "" && ui.books.statementAccountAIConfigured() {
+			ui.suggestStatementAccount(draft, entry)
+			return
+		}
 		ui.entryForm(draft, entry, ui.statementList, 7)
 	}
 	if statuses[index].PossibleMatch {
@@ -444,4 +452,42 @@ func (ui *terminal) statementOpen(index int) {
 		return
 	}
 	open()
+}
+
+func (ui *terminal) suggestStatementAccount(draft *Draft, entry Entry) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	cancelled := false
+	open := func() { ui.entryForm(draft, entry, ui.statementList, 7) }
+	status := tview.NewTextView().SetText(fmt.Sprintf(
+		"Requesting an account suggestion with model %s.\n\nThe configured endpoint receives this row, declared payees and accounts, and same-bank, same-direction journal examples.\nSuggestions remain editable. No journal entries will be written.",
+		ui.books.Config.Statement.Model,
+	))
+	status.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			cancelled = true
+			cancel()
+			open()
+			return nil
+		}
+		return event
+	})
+	ui.screen("AI account suggestion", status, "Esc Cancel and enter account manually")
+	requestEntry := entry
+	requestEntry.Postings = append([]Posting(nil), entry.Postings...)
+	go func() {
+		defer cancel()
+		suggestion, err := ui.books.suggestStatementAccount(ctx, draft, requestEntry)
+		ui.app.QueueUpdateDraw(func() {
+			if cancelled {
+				return
+			}
+			if err != nil {
+				ui.message(" AI account suggestion failed ", err.Error()+"\n\nNo account default was applied. Continue to enter the account manually.", open)
+				return
+			}
+			entry.Postings[1].Account = suggestion.Account
+			draft.statement.accountSuggestion = suggestion.hint()
+			open()
+		})
+	}()
 }

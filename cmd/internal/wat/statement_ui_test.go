@@ -1,6 +1,9 @@
 package wat
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -356,6 +359,140 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal did not exit")
 	}
+}
+
+func TestStatementTerminalAIAccountFallback(t *testing.T) {
+	for _, test := range []struct {
+		name, content, wantText, wantAccount string
+		fail, cancel                         bool
+	}{
+		{
+			name: "suggestion",
+			content: `{"account":"Expense:615.000:Utility","example":1,` +
+				`"explanation":"PGANDE is PG&E with the payment amount appended."}`,
+			wantText: "AI suggestion: Expense:615.000:Utility", wantAccount: "Expense:615.000:Utility",
+		},
+		{
+			name: "abstention", content: `{"account":"","example":0,"explanation":"Vendor is ambiguous."}`,
+			wantText: "no confident account match",
+		},
+		{name: "failure", fail: true, wantText: "AI account suggestion failed"},
+		{name: "cancel", cancel: true, wantText: "Statement row 3/3"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			books, statement := statementAccountFixture(t)
+			journal := bankJournal(t, books, statement.BankAccount)
+			saved := read(t, journal)
+			started, release := make(chan struct{}), make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				close(started)
+				if test.cancel {
+					select {
+					case <-request.Context().Done():
+					case <-release:
+					}
+					return
+				}
+				if test.fail {
+					http.Error(writer, "model unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
+					"message": chatMessage{Role: "assistant", Content: test.content},
+				}))
+			}))
+			t.Cleanup(func() {
+				close(release)
+				server.Close()
+			})
+			books.Config.Statement = StatementConfig{APIBase: server.URL, Model: "ollama/test-model"}
+			app := tview.NewApplication()
+			screen := tcell.NewSimulationScreen("UTF-8")
+			app.SetScreen(screen)
+			screen.SetSize(140, 40)
+			ui := &terminal{app: app, books: books, statement: statement}
+			frames := make(chan string, 100)
+			app.SetAfterDrawFunc(func(_ tcell.Screen) {
+				var text strings.Builder
+				for y := 0; y < 40; y++ {
+					for x := 0; x < 140; x++ {
+						r, _, _, _ := screen.GetContent(x, y)
+						text.WriteRune(r)
+					}
+					text.WriteByte('\n')
+				}
+				select {
+				case frames <- text.String():
+				default:
+				}
+			})
+			ui.statementOpen(2)
+			done := make(chan error, 1)
+			go func() { done <- app.Run() }()
+			t.Cleanup(func() {
+				app.Stop()
+				select {
+				case err := <-done:
+					require.NoError(t, err)
+				case <-time.After(5 * time.Second):
+					t.Error("terminal did not exit")
+				}
+			})
+			waitFor := func(text string) string {
+				t.Helper()
+				timer := time.NewTimer(5 * time.Second)
+				defer timer.Stop()
+				for {
+					select {
+					case current := <-frames:
+						if strings.Contains(current, text) {
+							return current
+						}
+					case <-timer.C:
+						t.Fatalf("terminal did not show %q", text)
+						return ""
+					}
+				}
+			}
+			if test.cancel {
+				waitFor("Requesting an account suggestion")
+				select {
+				case <-started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("model request did not start")
+				}
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+			}
+			current := waitFor(test.wantText)
+			if test.fail {
+				require.Contains(t, current, "503")
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+				waitFor("Statement row 3/3")
+			}
+			var focused *tview.InputField
+			var account string
+			app.QueueUpdate(func() {
+				focused, _ = app.GetFocus().(*tview.InputField)
+				if focused != nil {
+					account = focused.GetText()
+				}
+			})
+			require.NotNil(t, focused)
+			require.Equal(t, test.wantAccount, account)
+			require.Equal(t, saved, read(t, journal), "suggestions, failures and cancellation must never save an entry")
+		})
+	}
+}
+
+func TestStatementTerminalAIAccountPreservesExistingDefault(t *testing.T) {
+	books, statement := statementAccountFixture(t)
+	statement.Rows[2].Description = statement.Rows[1].Description
+	books.Config.Statement = StatementConfig{APIBase: "http://invalid.test", Model: "ollama/test"}
+	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement}
+	ui.statementOpen(2)
+	input, ok := ui.app.GetFocus().(*tview.InputField)
+	require.True(t, ok, "a learned default must open directly without calling the model")
+	require.Equal(t, "Expense:615.000:Utility", input.GetText())
 }
 
 func TestStatementBatchAdvanceRequiresRecordedRows(t *testing.T) {
