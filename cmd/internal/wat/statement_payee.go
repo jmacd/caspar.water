@@ -28,6 +28,8 @@ var statementCheckMetadata = regexp.MustCompile(
 	`^[0-9]{3,10}[[:space:]]+([0-9]{2}/[0-9]{2}/[0-9]{4})[[:space:]]+\$([0-9][0-9,]*\.[0-9]{2})$`,
 )
 
+var statementCheckNumber = regexp.MustCompile(`^#?[[:space:]]*[0-9]{1,10}$`)
+
 var statementSuggestedAmount = regexp.MustCompile(`^[0-9]+\.[0-9]{2}$`)
 
 type statementAISettings struct {
@@ -114,23 +116,17 @@ func statementRowIsCheck(row StatementRow) bool {
 	if row.Cents >= 0 {
 		return false
 	}
+	if statementCheckNumber.MatchString(strings.TrimSpace(row.Description)) {
+		return true
+	}
 	for _, field := range strings.FieldsFunc(strings.ToUpper(row.Description), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
-		if field == "CHECK" {
+		if field == "CHECK" || field == "CHEQUE" || field == "CHK" {
 			return true
 		}
 	}
-	match := statementCheckMetadata.FindStringSubmatch(strings.TrimSpace(row.Description))
-	if match == nil {
-		return false
-	}
-	date, err := time.Parse("01/02/2006", match[1])
-	if err != nil || date.Format("2006-01-02") != row.Date {
-		return false
-	}
-	cents, err := ParseCents(strings.ReplaceAll(match[2], ",", ""))
-	return err == nil && cents == -row.Cents
+	return statementCheckMetadata.MatchString(strings.TrimSpace(row.Description))
 }
 
 func statementCheckPayeeCandidates(statement *Statement) []int {
@@ -144,6 +140,10 @@ func statementCheckPayeeCandidates(statement *Statement) []int {
 }
 
 func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCheckPayeeCache, error) {
+	return decodeStatementCheckPayeesWithCoverage(data, statement, true)
+}
+
+func decodeStatementCheckPayeesWithCoverage(data []byte, statement *Statement, requireComplete bool) (*statementCheckPayeeCache, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var cache statementCheckPayeeCache
@@ -166,11 +166,14 @@ func decodeStatementCheckPayees(data []byte, statement *Statement) (*statementCh
 		return nil, fmt.Errorf("check payee extraction has an invalid created_at time")
 	}
 	expected := statementCheckPayeeCandidates(statement)
-	if !slices.Equal(cache.Candidates, expected) {
+	if requireComplete && !slices.Equal(cache.Candidates, expected) {
 		return nil, fmt.Errorf("check payee extraction does not cover the statement's check rows")
 	}
 	candidates := make(map[int]bool, len(cache.Candidates))
 	for _, row := range cache.Candidates {
+		if !slices.Contains(expected, row) {
+			return nil, fmt.Errorf("check payee extraction contains a non-check row")
+		}
 		if candidates[row] {
 			return nil, fmt.Errorf("check payee extraction has duplicate candidate rows")
 		}
@@ -325,11 +328,11 @@ func (b *Books) loadStatementCheckPayees(statement *Statement, dir string) error
 	if err != nil {
 		return fmt.Errorf("read check payee extraction: %w", err)
 	}
-	cache, err := decodeStatementCheckPayees(data, statement)
+	cache, err := decodeStatementCheckPayeesWithCoverage(data, statement, false)
 	if err != nil {
 		return err
 	}
-	if cache.Version == 0 ||
+	if cache.Version == 0 || !slices.Equal(cache.Candidates, statementCheckPayeeCandidates(statement)) ||
 		!slices.Equal(cache.TransactionPrompts, b.Config.Statement.TransactionPrompts) {
 		return nil
 	}
@@ -447,10 +450,14 @@ func (b *Books) extractStatementCheckPayees(
 }
 
 func publishStatementCheckPayees(dir string, data []byte) error {
+	return publishStatementCache(dir, statementCheckPayeesFile, data)
+}
+
+func publishStatementCache(dir, name string, data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	temp, err := os.CreateTemp(dir, ".check-payees-")
+	temp, err := os.CreateTemp(dir, ".statement-cache-")
 	if err != nil {
 		return err
 	}
@@ -462,15 +469,15 @@ func publishStatementCheckPayees(dir string, data []byte) error {
 	if err := writeSynced(tempName, data, 0600); err != nil {
 		return err
 	}
-	if err := os.Rename(tempName, filepath.Join(dir, statementCheckPayeesFile)); err != nil {
-		return fmt.Errorf("publish check payee extraction: %w", err)
+	if err := os.Rename(tempName, filepath.Join(dir, name)); err != nil {
+		return fmt.Errorf("publish %s: %w", name, err)
 	}
 	cacheDir, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
 	if err := errors.Join(cacheDir.Sync(), cacheDir.Close()); err != nil {
-		return fmt.Errorf("check payee extraction saved but directory sync failed: %w", err)
+		return fmt.Errorf("%s saved but directory sync failed: %w", name, err)
 	}
 	return nil
 }

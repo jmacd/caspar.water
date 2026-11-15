@@ -27,6 +27,7 @@ type statementQueue struct {
 var (
 	tuiHighlight  = tcell.NewHexColor(0xfcfe54)
 	tuiText       = tcell.NewHexColor(0x54fefc)
+	tuiMutedText  = tcell.NewHexColor(0x8999b8)
 	tuiBackground = tcell.NewHexColor(0x0402ac)
 )
 
@@ -40,7 +41,7 @@ func applyTUITheme() {
 		GraphicsColor:               tuiHighlight,
 		PrimaryTextColor:            tuiText,
 		SecondaryTextColor:          tuiHighlight,
-		TertiaryTextColor:           tuiText,
+		TertiaryTextColor:           tuiMutedText,
 		InverseTextColor:            tuiBackground,
 		ContrastSecondaryTextColor:  tuiHighlight,
 	}
@@ -113,7 +114,7 @@ func runTerminal(books *Books, statement *Statement, queue *statementQueue) erro
 	if statement == nil {
 		ui.menu()
 	} else {
-		ui.statementList()
+		ui.prepareStatementAccounts(statement, ui.statementList)
 	}
 	return ui.app.Run()
 }
@@ -132,7 +133,7 @@ func (ui *terminal) screen(title string, body tview.Primitive, footer string) {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetText(tview.Escape(fmt.Sprintf(" %s | %s\n %s",
 		ui.books.Config.Name, title, ui.books.Config.Journal)))
-	hint := tview.NewTextView().SetText(" " + footer)
+	hint := tview.NewTextView().SetTextColor(tuiMutedText).SetText(" " + footer)
 	frame := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 3, 0, false).
 		AddItem(body, 0, 1, true).

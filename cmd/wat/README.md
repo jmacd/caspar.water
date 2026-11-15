@@ -144,21 +144,41 @@ Views and reports cover all accounting dates by default. Report-period selection
 belongs in the report workflow rather than persistent workspace configuration.
 A statement may cross a calendar-year boundary.
 
-When you open a pending statement row without an existing account default,
-Wat uses the configured statement model to suggest an account from accepted
-same-bank, same-direction journal history. The request includes the bank row,
-its suggested payee, declared payees, configured nonbank accounts, and journal
-description/account examples. This recognizes vendor aliases and descriptions
-that include the payment amount without changing the original bank evidence.
-Browsing statements does not make these requests, and workspaces without a
-configured statement model remain manual.
+The first time you open a statement, Wat uses the configured statement model to
+suggest accounts for all unmatched rows in one request, before transaction
+review begins. The request includes those bank rows, their suggested payees,
+declared payees, configured nonbank accounts, and accepted same-bank,
+same-direction journal description/account examples. This recognizes vendor
+aliases and descriptions that include the payment amount without changing the
+original bank evidence. Listing statements does not make these requests, and
+workspaces without a configured statement model remain manual.
+
+Validated suggestions and abstentions are saved in the statement's private
+`account-suggestions.json` sidecar, together with the evidence used for inference.
+Reopening the statement reuses this snapshot, and entering or advancing through
+transactions never calls the model. Existing exact-match defaults and check
+image splits take precedence over cached account suggestions.
+
+Use **Re-run AI suggestions** (`a`) on an unfinished statement to read its check
+images again, then refresh account suggestions. This retries previously
+unrecognized payees and empty suggestions without re-extracting transactions
+or modifying saved entries. Bare numeric withdrawal descriptions such as
+`1013`, as well as labeled checks, are candidates for image inspection; the
+image must establish the payee. Differences in a caption's formatting or date
+do not prevent inspection.
+
+Check numbers never establish vendor identity or an account assignment, even
+when they are equal or sequential. Rows and historical payees containing only
+check references are excluded from account learning; an identified payee from
+a check image can still support a suggestion. Older account-suggestion caches
+are regenerated when the statement opens under this rule.
 
 An AI account suggestion must cite a single-account journal example and use an
 exact configured account. Ambiguous or split-account history should produce no
 default. The entry form labels the suggestion and its explanation; all fields
 remain editable, and only Save records an entry. Model failures are displayed
 explicitly and allow manual entry. Esc cancels an in-progress request and opens
-the manual entry form.
+the statement for manual review.
 
 ## QuickBooks reconstruction
 

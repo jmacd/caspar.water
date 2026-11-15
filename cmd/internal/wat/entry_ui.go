@@ -124,7 +124,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 		register(button, button.Box, 8+len(entry.Postings), 0, false, nil)
 	}
 	if draft.statement != nil && draft.statement.accountSuggestion != "" {
-		grid.AddItem(tview.NewTextView().SetText(draft.statement.accountSuggestion), 3, 0, false)
+		grid.AddItem(tview.NewTextView().SetTextColor(tuiMutedText).SetText(draft.statement.accountSuggestion), 3, 0, false)
 	}
 	grid.AddItem(inputs, 0, 1, true).
 		AddItem(grid.balance, 2, 0, false).

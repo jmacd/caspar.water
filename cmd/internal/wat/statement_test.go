@@ -487,7 +487,7 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
 	require.NoError(t, os.WriteFile(extractionPath, []byte(strings.Replace(
 		statementJSON,
 		`"description":"POWER CO"`,
-		`"description":"CHECK 1001"`,
+		`"description":"1013"`,
 		1,
 	)), 0600))
 	statement, err := books.LoadStatement(pdf, StatementOptions{Extraction: extractionPath}, nil)
@@ -498,7 +498,8 @@ func TestEnsureStatementCheckPayeesEnrichesOlderCache(t *testing.T) {
  "statement_hash":"`+statement.Hash+`",
  "model":"azure/gpt-5-mini-statements",
  "created_at":"2025-01-02T03:04:05Z",
- "candidates":[2],
+ "version":1,
+ "candidates":[],
  "payees":[]
 }`), 0600))
 	statement, err = books.cachedStatement(statement.Hash)
@@ -649,15 +650,17 @@ func TestStatementCheckPayeeCacheValidation(t *testing.T) {
 }
 
 func TestStatementCheckRowDetection(t *testing.T) {
-	require.True(t, statementRowIsCheck(StatementRow{
-		Date: "2022-03-04", Description: "CHECK 1006", Cents: -321807,
-	}))
-	require.True(t, statementRowIsCheck(StatementRow{
-		Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.07", Cents: -321807,
-	}))
+	for _, description := range []string{
+		"1013", " 1013 ", "#1013", "CHECK 1006", "Cheque No. 1006", "CHK 1006",
+		"1006 03/04/2022 $3,218.07", "1006 03/05/2022 $3,218.08",
+	} {
+		require.True(t, statementRowIsCheck(StatementRow{
+			Date: "2022-03-04", Description: description, Cents: -321807,
+		}), "inspect possible check images without assuming the text extraction is consistent: %s", description)
+	}
 	for _, row := range []StatementRow{
-		{Date: "2022-03-05", Description: "1006 03/04/2022 $3,218.07", Cents: -321807},
-		{Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.08", Cents: -321807},
+		{Date: "2022-03-04", Description: "1013", Cents: 321807},
+		{Date: "2022-03-04", Description: "PGANDE/WEB ONLINE", Cents: -321807},
 		{Date: "2022-03-04", Description: "1006 03/04/2022 $3,218.07", Cents: 321807},
 		{Date: "2022-03-04", Description: "ORDER 1006 03/04/2022 $3,218.07", Cents: -321807},
 	} {

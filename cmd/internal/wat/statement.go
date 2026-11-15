@@ -23,15 +23,17 @@ import (
 var statementParser string
 
 type Statement struct {
-	Hash, Source      string
-	BankAccount       string
-	Period            *StatementPeriod
-	OpeningCents      int64
-	ClosingCents      int64
-	Rows              []StatementRow
-	Warnings          []string
-	checkPayees       map[int]statementCheckPayee
-	checkPayeesLoaded bool
+	Hash, Source             string
+	BankAccount              string
+	Period                   *StatementPeriod
+	OpeningCents             int64
+	ClosingCents             int64
+	Rows                     []StatementRow
+	Warnings                 []string
+	checkPayees              map[int]statementCheckPayee
+	checkPayeesLoaded        bool
+	accountSuggestions       map[int]statementAccountSuggestion
+	accountSuggestionsLoaded bool
 }
 
 type StatementPeriod struct {
@@ -613,6 +615,9 @@ func (b *Books) cachedStatement(hash string) (*Statement, error) {
 	if err := b.loadStatementCheckPayees(statement, dir); err != nil {
 		return nil, err
 	}
+	if err := loadStatementAccountSuggestions(statement, dir); err != nil {
+		return nil, err
+	}
 	return statement, nil
 }
 
@@ -874,6 +879,7 @@ type StatementStatus struct {
 	Suggestion         string
 	QuickBooksEvidence string
 	CheckPayeeEvidence string
+	AIAccountEvidence  string
 }
 
 func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
@@ -920,7 +926,8 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 				statuses[index].PossibleMatch = true
 			}
 			payee, _, _ := strings.Cut(tx.Description, "|")
-			if amount == 0 || (amount < 0) != (row.Cents < 0) ||
+			if !statementAccountHasIdentity(row.Description) ||
+				amount == 0 || (amount < 0) != (row.Cents < 0) ||
 				(transactionTag(tx, "bank-description") != descriptionKey(row.Description) && descriptionKey(payee) != descriptionKey(row.Description)) {
 				continue
 			}
@@ -948,6 +955,9 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 			return nil, err
 		}
 		statuses[index].QuickBooksEvidence = register.hint()
+		if !statuses[index].Recorded && statuses[index].Suggestion == "" && register.Account == "" {
+			statuses[index].AIAccountEvidence = s.accountSuggestions[index].hint()
+		}
 		if suggestion, ok := s.checkPayees[index]; ok {
 			statuses[index].CheckPayeeEvidence = fmt.Sprintf(
 				"AI check image: %s (%.0f%% confidence)",
@@ -1030,16 +1040,32 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	row := s.Rows[index]
-	register, err := b.statementRegisterDefault(row)
+	draft.statement = &statementDraft{statement: s, index: index, bankAccount: s.BankAccount}
+	entry, err := b.statementEntry(s, index, statuses[index], draft.accounts)
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	counteraccount := statuses[index].Suggestion
+	if len(entry.Postings) == 2 && entry.Postings[1].Account == "" {
+		suggestion := s.accountSuggestions[index]
+		if suggestion.Account != "" && !slices.Contains(draft.accounts, suggestion.Account) {
+			return nil, Entry{}, fmt.Errorf("cached AI suggestion references undeclared account %q", suggestion.Account)
+		}
+		entry.Postings[1].Account = suggestion.Account
+		draft.statement.accountSuggestion = suggestion.hint()
+	}
+	return draft, entry, nil
+}
+
+func (b *Books) statementEntry(s *Statement, index int, status StatementStatus, accounts []string) (Entry, error) {
+	row := s.Rows[index]
+	register, err := b.statementRegisterDefault(row)
+	if err != nil {
+		return Entry{}, err
+	}
+	counteraccount := status.Suggestion
 	if register.Account != "" {
 		counteraccount = register.Account
 	}
-	draft.statement = &statementDraft{statement: s, index: index, bankAccount: s.BankAccount}
 	payee := row.Description
 	suggestion, hasSuggestion := s.checkPayees[index]
 	if hasSuggestion {
@@ -1066,8 +1092,8 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 	if applyInstructions && len(suggestion.Postings) != 0 {
 		postings = []Posting{{s.BankAccount, formatCents(row.Cents)}}
 		for _, posting := range suggestion.Postings {
-			if !slices.Contains(draft.accounts, posting.Account) {
-				return nil, Entry{}, fmt.Errorf(
+			if !slices.Contains(accounts, posting.Account) {
+				return Entry{}, fmt.Errorf(
 					"cached AI split references undeclared account %q",
 					posting.Account,
 				)
@@ -1078,7 +1104,7 @@ func (b *Books) StatementDraft(s *Statement, index int) (*Draft, Entry, error) {
 	entry := Entry{Date: row.Date, Payee: payee, Description: description, Reference: reference, Source: s.Source,
 		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
 		Postings: postings}
-	return draft, entry, nil
+	return entry, nil
 }
 
 func (d *Draft) checkStatement(tx journalTransaction) error {

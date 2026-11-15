@@ -17,6 +17,55 @@ type terminalFrame struct {
 	x, y  int
 }
 
+func assertMutedListExplanation(t *testing.T, list *tview.List, primary, secondary string) {
+	t.Helper()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	t.Cleanup(screen.Fini)
+	screen.SetSize(120, 24)
+	list.SetRect(0, 0, 120, 24)
+	selected := list.GetCurrentItem()
+	list.SetCurrentItem(list.GetItemCount() - 1)
+	list.Draw(screen)
+	list.SetCurrentItem(selected)
+	colors := make(map[string]tcell.Color)
+	for y := 0; y < 24; y++ {
+		var line strings.Builder
+		for x := 0; x < 120; x++ {
+			r, _, _, _ := screen.GetContent(x, y)
+			line.WriteRune(r)
+		}
+		for _, text := range []string{primary, secondary} {
+			if index := strings.Index(line.String(), text); index >= 0 {
+				x := len([]rune(line.String()[:index]))
+				_, _, style, _ := screen.GetContent(x, y)
+				colors[text], _, _ = style.Decompose()
+			}
+		}
+	}
+	require.Contains(t, colors, primary)
+	require.Contains(t, colors, secondary)
+	brightness := func(color tcell.Color) float64 {
+		r, g, b := color.RGB()
+		return 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
+	}
+	require.Less(t, brightness(colors[secondary]), brightness(colors[primary]),
+		"explanatory text should render dimmer than primary text")
+}
+
+func TestTerminalSecondaryTextAcrossPages(t *testing.T) {
+	styles := tview.Styles
+	applyTUITheme()
+	t.Cleanup(func() { tview.Styles = styles })
+	ui := &terminal{app: tview.NewApplication(), books: &Books{}}
+	ui.menu()
+	assertMutedListExplanation(t, ui.app.GetFocus().(*tview.List),
+		"Record a transaction", "Balanced postings with a live balance")
+	ui.quickBooksMappingAccount(&quickBooksMappingReview{}, "Utilities")
+	assertMutedListExplanation(t, ui.app.GetFocus().(*tview.List),
+		"UNRESOLVED", "Do not permit a deterministic account mapping")
+}
+
 func TestTerminalRecordReviewAndCancel(t *testing.T) {
 	books, _ := fixture(t, "; original text\n")
 	t.Setenv("VISUAL", helperEditor(t, books))
