@@ -28,8 +28,8 @@ spec:
     patterns:
       source: "jsonlogs:///analytics/raw/beacons*.log"
     locality:
-      type: timestamp-local
-      event_time: timestamp
+      # Rounding to seconds is not timestamp-preserving.
+      type: global
     query: >-
       SELECT
         to_timestamp_seconds(CAST(floor(CAST(ts AS DOUBLE)) AS BIGINT)) AS timestamp,
