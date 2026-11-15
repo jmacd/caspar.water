@@ -290,6 +290,10 @@ spec:
       - name: "limiters"
         factory: "sql-derived-series"
         config:
+          # Requires the restricted exact-timestamp aggregation contract.
+          locality:
+            type: timestamp-grouped
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/limits.jsonl"
           query: >-
