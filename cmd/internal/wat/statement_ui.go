@@ -2,6 +2,7 @@ package wat
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -102,7 +103,7 @@ func (ui *terminal) openStatementFromBrowser(statement *Statement) {
 		ui.extractCachedStatementPayees(statement)
 		return
 	}
-	ui.showStatementFromBrowser(statement)
+	ui.prepareStatementAccounts(statement, func() { ui.showStatementFromBrowser(statement) })
 }
 
 func (ui *terminal) showStatementFromBrowser(statement *Statement) {
@@ -143,11 +144,11 @@ func (ui *terminal) extractCachedStatementPayees(statement *Statement) {
 						}
 						detail += err.Error() + "\n\nThe statement remains available without AI payee defaults."
 						ui.message(" Check payee extraction failed ", detail, func() {
-							ui.showStatementFromBrowser(statement)
+							ui.prepareStatementAccounts(statement, func() { ui.showStatementFromBrowser(statement) })
 						})
 						return
 					}
-					ui.showStatementFromBrowser(statement)
+					ui.openStatementFromBrowser(statement)
 				})
 				return
 			case now := <-ticker.C:
@@ -268,6 +269,9 @@ func (ui *terminal) statementList() {
 		if status.QuickBooksEvidence != "" {
 			hints = append(hints, status.QuickBooksEvidence)
 		}
+		if status.AIAccountEvidence != "" {
+			hints = append(hints, status.AIAccountEvidence)
+		}
 		if status.Suggestion != "" {
 			hints = append(hints, "Learned account: "+status.Suggestion)
 		}
@@ -276,7 +280,7 @@ func (ui *terminal) statementList() {
 			hint = "No exact register match or learned account"
 		}
 		if status.Recorded {
-			hint = "Enter to revise the existing entry (working journal only)"
+			hint = "Enter to revise"
 		}
 		if checkpoint != nil {
 			label = "RECONCILED"
@@ -340,6 +344,22 @@ func (ui *terminal) statementList() {
 			},
 		)
 		footer += " | u Reopen"
+	}
+	if checkpoint == nil && recorded < len(statuses) && ui.books.statementAccountAIConfigured() {
+		list.AddItem("Re-run AI suggestions", "Read check images again, then refresh unmatched accounts", 'a', func() {
+			modal := themedModal().
+				SetText("Re-run check payee recognition and account suggestions?\n\nThis sends statement images and relevant journal examples to the configured model. Saved transactions and original statement data will not change.").
+				AddButtons([]string{"Cancel", "Re-run"})
+			modal.SetDoneFunc(func(index int, _ string) {
+				if index == 1 {
+					ui.refreshStatementSuggestions()
+				} else {
+					ui.statementList()
+				}
+			})
+			ui.app.SetRoot(modal, true).SetFocus(modal)
+		})
+		footer += " | a Re-run AI"
 	}
 	list.AddItem("Statement notices / source", "Extraction warnings and PDF location; balance checks are not proof of reconciliation", 'i', func() {
 		period := "Statement dates unavailable"
@@ -444,4 +464,77 @@ func (ui *terminal) statementOpen(index int) {
 		return
 	}
 	open()
+}
+
+func (ui *terminal) refreshStatementSuggestions() {
+	statement := ui.statement
+	prepared := *statement
+	status := tview.NewTextView().SetText(
+		"Re-reading check images, then refreshing account suggestions for unmatched rows.\n\nNo journal entries or original statement data will be changed.")
+	ui.screen("Re-run AI suggestions", status, "Inference in progress")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+		defer cancel()
+		err := ui.books.RefreshStatementSuggestions(ctx, &prepared, nil)
+		ui.app.QueueUpdateDraw(func() {
+			statement.checkPayees = prepared.checkPayees
+			statement.checkPayeesLoaded = prepared.checkPayeesLoaded
+			statement.accountSuggestions = prepared.accountSuggestions
+			statement.accountSuggestionsLoaded = prepared.accountSuggestionsLoaded
+			if err != nil {
+				ui.message(" AI refresh failed ", err.Error()+"\n\nCheck payees may have refreshed before account inference failed. Saved transactions are unchanged.", ui.statementList)
+				return
+			}
+			ui.statementList()
+		})
+	}()
+}
+
+func (ui *terminal) prepareStatementAccounts(statement *Statement, open func()) {
+	if statement.accountSuggestionsLoaded || !ui.books.statementAccountAIConfigured() {
+		open()
+		return
+	}
+	checkpoint, err := ui.books.loadCheckpoint(statement)
+	if err != nil {
+		ui.message(" Cannot open statement ", err.Error(), ui.menu)
+		return
+	}
+	if checkpoint != nil {
+		open()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	cancelled := false
+	status := tview.NewTextView().SetText(fmt.Sprintf(
+		"Preparing account suggestions for the complete statement with model %s.\n\nThe configured endpoint receives unmatched rows, declared payees and accounts, and same-bank, same-direction journal examples.\nSuggestions are saved with the statement so transaction entry needs no model calls. No journal entries will be written.",
+		ui.books.Config.Statement.Model,
+	))
+	status.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			cancelled = true
+			cancel()
+			open()
+			return nil
+		}
+		return event
+	})
+	ui.screen("AI account suggestions", status, "Esc Cancel and review statement manually")
+	prepared := *statement
+	go func() {
+		defer cancel()
+		err := ui.books.EnsureStatementAccountSuggestions(ctx, &prepared)
+		ui.app.QueueUpdateDraw(func() {
+			if cancelled {
+				return
+			}
+			if err != nil {
+				ui.message(" AI account suggestions failed ", err.Error()+"\n\nNo AI account defaults were applied. Continue to review the statement manually.", open)
+				return
+			}
+			statement.accountSuggestions = prepared.accountSuggestions
+			statement.accountSuggestionsLoaded = prepared.accountSuggestionsLoaded
+			open()
+		})
+	}()
 }

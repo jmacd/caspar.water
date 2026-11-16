@@ -1,9 +1,13 @@
 package wat
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +17,9 @@ import (
 )
 
 func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
+	styles := tview.Styles
+	applyTUITheme()
+	t.Cleanup(func() { tview.Styles = styles })
 	books, statement, pdf := statementFixture(t)
 	draft, entry, err := books.StatementDraft(statement, 0)
 	require.NoError(t, err)
@@ -32,7 +39,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 		list.InputHandler()(tcell.NewEventKey(key, r, tcell.ModNone), func(tview.Primitive) {})
 	}
 	ui.menu()
-	press(tcell.KeyRune, '5')
+	press(tcell.KeyRune, '1')
 	list := ui.app.GetFocus().(*tview.List)
 	require.Equal(t, 2, list.GetItemCount())
 	label, source := list.GetItemText(0)
@@ -45,10 +52,12 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	press(tcell.KeyEnter, 0)
 	require.Equal(t, statement, ui.statement)
 	list = ui.app.GetFocus().(*tview.List)
-	label, _ = list.GetItemText(0)
+	label, hint := list.GetItemText(0)
 	require.Contains(t, label, "RECORDED")
+	require.Equal(t, "Enter to revise", hint)
 	label, _ = list.GetItemText(1)
 	require.Contains(t, label, "PENDING")
+	assertMutedListExplanation(t, list, "RECORDED |", "Enter to revise")
 	press(tcell.KeyEnter, 0)
 	account, ok := ui.app.GetFocus().(*tview.InputField)
 	require.True(t, ok, "recorded rows must reopen in the existing revision form")
@@ -58,7 +67,7 @@ func TestBankStatementsMenuResumesRecordedRows(t *testing.T) {
 	require.Nil(t, ui.statement, "return from the browser must restore the previous active statement")
 	press(tcell.KeyEscape, 0)
 	list = ui.app.GetFocus().(*tview.List)
-	label, _ = list.GetItemText(4)
+	label, _ = list.GetItemText(0)
 	require.Equal(t, "Bank statements", label)
 	require.Equal(t, saved, read(t, journal), "opening and navigating must not duplicate entries")
 }
@@ -149,7 +158,7 @@ func TestBankStatementsMenuEmptyAndInvalidCache(t *testing.T) {
 		books, _ := fixture(t, "")
 		ui := &terminal{app: tview.NewApplication(), books: books}
 		ui.menu()
-		ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, '5', tcell.ModNone), func(tview.Primitive) {})
+		ui.app.GetFocus().(*tview.List).InputHandler()(tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModNone), func(tview.Primitive) {})
 		button, ok := ui.app.GetFocus().(*tview.Button)
 		require.True(t, ok)
 		require.Equal(t, "OK", button.GetLabel())
@@ -356,6 +365,187 @@ func TestStatementTerminalSaveAndLearnNext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal did not exit")
 	}
+}
+
+func TestStatementTerminalAIAccountFallback(t *testing.T) {
+	const knownVendor = `{"suggestions":[{"row":3,"account":"Expense:615.000:Utility","example":1,` +
+		`"explanation":"PGANDE is PG&E with the payment amount appended."},` +
+		`{"row":4,"account":"Expense:615.000:Utility","example":1,"explanation":"Same vendor."}]}`
+	for _, test := range []struct {
+		name, content, wantText, wantAccount string
+		fail, cancel, direct, refresh        bool
+	}{
+		{
+			name:     "suggestion",
+			content:  knownVendor,
+			wantText: "AI suggestion: Expense:615.000:Utility", wantAccount: "Expense:615.000:Utility",
+		},
+		{
+			name: "direct statement", direct: true, content: knownVendor,
+			wantText: "AI suggestion: Expense:615.000:Utility", wantAccount: "Expense:615.000:Utility",
+		},
+		{
+			name: "explicit refresh", refresh: true, content: knownVendor,
+			wantText: "AI suggestion: Expense:615.000:Utility", wantAccount: "Expense:615.000:Utility",
+		},
+		{
+			name: "abstention", content: `{"suggestions":[{"row":3,"account":"","example":0,"explanation":"Vendor is ambiguous."},{"row":4,"account":"","example":0,"explanation":"Vendor is ambiguous."}]}`,
+			wantText: "no confident account match",
+		},
+		{name: "failure", fail: true, wantText: "AI account suggestions failed"},
+		{name: "cancel", cancel: true, wantText: "No exact register match or learned account"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			books, statement := statementAccountFixture(t)
+			journal := bankJournal(t, books, statement.BankAccount)
+			saved := read(t, journal)
+			started, release := make(chan struct{}), make(chan struct{})
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if requests.Add(1) == 1 {
+					close(started)
+				}
+				if test.cancel {
+					select {
+					case <-request.Context().Done():
+					case <-release:
+					}
+					return
+				}
+				if test.fail {
+					http.Error(writer, "model unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				require.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
+					"message": chatMessage{Role: "assistant", Content: test.content},
+				}))
+			}))
+			t.Cleanup(func() {
+				close(release)
+				server.Close()
+			})
+			books.Config.Statement = StatementConfig{APIBase: server.URL, Model: "ollama/test-model"}
+			app := tview.NewApplication()
+			screen := tcell.NewSimulationScreen("UTF-8")
+			app.SetScreen(screen)
+			screen.SetSize(140, 40)
+			ui := &terminal{app: app, books: books, statement: statement}
+			frames := make(chan string, 100)
+			app.SetAfterDrawFunc(func(_ tcell.Screen) {
+				var text strings.Builder
+				for y := 0; y < 40; y++ {
+					for x := 0; x < 140; x++ {
+						r, _, _, _ := screen.GetContent(x, y)
+						text.WriteRune(r)
+					}
+					text.WriteByte('\n')
+				}
+				select {
+				case frames <- text.String():
+				default:
+				}
+			})
+			if test.direct {
+				ui.prepareStatementAccounts(statement, ui.statementList)
+			} else {
+				ui.openStatementFromBrowser(statement)
+			}
+			done := make(chan error, 1)
+			go func() { done <- app.Run() }()
+			t.Cleanup(func() {
+				app.Stop()
+				select {
+				case err := <-done:
+					require.NoError(t, err)
+				case <-time.After(5 * time.Second):
+					t.Error("terminal did not exit")
+				}
+			})
+			waitFor := func(text string) string {
+				t.Helper()
+				timer := time.NewTimer(5 * time.Second)
+				defer timer.Stop()
+				for {
+					select {
+					case current := <-frames:
+						if strings.Contains(current, text) {
+							return current
+						}
+					case <-timer.C:
+						t.Fatalf("terminal did not show %q", text)
+						return ""
+					}
+				}
+			}
+			if test.cancel {
+				waitFor("Preparing account suggestions for the complete statement")
+				select {
+				case <-started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("model request did not start")
+				}
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+			}
+			current := waitFor(test.wantText)
+			if test.fail {
+				require.Contains(t, current, "503")
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+				waitFor("No exact register match or learned account")
+			}
+			if test.refresh {
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModNone))
+				waitFor("Re-run check payee recognition")
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+				app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+				waitFor("Re-reading check images")
+				waitFor(test.wantText)
+			}
+			app.QueueUpdate(func() { ui.app.GetFocus().(*tview.List).SetCurrentItem(2) })
+			app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+			waitFor("Statement row 3/4")
+			var focused *tview.InputField
+			var account string
+			app.QueueUpdate(func() {
+				focused, _ = app.GetFocus().(*tview.InputField)
+				if focused != nil {
+					account = focused.GetText()
+				}
+			})
+			require.NotNil(t, focused)
+			require.Equal(t, test.wantAccount, account)
+			app.QueueEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+			waitFor("Press Esc again to discard")
+			app.QueueEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
+			waitFor("PENDING")
+			app.QueueUpdate(func() { ui.app.GetFocus().(*tview.List).SetCurrentItem(3) })
+			app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+			waitFor("Statement row 4/4")
+			app.QueueUpdate(func() {
+				account = ui.app.GetFocus().(*tview.InputField).GetText()
+			})
+			require.Equal(t, test.wantAccount, account)
+			expectedRequests := int32(1)
+			if test.refresh {
+				expectedRequests++
+			}
+			require.Equal(t, expectedRequests, requests.Load(), "transaction navigation must never perform inference")
+			require.Equal(t, saved, read(t, journal), "suggestions, failures and cancellation must never save an entry")
+		})
+	}
+}
+
+func TestStatementTerminalAIAccountPreservesExistingDefault(t *testing.T) {
+	books, statement := statementAccountFixture(t)
+	statement.Rows[2].Description = statement.Rows[1].Description
+	statement.accountSuggestions = map[int]statementAccountSuggestion{
+		2: {Account: "Equity:218.000:Owner", Explanation: "Older cached guess."},
+	}
+	books.Config.Statement = StatementConfig{APIBase: "http://invalid.test", Model: "ollama/test"}
+	ui := &terminal{app: tview.NewApplication(), books: books, statement: statement}
+	ui.statementOpen(2)
+	input, ok := ui.app.GetFocus().(*tview.InputField)
+	require.True(t, ok, "a learned default must open directly without calling the model")
+	require.Equal(t, "Expense:615.000:Utility", input.GetText())
 }
 
 func TestStatementBatchAdvanceRequiresRecordedRows(t *testing.T) {

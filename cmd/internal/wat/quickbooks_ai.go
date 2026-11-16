@@ -304,7 +304,7 @@ func (b *Books) quickBooksCompletionMessages(
 	ctx context.Context,
 	messages []chatMessage,
 ) (quickBooksAIResponse, error) {
-	settings, err := configuredQuickBooksAI(b.Config.Statement)
+	settings, err := configuredStatementChat(b.Config.Statement)
 	if err != nil {
 		return quickBooksAIResponse{}, err
 	}
@@ -330,7 +330,7 @@ func (b *Books) quickBooksCompletionMessages(
 	return response, nil
 }
 
-type quickBooksAISettings struct {
+type statementChatSettings struct {
 	provider   string
 	model      string
 	apiBase    *url.URL
@@ -338,7 +338,7 @@ type quickBooksAISettings struct {
 	token      string
 }
 
-func configuredQuickBooksAI(config StatementConfig) (quickBooksAISettings, error) {
+func configuredStatementChat(config StatementConfig) (statementChatSettings, error) {
 	apiBase := strings.TrimSpace(config.APIBase)
 	model := strings.TrimSpace(config.Model)
 	if apiBase == "" && strings.TrimSpace(config.OllamaURL) != "" {
@@ -349,23 +349,23 @@ func configuredQuickBooksAI(config StatementConfig) (quickBooksAISettings, error
 	}
 	provider, providerModel, ok := strings.Cut(model, "/")
 	if apiBase == "" || !ok || providerModel == "" {
-		return quickBooksAISettings{}, fmt.Errorf(
+		return statementChatSettings{}, fmt.Errorf(
 			"configure statement.api_base and a provider-prefixed statement.model",
 		)
 	}
 	if provider != "ollama" && provider != "azure" {
-		return quickBooksAISettings{}, fmt.Errorf(
+		return statementChatSettings{}, fmt.Errorf(
 			"statement.model provider must be ollama or azure",
 		)
 	}
 	base, err := url.Parse(apiBase)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") ||
 		base.Hostname() == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
-		return quickBooksAISettings{}, fmt.Errorf(
+		return statementChatSettings{}, fmt.Errorf(
 			"statement.api_base must be an HTTP(S) API base URL",
 		)
 	}
-	settings := quickBooksAISettings{
+	settings := statementChatSettings{
 		provider: provider, model: providerModel, apiBase: base,
 		apiVersion: strings.TrimSpace(config.APIVersion),
 	}
@@ -374,32 +374,32 @@ func configuredQuickBooksAI(config StatementConfig) (quickBooksAISettings, error
 			(!strings.HasSuffix(base.Hostname(), ".openai.azure.com") &&
 				!strings.HasSuffix(base.Hostname(), ".cognitiveservices.azure.com")) ||
 			(base.Path != "" && base.Path != "/") {
-			return quickBooksAISettings{}, fmt.Errorf(
+			return statementChatSettings{}, fmt.Errorf(
 				"Azure statement.api_base must use an https://*.openai.azure.com or " +
 					"https://*.cognitiveservices.azure.com base URL",
 			)
 		}
 		if settings.apiVersion == "" {
-			return quickBooksAISettings{}, fmt.Errorf(
+			return statementChatSettings{}, fmt.Errorf(
 				"statement.api_version is required for Azure",
 			)
 		}
 		if !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(providerModel) {
-			return quickBooksAISettings{}, fmt.Errorf(
+			return statementChatSettings{}, fmt.Errorf(
 				"Azure statement.model deployment contains unsupported characters",
 			)
 		}
 		settings.token = strings.TrimSpace(os.Getenv("AZURE_AD_TOKEN"))
 		if settings.token == "" {
-			return quickBooksAISettings{}, fmt.Errorf(
-				"AZURE_AD_TOKEN is required for Azure QuickBooks reconstruction",
+			return statementChatSettings{}, fmt.Errorf(
+				"AZURE_AD_TOKEN is required for Azure model requests",
 			)
 		}
 	}
 	return settings, nil
 }
 
-func (s quickBooksAISettings) complete(
+func (s statementChatSettings) complete(
 	ctx context.Context,
 	messages []chatMessage,
 ) (string, error) {

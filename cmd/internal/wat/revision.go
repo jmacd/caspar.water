@@ -298,9 +298,12 @@ func (b *Books) EditDraft(id string) (*Draft, Entry, error) {
 		if statement.Hash != hash || index > len(statement.Rows) {
 			return nil, Entry{}, fmt.Errorf("recorded entry does not identify a cached statement row")
 		}
-		draft.statement = &statementDraft{statement, index - 1, statement.BankAccount}
+		draft.statement = &statementDraft{statement: statement, index: index - 1, bankAccount: statement.BankAccount}
 		if err := draft.checkStatement(*found); err != nil {
 			return nil, Entry{}, err
+		}
+		if entry.Reference == "" {
+			entry.Reference = statementRowReference(statement.Rows[index-1])
 		}
 		if entry.Source == "" {
 			return nil, Entry{}, fmt.Errorf("recorded entry must retain its source tag before it can be revised")

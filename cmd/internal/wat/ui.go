@@ -27,6 +27,7 @@ type statementQueue struct {
 var (
 	tuiHighlight  = tcell.NewHexColor(0xfcfe54)
 	tuiText       = tcell.NewHexColor(0x54fefc)
+	tuiMutedText  = tcell.NewHexColor(0x8999b8)
 	tuiBackground = tcell.NewHexColor(0x0402ac)
 )
 
@@ -40,7 +41,7 @@ func applyTUITheme() {
 		GraphicsColor:               tuiHighlight,
 		PrimaryTextColor:            tuiText,
 		SecondaryTextColor:          tuiHighlight,
-		TertiaryTextColor:           tuiText,
+		TertiaryTextColor:           tuiMutedText,
 		InverseTextColor:            tuiBackground,
 		ContrastSecondaryTextColor:  tuiHighlight,
 	}
@@ -113,7 +114,7 @@ func runTerminal(books *Books, statement *Statement, queue *statementQueue) erro
 	if statement == nil {
 		ui.menu()
 	} else {
-		ui.statementList()
+		ui.prepareStatementAccounts(statement, ui.statementList)
 	}
 	return ui.app.Run()
 }
@@ -132,7 +133,7 @@ func (ui *terminal) screen(title string, body tview.Primitive, footer string) {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetText(tview.Escape(fmt.Sprintf(" %s | %s\n %s",
 		ui.books.Config.Name, title, ui.books.Config.Journal)))
-	hint := tview.NewTextView().SetText(" " + footer)
+	hint := tview.NewTextView().SetTextColor(tuiMutedText).SetText(" " + footer)
 	frame := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 3, 0, false).
 		AddItem(body, 0, 1, true).
@@ -150,7 +151,7 @@ func (ui *terminal) message(title, text string, back func()) {
 func (ui *terminal) menu() {
 	list := themedList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Water Accounting Terminal ")
-	list.AddItem("Record a transaction", "Balanced postings with a live balance", '1', ui.entry).
+	list.AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '1', ui.bankStatements).
 		AddItem("Review / revise journal", "Browse entries; revise entries in the working journal", '2', ui.journalEntries).
 		AddItem("Reports", "Trial balance, balance sheet, income statement", '3', ui.reports).
 		AddItem("Check books", "Run hledger strict/payee validation and CPUC account-mapping checks", '4', func() {
@@ -160,7 +161,7 @@ func (ui *terminal) menu() {
 			}
 			ui.message(" Check books ", "The books pass hledger strict/payee checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
-		AddItem("Bank statements", "Extract one pending inbox PDF or reopen a statement", '5', ui.bankStatements).
+		AddItem("Record a transaction", "Balanced postings with a live balance", '5', ui.entry).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
 	footer := "Enter Select | 1-5 Shortcut | q Quit"
 	if ui.statement != nil {

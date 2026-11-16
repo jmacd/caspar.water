@@ -211,6 +211,41 @@ func TestRevisionSourceOffsets(t *testing.T) {
 	}
 }
 
+func TestRevisionOffersMissingCheckReferenceWithoutOverwritingSavedValue(t *testing.T) {
+	books, statement, _ := statementFixture(t)
+	path := filepath.Join(books.Config.root, filepath.Dir(statement.Source), "extracted.json")
+	extraction := strings.Replace(statementJSON, `"description":"POWER CO"`, `"description":"1013"`, 1)
+	require.NoError(t, os.WriteFile(path, []byte(extraction), 0600))
+	statement, err := books.cachedStatement(statement.Hash)
+	require.NoError(t, err)
+	draft, entry, err := books.StatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "1013", entry.Reference)
+	entry.Reference = ""
+	entry.Payee = "Electric company"
+	entry.Description = "Existing payment"
+	entry.Postings[1].Account = "Expense:615.000:Utility"
+	_, err = draft.Preview(entry)
+	require.NoError(t, err)
+	_, err = draft.Save()
+	require.NoError(t, err)
+	journal := bankJournal(t, books, statement.BankAccount)
+	original := read(t, journal)
+	revision, revised, err := books.EditStatementDraft(statement, 1)
+	require.NoError(t, err)
+	require.Equal(t, "1013", revised.Reference)
+	require.Equal(t, original, read(t, journal), "opening a revision must not change the journal")
+	revised.Reference = "reviewed-1013"
+	_, err = revision.Preview(revised)
+	require.NoError(t, err)
+	_, err = revision.Save()
+	require.NoError(t, err)
+	_, revised, err = books.EditDraft(draft.id)
+	require.NoError(t, err)
+	require.Equal(t, "reviewed-1013", revised.Reference)
+	require.Equal(t, 1, strings.Count(read(t, journal), "; bank-row: "+statement.key(1)))
+}
+
 func TestRevisionRecordedStatementPreservesBankEvidence(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	draft, entry, err := books.StatementDraft(statement, 1)

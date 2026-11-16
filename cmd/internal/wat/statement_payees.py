@@ -20,8 +20,11 @@ from bankstatementparser.hybrid import ollama_direct_completion
 
 
 CHECK_PAYEE_SYSTEM_PROMPT = """You read check images from a bank statement.
-The user supplies authoritative statement rows that are checks. Match visible
-checks to those rows using check number, date, and amount. Read only the exact
+The user supplies authoritative statement rows that may be checks. Descriptions
+may contain only a check number; dates and amounts are separate fields.
+Confirm that a check image corresponds to each row using its check number,
+date, and amount. Do not assume a row is a check merely because it is a candidate.
+Read only the exact
 payee written on the "Pay to the Order of" line.
 
 The user also supplies declared_payees, a list of accepted canonical spellings.
