@@ -7,6 +7,8 @@ date: "2026-09-12"
 image: "/img/caspar-fort-bragg-fire-stations.svg"
 ---
 
+{{ figure src="/img/caspar-fort-bragg-fire-stations.svg" /}}
+
 Today I learned that [Fort Bragg
 Fire](https://fortbraggfire.specialdistrict.org/) is a special
 district, a Joint Powers Authority between the City of Fort Bragg and
