@@ -38,6 +38,5 @@ County](https://jmacd.github.io/mendo-coast-fire/).
 Then, something interesting. There is no fire station at 42800 Caspar
 Little Lake Road in the data set! Without that station on the map,
 there are 69 existing homes in parts of Caspar that are not within 5
-miles of a fire station. Add that station, and there is only one house
-covered by a new station in Caspar. Is there or isn't there a fire
-station at 42800 Caspar Little Lake Road?
+miles of a fire station. With that station, and there is only one
+house covered by a new station in Caspar. (To be continued.)
