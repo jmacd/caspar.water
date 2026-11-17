@@ -470,6 +470,39 @@ journalctl --user -u "pond-selfmon@<instance>.service" --no-pager \
   | grep "Prefix verification failed" | head -2
 ```
 
+### Repairs that do not need a reset
+
+These failures also repeat on every tick and never repair themselves, but each
+has an in-place fix. Both need a pond binary that includes watertown#224.
+
+**`materialize-series` rejects a retroactive change.** The tick logs
+`materialize-series: target <path> was not advanced ... rejects retroactive
+changes`. A source already copied into the target has changed at or before the
+target's watermark, usually because an input was re-ingested or a row landed
+exactly at the watermark. No target rows or progress were published. Pond cannot
+delete the target, so either:
+
+1. restore the source if the change was a mistake; the next tick then passes, or
+2. retarget: in `config/watershop-selfmon.yaml`, change the `materialize-*`
+   node's `target` to a new path (for example `/metrics/perf.r2.series`), update
+   every consumer of the old path (the rollup `in_pattern`s), and redeploy so
+   `pond apply` updates the node. The next tick rebuilds the new target from the
+   whole source, and rollup caches rebuild once. Expect one slow tick. The old
+   target is left unused.
+
+**`logfile-ingest` refuses a record without a usable timestamp.** The tick logs
+`logfile-ingest: refusing to ingest <host file> into <pond path>: the JSON
+record at byte offset <N> ... has a missing or unusable '<field>' timestamp`.
+Nothing was written and the file's ingest offset did not advance, so later
+records in that file are blocked too. Broken (unparseable) JSON lines are only
+skipped with a warning; this error means a well-formed record lacks its
+timestamp. Inspect it, fix the producer, then correct that record in the host
+file; the next tick ingests from the same offset:
+
+```bash
+tail -c +$((N + 1)) /var/log/watertown-selfmon/<instance>/<name>.jsonl | head -1
+```
+
 ### Production generation cutover
 
 Do not use `reset_instances` for production. Terraform rejects production
