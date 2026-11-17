@@ -17,7 +17,7 @@ type fileState struct {
 type Draft struct {
 	books         *Books
 	files         map[string]fileState
-	chartDefs     map[string]fileState
+	inputs        map[string]fileState
 	accounts      []string
 	accountSearch map[string]string
 	history       completionHistory
@@ -76,6 +76,9 @@ func (b *Books) NewDraft() (*Draft, error) {
 }
 
 func (b *Books) newDraft(target string) (*Draft, error) {
+	if err := b.checkInputs(); err != nil {
+		return nil, err
+	}
 	if !b.Config.writableJournal(target) {
 		return nil, fmt.Errorf("draft target is not a configured writable journal: %s", target)
 	}
@@ -104,6 +107,14 @@ func (b *Books) newDraft(target string) (*Draft, error) {
 			" ",
 		)
 	}
+	if b.registry != nil {
+		for _, service := range b.registry.ServiceAccounts {
+			label := b.registry.serviceLabel(service)
+			for _, account := range service.accounts() {
+				accountSearch[account] += " " + label
+			}
+		}
+	}
 	history, err := b.completionHistory()
 	if err != nil {
 		return nil, err
@@ -114,7 +125,7 @@ func (b *Books) newDraft(target string) (*Draft, error) {
 	}
 	return &Draft{
 		books: b, files: files, accounts: accounts, accountSearch: accountSearch,
-		history: history, id: id, target: target, chartDefs: b.chartStates,
+		history: history, id: id, target: target, inputs: b.inputStates(),
 	}, nil
 }
 
@@ -137,21 +148,11 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 }
 
 func (d *Draft) unchanged() error {
-	for _, path := range d.books.Config.ChartDefs {
-		current, err := readNonsymlinkFileState(path, "account chart definition")
-		if err != nil {
-			return err
-		}
-		original, ok := d.chartDefs[path]
-		if !ok ||
-			current.mode != original.mode ||
-			!bytes.Equal(current.data, original.data) {
-			return fmt.Errorf(
-				"account chart definition changed: %s; cancel and reopen "+
-					"the transaction",
-				path,
-			)
-		}
+	if d.books.registryError != nil {
+		return d.books.registryError
+	}
+	if err := unchangedInputs(d.inputs, d.books.Config.ChartDefs); err != nil {
+		return err
 	}
 	current, err := d.books.snapshot()
 	if err != nil {
@@ -191,7 +192,7 @@ func (d *Draft) validate(data []byte) error {
 	return d.validateBooks(data, true)
 }
 
-func (d *Draft) validateBooks(data []byte, requireDetail bool) (err error) {
+func (d *Draft) withProposedBooks(data []byte, check func(string) error) (err error) {
 	root, err := os.MkdirTemp("", "wat-validate-")
 	if err != nil {
 		return err
@@ -242,33 +243,39 @@ func (d *Draft) validateBooks(data []byte, requireDetail bool) (err error) {
 	if len(included) != len(staged) {
 		return fmt.Errorf("journal include set changed in validation")
 	}
-	if err := d.books.checkSyntax(journal); err != nil {
-		return err
-	}
-	if !requireDetail {
-		return nil
-	}
-	transactions, err := d.books.transactions(journal)
-	if err != nil {
-		return err
-	}
-	var selected []journalTransaction
-	ids := 0
-	for _, tx := range transactions {
-		for _, tag := range tx.Tags {
-			if tag[0] == "id" && tag[1] == d.id {
-				ids++
-				selected = append(selected, tx)
+	return check(journal)
+}
+
+func (d *Draft) validateBooks(data []byte, requireDetail bool) error {
+	return d.withProposedBooks(data, func(journal string) error {
+		if err := d.books.checkSyntax(journal); err != nil {
+			return err
+		}
+		if !requireDetail {
+			return nil
+		}
+		transactions, err := d.books.transactions(journal)
+		if err != nil {
+			return err
+		}
+		var selected []journalTransaction
+		ids := 0
+		for _, tx := range transactions {
+			for _, tag := range tx.Tags {
+				if tag[0] == "id" && tag[1] == d.id {
+					ids++
+					selected = append(selected, tx)
+				}
 			}
 		}
-	}
-	if ids != 1 {
-		return fmt.Errorf("proposed books must contain exactly one entry with ID %q; found %d", d.id, ids)
-	}
-	if err := d.checkStatement(selected[0]); err != nil {
-		return err
-	}
-	return checkPostingAccounts(selected, d.accounts)
+		if ids != 1 {
+			return fmt.Errorf("proposed books must contain exactly one entry with ID %q; found %d", d.id, ids)
+		}
+		if err := d.checkStatement(selected[0]); err != nil {
+			return err
+		}
+		return checkPostingAccounts(selected, d.accounts)
+	})
 }
 
 func writeSynced(path string, data []byte, mode os.FileMode) (err error) {
@@ -290,74 +297,78 @@ func (d *Draft) Save() (backup string, err error) {
 	if d.saved || d.text == "" {
 		return "", fmt.Errorf("preview an unsaved transaction before saving")
 	}
-	target := d.target
+	backup, d.saved, err = saveSingleFile(d.target, d.files[d.target], d.proposed(), d.unchanged, func() error {
+		return d.validate(d.proposed())
+	})
+	return backup, err
+}
+
+func saveSingleFile(target string, state fileState, data []byte, unchanged, validate func() error) (backup string, saved bool, err error) {
 	lockPath := target + ".wat-lock"
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return "", fmt.Errorf("acquire journal lock (another wat writer or a stale lock): %w", err)
+		return "", false, fmt.Errorf("acquire file lock (another wat writer or a stale lock): %w", err)
 	}
 	if err := lock.Close(); err != nil {
-		return "", errors.Join(err, os.Remove(lockPath))
+		return "", false, errors.Join(err, os.Remove(lockPath))
 	}
 	defer func() {
 		if removeErr := os.Remove(lockPath); removeErr != nil {
-			if d.saved {
-				removeErr = fmt.Errorf("journal saved, but lock cleanup failed: %w", removeErr)
+			if saved {
+				removeErr = fmt.Errorf("file saved, but lock cleanup failed: %w", removeErr)
 			}
 			err = errors.Join(err, removeErr)
 		}
 	}()
-	if err := d.unchanged(); err != nil {
-		return "", err
+	if err := unchanged(); err != nil {
+		return "", false, err
 	}
-	data := d.proposed()
-	if err := d.validate(data); err != nil {
-		return "", fmt.Errorf("proposed books failed validation: %w", err)
+	if err := validate(); err != nil {
+		return "", false, fmt.Errorf("proposed books failed validation: %w", err)
 	}
 	directory := filepath.Dir(target)
 	temporary, err := os.CreateTemp(directory, ".wat-save-")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	tempPath := temporary.Name()
 	if err := temporary.Close(); err != nil {
-		return "", errors.Join(err, os.Remove(tempPath))
+		return "", false, errors.Join(err, os.Remove(tempPath))
 	}
 	defer func() {
-		if !d.saved {
+		if !saved {
 			err = errors.Join(err, os.Remove(tempPath))
 		}
 	}()
-	state := d.files[target]
 	if err := writeSynced(tempPath, data, state.mode); err != nil {
-		return "", err
+		return "", false, err
 	}
 	previous, err := os.CreateTemp(directory, ".wat-backup-")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	backup = previous.Name()
 	if err := previous.Close(); err != nil {
-		return backup, err
+		return backup, false, err
 	}
 	if err := writeSynced(backup, state.data, 0600); err != nil {
-		return backup, fmt.Errorf("write recovery copy: %w", err)
+		return backup, false, fmt.Errorf("write recovery copy: %w", err)
 	}
-	if err := d.unchanged(); err != nil {
-		return backup, err
+	if err := unchanged(); err != nil {
+		return backup, false, err
 	}
 	if err := os.Rename(tempPath, target); err != nil {
-		return backup, fmt.Errorf("replace journal: %w", err)
+		return backup, false, fmt.Errorf("replace file: %w", err)
 	}
-	d.saved = true
+	saved = true
 	dir, err := os.Open(directory)
 	if err != nil {
-		return backup, fmt.Errorf("journal saved, but directory sync failed: %w", err)
+		return backup, true, fmt.Errorf("file saved, but directory sync failed: %w", err)
 	}
 	syncErr := dir.Sync()
 	closeErr := dir.Close()
 	if err := errors.Join(syncErr, closeErr); err != nil {
-		return backup, fmt.Errorf("journal saved, but directory sync failed: %w", err)
+		return backup, true, fmt.Errorf("file saved, but directory sync failed: %w", err)
 	}
-	return backup, nil
+	return backup, true, nil
 }

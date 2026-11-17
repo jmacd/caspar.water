@@ -187,6 +187,121 @@ remain editable, and only Save records an entry. Model failures are displayed
 explicitly and allow manual entry. Esc cancels an in-progress request and opens
 the statement for manual review.
 
+## Customers and service accounts (direct files)
+
+Customer workflows do not require a Pond. Their authoritative metadata lives in
+one private `registry.yaml`, alongside `wat.yaml`. It contains versioned YAML
+lists named `customers`, `connections`, and `service_accounts`; monetary balances
+remain exclusively in the hledger journals.
+
+Initialize the file, then separately enable it in your workspace configuration:
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml customer init
+```
+
+```yaml
+customer_registry: true
+```
+
+Initialization refuses to overwrite a registry and does not change configuration
+or journals. Once enabled, a missing, malformed, or symlinked registry is an
+error, not an empty customer list. Keep the registry in the private books'
+version-control and backup boundary, never the public application repository.
+
+A **customer** is the responsible party and references a native hledger payee.
+A **connection** is the physical service point. A **service account** links them
+for an explicit date range. IDs are stable (`C-0001`, `CN-0001`, `SA-0001`);
+changing a mailing address does not rename ledger accounts. One customer may
+have several connections. Responsibility periods on one connection cannot
+overlap; `service_through` is inclusive. Historical records remain in the
+registry. This first milestone opens accounts but does not yet automate
+move-out, final billing, or settlement.
+
+Declare a new payee as a separate save, then create the records:
+
+```sh
+wat payee add "Example Customer"
+wat customer add --payee "Example Customer" \
+  --address "100 Example Street" --address "Exampletown, CA 00000"
+wat connection add --name "Example house" --address "100 Example Street"
+wat service open --customer C-0001 --connection CN-0001 --from 2026-07-01
+```
+
+These examples assume `wat` is installed and the workspace is the current
+directory; otherwise use `go run ./cmd/wat --config wat/wat.yaml` as above.
+Use `customer list`, `connection list`, and `service list` to look up IDs.
+`customer edit ID --address ...` updates mailing information; `connection edit`
+updates the name or service address. Names must match exactly and unambiguously,
+or select the record by ID.
+
+Opening service normally creates `Asset:141.000:Customers:SA-0001`. Use
+`--receivable ACCOUNT` only to explicitly adopt an appropriate existing `141`
+account after reviewing its history. Optional `--credit ACCOUNT` and
+`--deposit ACCOUNT` select approved liability accounts; the latter must map to
+CPUC `233`. These options do not choose a prepayment policy or post money.
+Distinct service accounts cannot own overlapping ledger account subtrees.
+Declarations are generated from configured accounts and the registry together;
+do not edit `books/accounts.journal`.
+
+In the TUI, choose **Customers / service accounts (c)** for setup, edits, and
+reports. Address inputs use semicolons to separate address lines. Each F2 saves
+one authoritative file immediately. Cancelling a later step does not undo an
+earlier payee or registry save. Registry saves refresh the derived declarations;
+if that refresh fails, Wat reports that metadata was saved and blocks further
+bookkeeping until restart successfully regenerates the declarations. There is
+no multi-file commit or rollback mechanism. Use one Wat session at a time and
+do not edit the workspace concurrently.
+
+### Allocate an existing deposited payment
+
+Open the original bank-statement row or working journal entry. Focus its
+**nonbank** posting row and press **F3** to choose a service account and accounting
+role. This changes only the account; review the amount and classification before
+F2. Account completion also searches customer names, connection addresses, and
+service IDs. Existing split-posting controls support combined receipts.
+
+For a simple recorded receipt, the CLI provides a preview-first equivalent:
+
+```sh
+wat service allocate TRANSACTION-ID --to SA-0001=100.00
+wat service allocate TRANSACTION-ID --to SA-0001=100.00 --save
+# A combined deposit:
+wat service allocate TRANSACTION-ID --to SA-0001=60.00 --to SA-0002=40.00
+```
+
+The default role is receivable; explicitly select an approved liability with
+`--to SA-0001:credit=100.00` or `--to SA-0001:deposit=100.00`. Every allocation
+must be positive and the sum must equal the original bank receipt. This command
+replaces the receipt's credit counterpostings, not its bank posting, and previews
+the entire revised transaction. Receipts containing debit-side fees or other
+complex splits must use the transaction editor. The original transaction ID,
+statement evidence, and journal location are retained; cash is not posted twice.
+Finished reconciliations stay locked and require the existing explicit reopen
+workflow before revision.
+
+Do not treat a bank deposit as automatically earned revenue or a security
+deposit. Review existing charges before crediting receivables; use an explicitly
+approved liability treatment for advances. No opening balance or missing charge
+is invented by customer setup or allocation.
+
+### Customer statements
+
+```sh
+wat service statement SA-0001 --from 2026-07-01 --as-of 2026-11-16
+wat customer show C-0001 --as-of 2026-11-16
+wat connection show CN-0001 --as-of 2026-11-16
+```
+
+Reports are read-only text, using hledger's opening balances, dated registers,
+and closing balances. The end date is inclusive; the default start is the
+service start (or the as-of date for service not yet begun). Earlier postings
+remain in the opening balance. Customer/connection reports keep each service
+account and liability separate, rather than silently transferring or netting
+balances. A credit balance needs review; neither a zero balance nor this report
+certifies complete billing or final settlement. PDF issuance and final
+settlement workflows are not part of this milestone.
+
 ## QuickBooks reconstruction
 
 `wat quickbooks` generates an editable candidate journal from a directory of

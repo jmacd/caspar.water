@@ -69,7 +69,7 @@ func generatedAccounts(cfg Config) []byte {
 	if len(cfg.BankAccounts) != 0 {
 		text.WriteString("account Bank  ; type: A\n")
 	}
-	for _, account := range cfg.Accounts {
+	for _, account := range cfg.postingAccounts() {
 		fmt.Fprintf(&text, "account %s\n", account)
 	}
 	for _, bank := range cfg.BankAccounts {

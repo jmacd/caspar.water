@@ -162,11 +162,12 @@ func (ui *terminal) menu() {
 			ui.message(" Check books ", "The books pass hledger strict/payee checks and CPUC account-mapping checks.\nThis does not establish bank reconciliation or completeness.", ui.menu)
 		}).
 		AddItem("Record a transaction", "Balanced postings with a live balance", '5', ui.entry).
+		AddItem("Customers / service accounts", "Private file-backed registry and customer statements", 'c', ui.customers).
 		AddItem("Quit", "Leave all saved journal files in place", 'q', ui.app.Stop)
-	footer := "Enter Select | 1-5 Shortcut | q Quit"
+	footer := "Enter Select | 1-5 Shortcut | c Customers | q Quit"
 	if ui.statement != nil {
 		list.AddItem("Continue bank statement", "Return to the current statement review", '6', ui.statementList)
-		footer = "Enter Select | 1-6 Shortcut | q Quit"
+		footer = "Enter Select | 1-6 Shortcut | c Customers | q Quit"
 	}
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
@@ -279,6 +280,22 @@ func (ui *terminal) entryForm(draft *Draft, entry Entry, back func(), focus int)
 		}
 		navigate := form.GetInputCapture()
 		form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyF3 {
+				if focus < 5 || focus >= 5+2*len(entry.Postings) {
+					ui.message(" Service account ", "Focus a nonbank posting row first.", showForm)
+					return nil
+				}
+				index := (focus - 5) / 2
+				if strings.HasPrefix(entry.Postings[index].Account, "Bank:") {
+					ui.message(" Service account ", "Select a counterposting, not the bank posting.", showForm)
+					return nil
+				}
+				ui.chooseServicePosting(draft, func(account string) {
+					entry.Postings[index].Account = account
+					showForm()
+				}, showForm)
+				return nil
+			}
 			if event.Key() == tcell.KeyF4 {
 				ui.edit(draft, entry.journalText(draft.id), showForm)
 				return nil
@@ -295,7 +312,7 @@ func (ui *terminal) entryForm(draft *Draft, entry Entry, back func(), focus int)
 		})
 		target := focus
 		ui.screen(title, form,
-			"Esc Back (confirm discard) | F2 Save | F4 Ledger editor\n Up/Down Move | Tab/Shift-Tab Next/Previous | Ctrl-N/P Suggest | Enter Accept")
+			"Esc Back (confirm discard) | F2 Save | F3 Service account | F4 Ledger editor\n Up/Down Move | Tab/Shift-Tab Next/Previous | Ctrl-N/P Suggest | Enter Accept")
 		ui.app.SetFocus(form.controls[target].primitive)
 	}
 	showForm()

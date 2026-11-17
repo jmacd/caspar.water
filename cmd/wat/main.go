@@ -45,7 +45,8 @@ func command() *cobra.Command {
 					return err
 				}
 			}
-			if cmd.Name() == "config-path" || cmd.Name() == "reopen-reconciliation" {
+			if cmd.Name() == "config-path" || cmd.Name() == "reopen-reconciliation" ||
+				(cmd.Name() == "init" && cmd.Parent().Name() == "customer") {
 				return nil
 			}
 			books, err = wat.Open(cfg)
@@ -266,6 +267,7 @@ func command() *cobra.Command {
 		panic(err)
 	}
 	root.AddCommand(quickBooks)
+	root.AddCommand(customerCommands(func() *wat.Books { return books }, func() wat.Config { return cfg })...)
 	return root
 }
 

@@ -17,6 +17,9 @@ type Books struct {
 	chart                  accountChart
 	chartStates            map[string]fileState
 	quickBooksRegisterYear map[int][]quickBooksRecord
+	registry               *CustomerRegistry
+	registryState          fileState
+	registryError          error
 }
 
 type journalTransaction struct {
@@ -113,7 +116,16 @@ func Open(cfg Config) (*Books, error) {
 		}
 		chartStates[path] = state
 	}
-	for _, name := range cfg.Accounts {
+	var registry *CustomerRegistry
+	var registryState fileState
+	if cfg.CustomerRegistry {
+		registry, registryState, err = loadCustomerRegistry(cfg.Registry, chart)
+		if err != nil {
+			return nil, err
+		}
+		cfg.registryAccounts = registry.accounts()
+	}
+	for _, name := range cfg.postingAccounts() {
 		account, _ := parsePostingAccount(name)
 		if _, err := chart.resolve(account); err != nil {
 			return nil, err
@@ -131,6 +143,7 @@ func Open(cfg Config) (*Books, error) {
 	books := &Books{
 		Config: cfg, binary: binary, chart: chart, chartStates: chartStates,
 		quickBooksRegisterYear: make(map[int][]quickBooksRecord),
+		registry:               registry, registryState: registryState,
 	}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err
@@ -149,6 +162,11 @@ func Open(cfg Config) (*Books, error) {
 	}
 	if err := books.verifyReconciliations(); err != nil {
 		return nil, fmt.Errorf("verify reconciliations: %w", err)
+	}
+	if registry != nil {
+		if err := books.checkCustomerPayees(*registry); err != nil {
+			return nil, err
+		}
 	}
 	return books, nil
 }
@@ -171,14 +189,26 @@ func (b *Books) run(journal string, args ...string) (string, error) {
 }
 
 func (b *Books) Check() error {
-	if err := b.checkSyntax(b.Config.Journal); err != nil {
+	if err := b.checkInputs(); err != nil {
 		return err
 	}
 	accounts, err := b.Accounts()
 	if err != nil {
 		return err
 	}
-	transactions, err := b.transactions(b.Config.Journal)
+	if b.registry != nil {
+		if err := b.checkCustomerPayees(*b.registry); err != nil {
+			return err
+		}
+	}
+	return b.checkJournal(b.Config.Journal, accounts)
+}
+
+func (b *Books) checkJournal(journal string, accounts []string) error {
+	if err := b.checkSyntax(journal); err != nil {
+		return err
+	}
+	transactions, err := b.transactions(journal)
 	if err != nil {
 		return err
 	}
@@ -188,7 +218,7 @@ func (b *Books) Check() error {
 	if err := checkTransactionDescriptions(transactions); err != nil {
 		return err
 	}
-	_, err = b.run(b.Config.Journal, "check", "--strict", "payees")
+	_, err = b.run(journal, "check", "--strict", "payees")
 	return err
 }
 
@@ -259,6 +289,9 @@ func checkPostingAccounts(transactions []journalTransaction, accounts []string) 
 }
 
 func (b *Books) Report(name string) (string, error) {
+	if err := b.checkInputs(); err != nil {
+		return "", err
+	}
 	commands := map[string][]string{
 		"journal":          {"print"},
 		"trial-balance":    {"balance", "--flat", "--no-elide"},

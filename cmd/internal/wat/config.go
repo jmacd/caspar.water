@@ -1,6 +1,7 @@
 package wat
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -38,6 +39,7 @@ type Config struct {
 	ChartDefPaths          []string            `yaml:"chart_defs,omitempty"`
 	ManualJournalPath      string              `yaml:"manual_journal,omitempty"`
 	HistoricalJournalPaths []string            `yaml:"historical_journals,omitempty"`
+	CustomerRegistry       bool                `yaml:"customer_registry,omitempty"`
 	Statement              StatementConfig     `yaml:"statement"`
 	Journal                string              `yaml:"-"`
 	ChartDefs              []string            `yaml:"-"`
@@ -47,7 +49,11 @@ type Config struct {
 	HistoricalJournals     []string            `yaml:"-"`
 	Sources                string              `yaml:"-"`
 	QuickBooksMappings     string              `yaml:"-"`
+	Registry               string              `yaml:"-"`
 	root                   string
+	configPath             string
+	configState            fileState
+	registryAccounts       []string
 }
 
 type BankAccountConfig struct {
@@ -85,7 +91,15 @@ func LoadConfig(path string) (Config, error) {
 		return cfg, fmt.Errorf("open configuration: %w", err)
 	}
 	defer file.Close()
-	decoder := yaml.NewDecoder(file)
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return cfg, fmt.Errorf("read configuration: %w", err)
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return cfg, err
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
 		return cfg, fmt.Errorf("decode configuration: %w", err)
@@ -139,6 +153,12 @@ func LoadConfig(path string) (Config, error) {
 	cfg.root, err = filepath.EvalSymlinks(filepath.Dir(absolute))
 	if err != nil {
 		return cfg, fmt.Errorf("resolve configuration directory: %w", err)
+	}
+	cfg.configPath = filepath.Join(cfg.root, filepath.Base(absolute))
+	cfg.configState = fileState{data: data, mode: info.Mode().Perm()}
+	cfg.Registry = filepath.Join(cfg.root, "registry.yaml")
+	if cfg.configPath == cfg.Registry {
+		return cfg, fmt.Errorf("configuration must not use the reserved registry.yaml path")
 	}
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)
@@ -261,6 +281,7 @@ func LoadConfig(path string) (Config, error) {
 			cfg.Payees,
 			cfg.ManualJournal,
 			cfg.QuickBooksMappings,
+			cfg.Registry,
 		},
 		cfg.HistoricalJournals...,
 	)
@@ -280,6 +301,21 @@ func LoadConfig(path string) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func (c Config) postingAccounts() []string {
+	accounts := append([]string(nil), c.Accounts...)
+	seen := make(map[string]bool, len(accounts))
+	for _, account := range accounts {
+		seen[account] = true
+	}
+	for _, account := range c.registryAccounts {
+		if !seen[account] {
+			accounts = append(accounts, account)
+			seen[account] = true
+		}
+	}
+	return accounts
 }
 
 func validStatementTransactionPrompt(prompt string) bool {
