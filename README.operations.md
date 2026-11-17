@@ -479,8 +479,12 @@ has an in-place fix. Both need a pond binary that includes watertown#224.
 `materialize-series: target <path> was not advanced ... rejects retroactive
 changes`. A source already copied into the target has changed at or before the
 target's watermark, usually because an input was re-ingested or a row landed
-exactly at the watermark. No target rows or progress were published. Pond cannot
-delete the target, so either:
+exactly at the watermark. If the message also says `source version(s) were
+removed or replaced`, source rows the target already holds have disappeared.
+The selfmon sources (`/measure/<name>.jsonl`) do not match the archived names
+logfile-ingest gives rotated files, so rotating `${SELFMON_METRICS_DIR}/*.jsonl`
+causes exactly this. Do not rotate those files. No target rows or progress were
+published. Pond cannot delete the target, so either:
 
 1. restore the source if the change was a mistake; the next tick then passes, or
 2. retarget: in `config/watershop-selfmon.yaml`, change the `materialize-*`
