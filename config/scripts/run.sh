@@ -57,6 +57,9 @@ case "${TYPE}" in
     septic)
         ${EXE} "${INSTANCE}" run /etc/ingest
         ;;
+    analytics)
+        "${SCRIPTS}/run-analytics.sh" "${INSTANCE}"
+        ;;
     *-selfmon)
         # Self-monitoring runs natively (no podman): see
         # config/scripts/run-selfmon.sh and pond-selfmon@.service.

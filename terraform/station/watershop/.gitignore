@@ -4,3 +4,4 @@ env/
 timers/
 deploy_key
 deploy_key.pub
+analytics.auto.tfvars

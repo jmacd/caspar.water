@@ -2,7 +2,10 @@
 #
 # Serves the site-staging build directly at the vhost root.
 
+import /etc/caddy/analytics-global.caddy
+
 http://watershop.casparwater.us, http://:80 {
+	import /etc/caddy/analytics-site.caddy
 	# Selfmon dashboard rendered each tick by the watershop-selfmon
 	# pond into /var/www/selfmon/watershop-selfmon/.  handle_path
 	# strips /selfmon so sitegen's base_url=/selfmon/ links resolve.
@@ -21,8 +24,6 @@ http://watershop.casparwater.us, http://:80 {
 		encode zstd gzip
 	}
 
-	root * /home/jmacd/watertown/www/site-staging/current
-
 	# Webserver-style JSON access log to a rolling file under
 	# /var/log/caddy/. Read by the watershop-selfmon pond's
 	# logfile-ingest factory (jsonlogs:// reader).
@@ -34,24 +35,27 @@ http://watershop.casparwater.us, http://:80 {
 		format json
 	}
 
-	file_server {
-		precompressed br gzip
+	handle {
+		root * /home/jmacd/watertown/www/site-staging/current
+		file_server {
+			precompressed br gzip
+		}
+
+		# Extensionless URLs: try path, then path.html, then directory
+		try_files {path} {path}.html {path}/
+
+		# Vendor assets: aggressive caching (content-addressed by sitegen)
+		@vendor path /vendor/* /noyo-harbor/vendor/*
+		header @vendor Cache-Control "public, max-age=31536000, immutable"
+
+		# Everything that isn't a content-addressed vendor asset (HTML pages,
+		# parquet/.series data, including subsites like /noyo-harbor/data/*)
+		# uses content-stable names whose contents change on every build, so
+		# require revalidation (cheap 304 via ETag/Last-Modified) to avoid
+		# serving stale data.
+		@revalidate not path /vendor/* /noyo-harbor/vendor/*
+		header @revalidate Cache-Control "no-cache"
+
+		encode zstd gzip
 	}
-
-	# Extensionless URLs: try path, then path.html, then directory
-	try_files {path} {path}.html {path}/
-
-	# Vendor assets: aggressive caching (content-addressed by sitegen)
-	@vendor path /vendor/* /noyo-harbor/vendor/*
-	header @vendor Cache-Control "public, max-age=31536000, immutable"
-
-	# Everything that isn't a content-addressed vendor asset (HTML pages,
-	# parquet/.series data, including subsites like /noyo-harbor/data/*)
-	# uses content-stable names whose contents change on every build, so
-	# require revalidation (cheap 304 via ETag/Last-Modified) to avoid
-	# serving stale data.
-	@revalidate not path /vendor/* /noyo-harbor/vendor/*
-	header @revalidate Cache-Control "no-cache"
-
-	encode zstd gzip
 }

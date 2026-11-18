@@ -3,7 +3,9 @@ title: Site activity
 layout: data
 ---
 
-# Site activity
+# {{ site_title /}}
+
+[Caspar activity](../caspar/) | [Noyo activity](../noyo/)
 
 Daily reported page views over the last 30 UTC calendar days, colored by
 section of the site. The total height is that day's count, not a running total.
@@ -13,6 +15,8 @@ section of the site. The total height is that day's count, not a running total.
 These are reported page views, not unique visitors or verified human visits.
 Today is partial. Missing days do not establish zero traffic, and observed
 counts do not establish uninterrupted collection.
+If no chart is available, reporting is unavailable or has no observations;
+that does not establish zero traffic.
 
 Sections reflect the current publisher inventory. Unrecognized or retired
 pages count under Other / unclassified without publishing their paths.

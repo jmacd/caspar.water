@@ -99,6 +99,12 @@ variable "deploy_staging" {
   default     = true
 }
 
+variable "staging_analytics_enabled" {
+  description = "Enable staging beacons and one dedicated two-site analytics pond."
+  type        = bool
+  default     = false
+}
+
 variable "deploy_selfmon" {
   description = "Deploy the native watershop self-monitor instance"
   type        = bool

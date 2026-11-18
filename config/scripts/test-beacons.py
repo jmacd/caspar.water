@@ -296,6 +296,100 @@ http://127.0.0.1:{self.port} {{
         self.assertNotEqual(failed.returncode, 0, failed.stdout)
         self.assertIn("Parquet", failed.stderr)
 
+    def test_staging_pond_keeps_sites_separate_and_builds_two_reports(self):
+        pond = Path(os.environ.get("POND_BIN", ROOT / "watertown/target/debug/pond")).resolve()
+        env = {**os.environ, "POND": str(self.work / "analytics"), "RUST_LOG": "warn"}
+
+        def run(*args):
+            result = subprocess.run(
+                [str(pond), *args], env=env, text=True, capture_output=True, timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return result.stdout
+
+        run("init", "--birthplace", "analytics-staging-test")
+        template = (ROOT / "config/analytics/site-pond.yaml.tftpl").read_text()
+        now = time.time()
+        for site, count, base in [("caspar", 2, "/"), ("noyo", 3, "/noyo-harbor/")]:
+            logs = self.work / "logs" / site
+            logs.mkdir(parents=True)
+            event = {"ts": now, "schema_version": 1, "event": "pageview", "status": 204,
+                     "site_id": f"{site}-staging", "page_uri": base}
+            (logs / "beacons.log").write_text(
+                "".join(json.dumps(event) + "\n" for _ in range(count))
+                + json.dumps({**event, "site_id": "wrong-site"}) + "\n"
+            )
+            config = self.work / f"{site}-pond.yaml"
+            config.write_text(template.replace("${site}", site).replace("${title}", site)
+                              .replace("/beacons/", str(self.work / "logs") + "/"))
+            run("apply", "-f", str(config))
+            run("run", f"/etc/ingest-{site}", "push")
+            source = self.work / f"{site}-source"
+            source.mkdir()
+            (source / "index.md").write_text("---\ntitle: Page\n---\nContent.\n")
+            (source / "site.yaml").write_text(
+                f"site: {{title: {site}, base_url: {base}}}\n"
+                "analytics:\n  enabled: true\n"
+                f"  site_id: {site}-staging\n  default_section: {site}\n"
+                f"  endpoint: /_analytics/{site}/view\n"
+                "documentation: {version: 1, source_root: /}\n"
+                "routes:\n  - {name: home, type: static, slug: '', page: /index.md}\n"
+            )
+            published = self.work / f"{site}-published"
+            run("run", "-d", str(source), "host+sitegen:///site.yaml", "--",
+                "build", str(published))
+            inventory = published / "_analytics/pages.parquet"
+            run("copy", inventory.as_uri().replace("file:", "host:"),
+                f"/analytics/{site}/pages.parquet")
+            public = run("cat", f"/analytics/{site}/public", "--format=csv")
+            self.assertIn(f",{site},{count}", public)
+            for private in ["page_uri", "site_id", "wrong-site"]:
+                self.assertNotIn(private, public)
+
+        parent = self.work / "caspar-source"
+        shutil.copytree(self.work / "noyo-source", parent / "noyo")
+        with (parent / "site.yaml").open("a") as config:
+            config.write(
+                "subsites:\n  - {name: noyo, path: /noyo, config: /site.yaml, "
+                "base_url: /noyo-harbor/}\n"
+            )
+        run("run", "-d", str(parent), "host+sitegen:///site.yaml", "--",
+            "build", str(self.work / "caspar-published"))
+        for mount, site in [("", "caspar"), ("noyo-harbor", "noyo")]:
+            catalog = self.work / "caspar-published" / mount / "_analytics/catalog.json"
+            self.assertEqual(json.loads(catalog.read_text())["site_id"], f"{site}-staging")
+
+        run("mkdir", "-p", "/analytics/templates")
+        run("copy", (ROOT / "config/analytics/site/overview.md").as_uri().replace("file:", "host:"),
+            "/analytics/templates/overview.md")
+        for site in ["caspar", "noyo"]:
+            report = self.work / f"{site}-report"
+            run("run", f"/etc/site-{site}", "--", "build", str(report))
+            html = (report / "index.html").read_text()
+            self.assertIn(f"{site} activity", html)
+            self.assertIn('class="top-bar-back" href="/"', html)
+            self.assertIn('href="../caspar/"', html)
+            self.assertIn('href="../noyo/"', html)
+            self.assertIn('class="stacked-area-data"', html)
+            self.assertNotIn("data-watertown-analytics", html)
+            self.assertTrue(list((report / "data").rglob("*.parquet")))
+            unavailable = self.work / f"{site}-unavailable"
+            run("run", f"/etc/site-{site}", "--", "build", str(unavailable), "--quick")
+            unavailable_html = (unavailable / "index.html").read_text()
+            self.assertIn("No reported data available.", unavailable_html)
+            self.assertNotIn('class="stacked-area-data"', unavailable_html)
+            self.assertFalse(list(unavailable.rglob("*.parquet")))
+
+        source = self.work / "caspar-source"
+        (source / "index.md").write_text("---\ntitle: Page\nanalytics: false\n---\nContent.\n")
+        published = self.work / "caspar-published"
+        run("run", "-d", str(source), "host+sitegen:///site.yaml", "--", "build", str(published))
+        run("copy", (published / "_analytics/pages.parquet").as_uri().replace("file:", "host:"),
+            "/analytics/caspar/pages.parquet")
+        self.assertIn(",Other / unclassified,2",
+                      run("cat", "/analytics/caspar/public", "--format=csv"))
+        self.assertIn(",noyo,3", run("cat", "/analytics/noyo/public", "--format=csv"))
+
 
 if __name__ == "__main__":
     unittest.main()

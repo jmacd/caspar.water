@@ -87,4 +87,13 @@ if [ -n "${SITE_BUILD_DIR}" ]; then
     PODMAN_ARGS+=(-v "${SITE_BUILD_DIR}:/www")
 fi
 
+if [ -n "${ANALYTICS_LOG_ROOT:-}" ]; then
+    PODMAN_ARGS+=(-v "${ANALYTICS_LOG_ROOT}:/beacons:ro")
+fi
+if [ -n "${ANALYTICS_SITE_ROOT:-}" ]; then
+    # Mount the resolved build so an atomic site switch cannot mix inventories.
+    PUBLISHED=$(readlink -f "${ANALYTICS_PUBLISHED_DIR:-${ANALYTICS_SITE_ROOT}}")
+    PODMAN_ARGS+=(-v "${PUBLISHED}:/published:ro")
+fi
+
 exec podman "${PODMAN_ARGS[@]}" "${IMAGE}" "$@"

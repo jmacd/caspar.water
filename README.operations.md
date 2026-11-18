@@ -215,6 +215,35 @@ Watertown image has been promoted.
 
 ### Site analytics via Caddy (opt-in)
 
+Watershop staging uses one dedicated `analytics-staging` pond, with independent
+`/analytics/caspar` and `/analytics/noyo` trees. Its ordinary five-minute pond
+timer ingests separate Caddy logs, copies changed Parquet inventories from the
+last successful `site-staging` build, and renders two bounded reports through
+Sitegen at `/analytics/caspar/` and `/analytics/noyo/`. There is no combined
+report, collector server, or feature-owned query cache. This staging arrangement
+renders directly in the owning pond; it needs no additional publishing import.
+
+Enable it with the ignored Watershop `analytics.auto.tfvars` setting
+`staging_analytics_enabled = true`, then plan/apply with
+`-var deploy_production=false -var deploy_selfmon=false`. Terraform renders
+`config/analytics/site-pond.yaml.tftpl` separately for each site's literal paths,
+provisions `pond-analytics-staging-0001` and its MinIO backup bucket, upgrades
+Caddy using a checksum-pinned ARM64 package, and installs the beacon routes.
+Staging copies of the main/Noyo Sitegen configs contain literal opt-in booleans,
+so imported Noyo config does not depend on the publisher's environment.
+The shared source configurations and production instrumentation remain disabled.
+
+Original logs under `/var/log/caddy/beacons/staging/{caspar,noyo}` are retained;
+they are readable by ingestion but outside every web root. No automatic source
+retention or deletion is enabled. Monitor disk usage before extending rollout.
+Only the last three generated report builds are retained. Failed refreshes log
+errors and publish a no-data/unavailable page for the affected site rather than
+republishing stale counts; the main site build and the other report continue.
+The failed timer run remains visible to operators.
+
+The following single-site configurations remain useful for standalone setups
+and integration checks:
+
 The collection path is browser beacon -> dedicated Caddy log -> ordinary pond
 log ingestion -> pond queries. No analytics server, collector inventory, or
 host report-state directory is needed. The checked-in configurations are not
@@ -280,9 +309,9 @@ pond cat /analytics/daily --format=table
 For containers, mount that source directory read-only and set
 `ANALYTICS_LOG_DIR` to its container-visible path. Schedule the existing ingest
 command in the owning pond's periodic workflow; do not ingest or write through
-another pond's imported mount. Site/environment source directories and ponds
-remain separate. No cadence, owning-pond deployment, or timer is installed by
-this configuration.
+another pond's imported mount. Site/environment source directories and datasets
+remain separate; staging uses separate subtrees in one pond as described above.
+These single-site example files do not themselves install a timer or owning pond.
 
 Raw source versions live under `/analytics/raw`, with Caddy's default fractional
 Unix-second `ts` recorded using conservative event-time bounds. `/analytics/views`

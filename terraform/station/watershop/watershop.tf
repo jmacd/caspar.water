@@ -36,6 +36,7 @@ locals {
       azure_mirror   = false
       interval       = "1h"
       boot_delay     = "5min"
+      config_file    = "noyo-staging.yaml"
       extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_GIT_REF=${var.noyo_git_ref}"
     }
     noyo-prod = {
@@ -90,7 +91,17 @@ locals {
       interval       = "3h"
       boot_delay     = "7min"
       email_report   = contains(var.weekly_report_email_instances, "site-staging")
+      config_file    = "site-staging.yaml"
       extra_env      = "WATER_S3_URL=s3://water-staging-0002\nNOYO_S3_URL=s3://noyo-staging-0002\nSEPTIC_S3_URL=s3://septic-staging-0002\nSITE_BASE_URL=/\nGIT_REF=${var.git_ref}\nNOYO_GIT_REF=${var.noyo_git_ref}\nPOND_MEMORY_LIMIT_MB=1024"
+    }
+    analytics-staging = {
+      s3          = local.staging_s3
+      s3_url      = "s3://analytics-staging-0001"
+      volume      = "pond-analytics-staging-0001"
+      interval    = "5min"
+      boot_delay  = "9min"
+      config_file = "analytics-staging.yaml"
+      extra_env   = "ANALYTICS_LOG_ROOT=/var/log/caddy/beacons/staging\nANALYTICS_SITE_ROOT=${local.base_dir}/www/site-staging/current"
     }
     site-prod = {
       s3             = local.no_s3
@@ -131,7 +142,7 @@ locals {
   instance_names = [for name in keys(local.instances) :
     name if(
       (var.deploy_selfmon && lookup(local.instances[name], "selfmon", false)) ||
-      (var.deploy_staging && endswith(name, "-staging")) ||
+      (var.deploy_staging && endswith(name, "-staging") && (name != "analytics-staging" || var.staging_analytics_enabled)) ||
       (var.deploy_production && endswith(name, "-prod"))
     )
   ]
@@ -164,6 +175,47 @@ locals {
     toset(var.reset_instances),
     toset(["noyo-staging", "septic-staging", "water-staging", "site-staging"]),
   )) > 0
+}
+
+resource "local_file" "staging_site_configs" {
+  for_each        = toset(["site", "noyo"])
+  filename        = "${path.module}/dist/${each.key}-staging.yaml"
+  file_permission = "0644"
+  # Subsite configuration is also read as YAML by the publishing pond, so the
+  # opt-in must be a literal boolean, not an executing replica's environment.
+  content = join("\n---\n", [
+    for source in [
+      for text in split("\n---\n", file("${path.module}/../../../config/${each.key}.yaml")) :
+      { text = text, doc = yamldecode(text) }
+    ] :
+    try(source.doc.spec.factory, "") == "sitegen" ? yamlencode(merge(source.doc, {
+      spec = merge(source.doc.spec, {
+        config = merge(source.doc.spec.config, {
+          analytics = merge(source.doc.spec.config.analytics, { enabled = var.staging_analytics_enabled })
+        })
+      })
+    })) : source.text
+  ])
+}
+
+resource "local_file" "analytics_config" {
+  filename        = "${path.module}/dist/analytics-staging.yaml"
+  file_permission = "0644"
+  content = join("\n", concat([
+    for site, title in { caspar = "Caspar Water", noyo = "Noyo Harbor" } :
+    templatefile("${path.module}/../../../config/analytics/site-pond.yaml.tftpl", {
+      site = site, title = title
+    })
+    ], [<<-YAML
+version: v1
+kind: copy
+metadata:
+  path: /analytics/templates/overview.md
+spec:
+  source: host:///config/analytics/site/overview.md
+  overwrite: true
+YAML
+  ]))
 }
 
 # Generate env files locally for upload
@@ -243,6 +295,8 @@ resource "null_resource" "watershop" {
     local_file.env_files,
     local_file.minio_admin_env,
     local_file.timer_files,
+    local_file.analytics_config,
+    local_file.staging_site_configs,
   ]
 
   lifecycle {
@@ -285,13 +339,14 @@ resource "null_resource" "watershop" {
     host  = var.host
   }
 
-  # Clean and create directory structure (preserve podman volumes)
+  # Preserve live configuration for instances excluded from this deployment.
   provisioner "remote-exec" {
     inline = [
-      "rm -rf ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/timers",
-      "rm -f ${local.base_dir}/*.sh",
+      "set -e",
       "mkdir -p ${local.base_dir}/config",
       "mkdir -p ${local.base_dir}/env",
+      "mkdir -p ${local.base_dir}/incoming-env",
+      "chmod 700 ${local.base_dir}/incoming-env",
       "mkdir -p ${local.base_dir}/timers",
       "mkdir -p ${local.base_dir}/state",
       "mkdir -p ${local.base_dir}/www",
@@ -303,6 +358,21 @@ resource "null_resource" "watershop" {
   provisioner "file" {
     source      = "../../../config/"
     destination = "${local.base_dir}/config"
+  }
+
+  provisioner "file" {
+    source      = local_file.analytics_config.filename
+    destination = "${local.base_dir}/config/analytics-staging.yaml"
+  }
+
+  provisioner "file" {
+    source      = local_file.staging_site_configs["site"].filename
+    destination = "${local.base_dir}/config/site-staging.yaml"
+  }
+
+  provisioner "file" {
+    source      = local_file.staging_site_configs["noyo"].filename
+    destination = "${local.base_dir}/config/noyo-staging.yaml"
   }
 
   # Push deploy key for watershop → cloud rsync (site-prod)
@@ -322,7 +392,7 @@ resource "null_resource" "watershop" {
   # Push generated env files
   provisioner "file" {
     source      = "${path.module}/env/"
-    destination = "${local.base_dir}/env"
+    destination = "${local.base_dir}/incoming-env"
   }
 
   # Push generated timer files
@@ -334,11 +404,17 @@ resource "null_resource" "watershop" {
   # Set up systemd and initialize ponds
   provisioner "remote-exec" {
     inline = concat(
+      ["set -e"],
+      [for name in local.instance_names :
+        "install -m 0600 ${local.base_dir}/incoming-env/${name}.env ${local.base_dir}/env/${name}.env"
+      ],
       [
         # Terraform's remote-exec wrapper does not enable fail-fast shell
         # behavior. Without this, a failed pond apply/push can be hidden by
         # later successful commands and the overall apply reports success.
         "set -e",
+        "install -m 0600 ${local.base_dir}/incoming-env/_minio-admin.env ${local.base_dir}/env/_minio-admin.env",
+        "rm -r ${local.base_dir}/incoming-env",
 
         # Ensure user services survive logout
         "sudo loginctl enable-linger ${var.user}",
@@ -368,17 +444,20 @@ resource "null_resource" "watershop" {
         # a reset or hold the write lock. The desired timer state is restored
         # after all ponds and remotes have converged.
         join(" ; ", concat(
+          [":"],
           [for name in local.container_instance_names :
             "systemctl --user stop pond@${name}.timer pond@${name}.service 2>/dev/null || true"
           ],
           [for name in local.selfmon_instance_names :
             "systemctl --user stop pond-selfmon@${name}.timer pond-selfmon@${name}.service 2>/dev/null || true"
           ],
-          [for name in ["site-staging", "site-prod"] :
+          [for name in local.container_instance_names :
             "systemctl --user stop pond-email-report@${name}.timer pond-email-report@${name}.service 2>/dev/null || true"
+            if startswith(name, "site-")
           ],
-          [for name in ["site-staging", "site-prod"] :
+          [for name in local.container_instance_names :
             "systemctl --user stop pond-firstbuild-${name}.timer pond-firstbuild-${name}.service 2>/dev/null || true"
+            if startswith(name, "site-")
           ],
         )),
         # Reap any leaked pond containers belonging to instances we
@@ -397,10 +476,20 @@ resource "null_resource" "watershop" {
           ],
         )),
         # Install both timer styles (pond@*.timer and pond-selfmon@*.timer)
-        "cp ${local.base_dir}/timers/pond@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
-        "cp ${local.base_dir}/timers/pond-selfmon@*.timer ${local.home}/.config/systemd/user/ 2>/dev/null || true",
+        join(" ; ", concat([":"], [for name in local.instance_names :
+          "cp ${local.base_dir}/timers/${lookup(local.instances[name], "selfmon", false) ? "pond-selfmon" : "pond"}@${name}.timer ${local.home}/.config/systemd/user/"
+        ])),
         "systemctl --user daemon-reload",
       ],
+      var.staging_analytics_enabled && var.deploy_staging ? concat(
+        ["${local.base_dir}/config/scripts/install-caddy.sh"],
+        [for site in ["caspar", "noyo"] :
+          "sudo install -d -o caddy -g ${var.user} -m 2750 /var/log/caddy/beacons/staging/${site}"
+        ],
+      ) : [],
+      var.deploy_staging && !var.staging_analytics_enabled
+      ? ["systemctl --user disable --now pond@analytics-staging.timer 2>/dev/null || true; systemctl --user stop pond@analytics-staging.service 2>/dev/null || true"]
+      : [],
       # Install the pinned `oras` client used by update-selfmon.sh to pull
       # the pond .deb OCI artifact.  Only needed where a selfmon instance
       # runs the hourly auto-update timer.
@@ -435,7 +524,7 @@ resource "null_resource" "watershop" {
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/selfmon/${name}"
       ],
       # Per-pond host publication roots for committed-snapshot monitoring.
-      [for name in local.all_configured_names :
+      [for name in local.instance_names :
         "sudo install -d -o ${var.user} -g ${var.user} -m 0755 /var/www/monitor/${name}"
       ],
       # Ensure MinIO buckets exist for all instances that have an s3_url
@@ -522,7 +611,7 @@ resource "null_resource" "watershop" {
       ],
       # Apply containerized instance configs
       [for name in local.container_instance_names :
-        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${replace(replace(name, "-staging", ""), "-prod", "")}.yaml"
+        "${local.base_dir}/config/scripts/pond.sh ${name} apply -f /config/${lookup(local.instances[name], "config_file", "${replace(replace(name, "-staging", ""), "-prod", "")}.yaml")}"
       ],
       # Initialize selfmon instances natively (POND comes from env file).
       # Same idempotent pattern as containerized instances above.
@@ -620,10 +709,11 @@ resource "null_resource" "watershop" {
         : "systemctl --user enable --now pond@${name}.timer")
         if startswith(name, "site-")
       ],
-      [for name in ["site-staging", "site-prod"] :
+      [for name in local.container_instance_names :
         contains(var.weekly_report_email_instances, name) && (!endswith(name, "-prod") || var.activate_production_timers)
         ? "systemctl --user enable --now pond-email-report@${name}.timer"
         : "systemctl --user disable --now pond-email-report@${name}.timer 2>/dev/null || true"
+        if startswith(name, "site-")
       ],
     )
   }
@@ -636,10 +726,16 @@ resource "null_resource" "watershop" {
 
   provisioner "remote-exec" {
     inline = [
+      "set -e",
       "sudo install -d -o caddy -g caddy -m 0755 /var/log/caddy",
+      var.staging_analytics_enabled ? "sudo install -o root -g root -m 0644 ${local.base_dir}/config/caddy/beacons.caddy /etc/caddy/beacons.caddy" : ":",
+      var.staging_analytics_enabled ? "printf '%s\\n' 'import /etc/caddy/beacons.caddy' > /tmp/analytics-global.caddy; printf '%s\\n' 'import analytics-beacons caspar-staging /_analytics/caspar/view /var/log/caddy/beacons/staging/caspar' 'import analytics-beacons noyo-staging /_analytics/noyo/view /var/log/caddy/beacons/staging/noyo' 'handle_path /analytics/* {' 'root * ${local.base_dir}/www/analytics-staging/current' 'header Cache-Control no-cache' 'file_server' '}' > /tmp/analytics-site.caddy" : "printf '' > /tmp/analytics-global.caddy; printf '' > /tmp/analytics-site.caddy",
+      "sudo install -o root -g root -m 0644 /tmp/analytics-global.caddy /etc/caddy/analytics-global.caddy",
+      "sudo install -o root -g root -m 0644 /tmp/analytics-site.caddy /etc/caddy/analytics-site.caddy",
+      "sudo -u caddy caddy validate --config /tmp/Caddyfile --adapter caddyfile",
       "sudo install -o root -g root -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile",
-      "rm /tmp/Caddyfile",
-      "sudo caddy validate --config /etc/caddy/Caddyfile",
+      "rm /tmp/Caddyfile /tmp/analytics-global.caddy /tmp/analytics-site.caddy",
+      "sudo -u caddy caddy validate --config /etc/caddy/Caddyfile",
       "sudo systemctl reload caddy",
     ]
   }
