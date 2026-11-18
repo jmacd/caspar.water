@@ -166,13 +166,26 @@ func customerCommands(getBooks func() *wat.Books, getConfig func() wat.Config) [
 	open.Flags().StringVar(&deposit, "deposit", "", "optional explicitly approved 233 security-deposit account")
 	mustRequireFlags(open, "customer", "connection", "from")
 	service.AddCommand(open)
+	service.AddCommand(serviceLifecycleCommands(getBooks)...)
 
 	for _, root := range []*cobra.Command{customer, connection, service} {
 		var asOf, reportFrom string
+		var issue bool
 		show := &cobra.Command{
 			Use: "show ID", Short: "Show identity, service history, and separate ledger balances",
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if issue {
+					if reportFrom != "" {
+						return fmt.Errorf("issued closing statements use the complete service history; omit --from")
+					}
+					path, err := getBooks().IssueClosingStatement(args[0], asOf)
+					if err != nil {
+						return err
+					}
+					_, err = fmt.Fprintln(cmd.OutOrStdout(), "Issued "+path+". No financial posting.")
+					return err
+				}
 				text, err := getBooks().CustomerReport(root.Name(), args[0], reportFrom, asOf)
 				if err != nil {
 					return err
@@ -183,6 +196,7 @@ func customerCommands(getBooks func() *wat.Books, getConfig func() wat.Config) [
 		}
 		if root == service {
 			show.Aliases = []string{"statement"}
+			show.Flags().BoolVar(&issue, "issue", false, "issue a new immutable closing statement after billing confirmation")
 		}
 		show.Flags().StringVar(&asOf, "as-of", time.Now().Format("2006-01-02"), "inclusive report end date")
 		show.Flags().StringVar(&reportFrom, "from", "", "report start date; defaults to each service start")

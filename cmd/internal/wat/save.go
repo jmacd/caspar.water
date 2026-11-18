@@ -274,6 +274,9 @@ func (d *Draft) validateBooks(data []byte, requireDetail bool) error {
 		if err := d.checkStatement(selected[0]); err != nil {
 			return err
 		}
+		if err := checkServiceTransactions(d.books.registry, selected); err != nil {
+			return err
+		}
 		return checkPostingAccounts(selected, d.accounts)
 	})
 }

@@ -828,7 +828,7 @@ func bindStatementExtraction(data []byte, bankAccount string) ([]byte, error) {
 }
 
 func bankAmount(tx journalTransaction, account string) (int64, error) {
-	total := new(big.Int)
+	var amounts []ledgerAmount
 	for _, posting := range tx.Postings {
 		if posting.Account != account {
 			continue
@@ -836,30 +836,40 @@ func bankAmount(tx journalTransaction, account string) (int64, error) {
 		if posting.Type != "RegularPosting" {
 			return 0, fmt.Errorf("bank posting must be a regular posting")
 		}
-		for _, amount := range posting.Amounts {
-			if amount.Commodity != "$" || amount.Quantity.Places < 0 || amount.Quantity.Places > 1000 {
-				return 0, fmt.Errorf("bank posting must use exact USD amounts")
-			}
-			value, valid := new(big.Int).SetString(amount.Quantity.Mantissa.String(), 10)
-			if !valid {
-				return 0, fmt.Errorf("bank posting has an invalid USD quantity")
-			}
-			scale := amount.Quantity.Places - 2
-			factor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(abs(scale))), nil)
-			if scale > 0 {
-				remainder := new(big.Int)
-				value.QuoRem(value, factor, remainder)
-				if remainder.Sign() != 0 {
-					return 0, fmt.Errorf("bank posting has fractional cents")
-				}
-			} else {
-				value.Mul(value, factor)
-			}
-			total.Add(total, value)
+		amounts = append(amounts, posting.Amounts...)
+	}
+	cents, err := usdAmountsCents(amounts)
+	if err != nil {
+		return 0, fmt.Errorf("bank posting %w", err)
+	}
+	return cents, nil
+}
+
+func usdAmountsCents(amounts []ledgerAmount) (int64, error) {
+	total := new(big.Int)
+	for _, amount := range amounts {
+		if amount.Commodity != "$" || amount.Quantity.Places < 0 || amount.Quantity.Places > 1000 {
+			return 0, fmt.Errorf("must use exact USD amounts")
 		}
+		value, valid := new(big.Int).SetString(amount.Quantity.Mantissa.String(), 10)
+		if !valid {
+			return 0, fmt.Errorf("has an invalid USD quantity")
+		}
+		scale := amount.Quantity.Places - 2
+		factor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(abs(scale))), nil)
+		if scale > 0 {
+			remainder := new(big.Int)
+			value.QuoRem(value, factor, remainder)
+			if remainder.Sign() != 0 {
+				return 0, fmt.Errorf("has fractional cents")
+			}
+		} else {
+			value.Mul(value, factor)
+		}
+		total.Add(total, value)
 	}
 	if !total.IsInt64() {
-		return 0, fmt.Errorf("bank posting exceeds supported USD range")
+		return 0, fmt.Errorf("exceeds supported USD range")
 	}
 	return total.Int64(), nil
 }

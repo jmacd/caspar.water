@@ -153,7 +153,7 @@ func (b *Books) ServiceStatement(id, from, asOf string) (string, error) {
 	}
 	out.WriteString("\nLedger signs: positive receivable = owed to utility; negative liability = owed to customer.\n")
 	out.WriteString("A receivable credit requires review; it is not automatically income, a security deposit, or settlement.\n")
-	out.WriteString("Recorded activity only; this does not establish billing completeness or final settlement.\n")
+	out.WriteString("Ledger activity alone does not establish billing completeness or final settlement.\n")
 	return out.String(), nil
 }
 

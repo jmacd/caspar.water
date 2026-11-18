@@ -62,10 +62,11 @@ func ParseCents(text string) (int64, error) {
 
 func formatCents(cents int64) string {
 	sign := ""
+	magnitude := uint64(cents)
 	if cents < 0 {
-		sign, cents = "-", -cents
+		sign, magnitude = "-", uint64(-(cents+1))+1
 	}
-	return fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
+	return fmt.Sprintf("%s%d.%02d", sign, magnitude/100, magnitude%100)
 }
 
 func singleLine(text string) bool {

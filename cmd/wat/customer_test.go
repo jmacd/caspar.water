@@ -117,4 +117,29 @@ bank_accounts:
 	require.ErrorContains(t, err, "overlaps")
 	_, err = run("customer", "add", "--payee", "Undeclared", "--address", "Somewhere")
 	require.ErrorContains(t, err, "declare payee")
+
+	_, err = run("service", "close", "SA-0001", "--through", "2021-01-31")
+	require.NoError(t, err)
+	output, err = run("service", "settle", "SA-0001", "--as-of", "2021-02-28")
+	require.NoError(t, err)
+	require.Contains(t, output, "NOT SETTLED")
+	require.Contains(t, output, "not been confirmed")
+	_, err = run("service", "statement", "SA-0001", "--as-of", "2021-02-28", "--issue")
+	require.ErrorContains(t, err, "cannot issue")
+	output, err = run("service", "adjust", "SA-0001", "--date", "2021-02-28", "--through", "2021-01-31",
+		"--amount", "-50", "--account", "Income:460.100:Service", "--reference", "Reviewed final service credit")
+	require.NoError(t, err)
+	require.Contains(t, output, "Preview only")
+	_, err = run("service", "adjust", "SA-0001", "--date", "2021-02-28", "--through", "2021-01-31",
+		"--amount", "-50", "--account", "Income:460.100:Service", "--reference", "Reviewed final service credit", "--save")
+	require.NoError(t, err)
+	_, err = run("service", "confirm-billing", "SA-0001", "--through", "2021-01-31",
+		"--date", "2021-02-28", "--review", "Reviewed all service and final credit; no further unbilled service")
+	require.NoError(t, err)
+	output, err = run("service", "settle", "SA-0001", "--as-of", "2021-02-28")
+	require.NoError(t, err)
+	require.Contains(t, output, "SA-0001 as of 2021-02-28: SETTLED")
+	output, err = run("service", "statement", "SA-0001", "--as-of", "2021-02-28", "--issue")
+	require.NoError(t, err)
+	require.Contains(t, output, "statement-0001.txt")
 }

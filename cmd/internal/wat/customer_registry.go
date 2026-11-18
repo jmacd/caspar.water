@@ -32,14 +32,15 @@ type Connection struct {
 }
 
 type ServiceAccount struct {
-	ID                string  `yaml:"id"`
-	Customer          string  `yaml:"customer"`
-	Connection        string  `yaml:"connection"`
-	ServiceFrom       string  `yaml:"service_from"`
-	ServiceThrough    *string `yaml:"service_through"`
-	ReceivableAccount string  `yaml:"receivable_account"`
-	CreditAccount     string  `yaml:"credit_account,omitempty"`
-	DepositAccount    string  `yaml:"deposit_account,omitempty"`
+	ID                string               `yaml:"id"`
+	Customer          string               `yaml:"customer"`
+	Connection        string               `yaml:"connection"`
+	ServiceFrom       string               `yaml:"service_from"`
+	ServiceThrough    *string              `yaml:"service_through"`
+	ReceivableAccount string               `yaml:"receivable_account"`
+	CreditAccount     string               `yaml:"credit_account,omitempty"`
+	DepositAccount    string               `yaml:"deposit_account,omitempty"`
+	FinalBilling      *BillingConfirmation `yaml:"final_billing,omitempty"`
 }
 
 type CustomerRegistry struct {
@@ -225,6 +226,9 @@ func (r CustomerRegistry) validate(chart accountChart) error {
 				return fmt.Errorf("%s: service_through must be a valid date on or after service_from", service.ID)
 			}
 		}
+		if err := service.validateBillingConfirmation(); err != nil {
+			return err
+		}
 		for _, previous := range r.ServiceAccounts[:i] {
 			if previous.Connection == service.Connection &&
 				previous.ServiceFrom <= end &&
@@ -332,6 +336,9 @@ func (r CustomerRegistry) Service(selector string) (ServiceAccount, error) {
 
 func (r CustomerRegistry) serviceLabel(service ServiceAccount) string {
 	parts := []string{service.ID, service.Customer, service.Connection}
+	if service.ServiceThrough != nil {
+		parts = append(parts, "closed through "+*service.ServiceThrough)
+	}
 	for _, customer := range r.Customers {
 		if customer.ID == service.Customer {
 			parts = append(parts, customer.Payee)
@@ -494,8 +501,13 @@ func (d *RegistryDraft) Save() (string, error) {
 	}
 	for _, prior := range b.registry.ServiceAccounts {
 		current, err := d.Registry.Service(prior.ID)
-		if err != nil || !reflect.DeepEqual(current, prior) {
+		identity := current
+		identity.ServiceThrough, identity.FinalBilling = prior.ServiceThrough, prior.FinalBilling
+		if err != nil || !reflect.DeepEqual(identity, prior) {
 			return "", fmt.Errorf("existing service account %s cannot be removed or reassigned", prior.ID)
+		}
+		if prior.ServiceThrough != nil && !reflect.DeepEqual(current.ServiceThrough, prior.ServiceThrough) {
+			return "", fmt.Errorf("service account %s is already closed; cannot change its service end date", prior.ID)
 		}
 	}
 	if err := b.checkCustomerPayees(d.Registry); err != nil {
@@ -517,7 +529,33 @@ func (d *RegistryDraft) Save() (string, error) {
 	}
 	validate := func() error {
 		return d.draft.withProposedBooks(generatedAccounts(cfg), func(journal string) error {
-			return b.checkJournal(journal, accounts)
+			proposed := *b
+			proposed.registry = candidate
+			if err := proposed.checkJournal(journal, accounts); err != nil {
+				return err
+			}
+			transactions, err := proposed.transactions(journal)
+			if err != nil {
+				return err
+			}
+			for _, service := range candidate.ServiceAccounts {
+				prior, _ := b.registry.Service(service.ID)
+				if service.FinalBilling != nil && !reflect.DeepEqual(prior.FinalBilling, service.FinalBilling) {
+					evidence, err := serviceEvidence(service, transactions)
+					if err != nil {
+						return err
+					}
+					if !reflect.DeepEqual(evidence, service.FinalBilling.Evidence) {
+						return fmt.Errorf("%s: billing evidence changed; review and confirm again", service.ID)
+					}
+					for _, tx := range transactions {
+						if service.touches(tx) && tx.Date > service.FinalBilling.ConfirmedOn {
+							return fmt.Errorf("%s: confirmation date precedes recorded activity", service.ID)
+						}
+					}
+				}
+			}
+			return nil
 		})
 	}
 	backup, saved, err := saveSingleFile(cfg.Registry, b.registryState, data, d.draft.unchanged, validate)

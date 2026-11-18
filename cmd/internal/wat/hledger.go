@@ -22,6 +22,16 @@ type Books struct {
 	registryError          error
 }
 
+type ledgerAmount struct {
+	Cost      json.RawMessage `json:"acost"`
+	CostBasis json.RawMessage `json:"acostbasis"`
+	Commodity string          `json:"acommodity"`
+	Quantity  struct {
+		Mantissa json.Number `json:"decimalMantissa"`
+		Places   int         `json:"decimalPlaces"`
+	} `json:"aquantity"`
+}
+
 type journalTransaction struct {
 	Code    string  `json:"tcode"`
 	Status  string  `json:"tstatus"`
@@ -45,15 +55,7 @@ type journalTransaction struct {
 		Original  json.RawMessage `json:"poriginal"`
 		Account   string          `json:"paccount"`
 		Type      string          `json:"ptype"`
-		Amounts   []struct {
-			Cost      json.RawMessage `json:"acost"`
-			CostBasis json.RawMessage `json:"acostbasis"`
-			Commodity string          `json:"acommodity"`
-			Quantity  struct {
-				Mantissa json.Number `json:"decimalMantissa"`
-				Places   int         `json:"decimalPlaces"`
-			} `json:"aquantity"`
-		} `json:"pamount"`
+		Amounts   []ledgerAmount  `json:"pamount"`
 	} `json:"tpostings"`
 }
 
@@ -216,6 +218,9 @@ func (b *Books) checkJournal(journal string, accounts []string) error {
 		return err
 	}
 	if err := checkTransactionDescriptions(transactions); err != nil {
+		return err
+	}
+	if err := checkServiceTransactions(b.registry, transactions); err != nil {
 		return err
 	}
 	_, err = b.run(journal, "check", "--strict", "payees")

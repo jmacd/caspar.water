@@ -1,6 +1,8 @@
 package wat
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,87 @@ import (
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/require"
 )
+
+func TestServiceLifecycleFormsCloseConfirmAndIssue(t *testing.T) {
+	books := customerFixture(t)
+	before := read(t, books.Config.Registry)
+	_, key := customerTestTerminal(t, books, func(ui *terminal) { ui.customerDetails("service", "SA-0001") })
+	typeText := func(text string) {
+		for _, r := range text {
+			key(tcell.KeyRune, r)
+		}
+	}
+	key(tcell.KeyRune, 'c')
+	typeText("2021-01-31")
+	frame := key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "Saved SA-0001")
+	require.NotEqual(t, before, read(t, books.Config.Registry))
+	require.Empty(t, read(t, books.Config.ManualJournal))
+	key(tcell.KeyEnter, 0)
+	// Menu entries: four setup actions, customer, connection, then this service.
+	for i := 0; i < 6; i++ {
+		key(tcell.KeyDown, 0)
+	}
+	key(tcell.KeyEnter, 0)
+	key(tcell.KeyRune, 'b')
+	frame = key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "final billing requires", "empty review must not confirm billing")
+	key(tcell.KeyEnter, 0)
+	key(tcell.KeyTab, 0)
+	key(tcell.KeyTab, 0)
+	typeText("Reviewed closure; no unbilled service or obligations")
+	frame = key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "Saved SA-0001", "failed saves must allow corrected retry")
+	key(tcell.KeyEnter, 0)
+	for i := 0; i < 6; i++ {
+		key(tcell.KeyDown, 0)
+	}
+	key(tcell.KeyEnter, 0)
+	key(tcell.KeyRune, 'r')
+	key(tcell.KeyTab, 0)
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, ": SETTLED")
+	key(tcell.KeyEscape, 0)
+	key(tcell.KeyEscape, 0)
+	key(tcell.KeyRune, 's')
+	for i := 0; i < 3; i++ {
+		key(tcell.KeyTab, 0)
+	}
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Statement issued")
+	require.FileExists(t, filepath.Join(books.Config.Sources, "customer-statements", "SA-0001", "statement-0001.txt"))
+	require.Empty(t, read(t, books.Config.ManualJournal))
+}
+
+func TestServiceAdjustmentFormRequiresPreviewBeforeSave(t *testing.T) {
+	books := customerFixture(t)
+	closeTestService(t, books)
+	_, key := customerTestTerminal(t, books, func(ui *terminal) { ui.serviceTransactionForm("SA-0001", "adjust") })
+	typeText := func(text string) {
+		for _, r := range text {
+			key(tcell.KeyRune, r)
+		}
+	}
+	key(tcell.KeyTab, 0)
+	typeText("10")
+	key(tcell.KeyTab, 0)
+	typeText("Approved final service charge")
+	key(tcell.KeyTab, 0)
+	typeText("2021-01-31")
+	key(tcell.KeyTab, 0)
+	typeText(serviceIncome)
+	key(tcell.KeyTab, 0)
+	frame := key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Preview - NOT SAVED")
+	require.Contains(t, frame.text, "service-through: 2021-01-31")
+	require.Empty(t, read(t, books.Config.ManualJournal))
+	frame = key(tcell.KeyEnter, 0)
+	require.Contains(t, frame.text, "Transaction saved and validated")
+	data, err := os.ReadFile(books.Config.ManualJournal)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "Approved final service charge")
+	require.Equal(t, 1, strings.Count(string(data), "; id:"))
+}
 
 func TestCustomerFormsSaveAndCancelDirectly(t *testing.T) {
 	books := customerFixture(t)

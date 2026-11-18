@@ -215,8 +215,8 @@ for an explicit date range. IDs are stable (`C-0001`, `CN-0001`, `SA-0001`);
 changing a mailing address does not rename ledger accounts. One customer may
 have several connections. Responsibility periods on one connection cannot
 overlap; `service_through` is inclusive. Historical records remain in the
-registry. This first milestone opens accounts but does not yet automate
-move-out, final billing, or settlement.
+registry. Closing ends responsibility, not the associated debt or refund
+obligation. The next occupant always receives a new service account.
 
 Declare a new payee as a separate save, then create the records:
 
@@ -299,8 +299,129 @@ service start (or the as-of date for service not yet begun). Earlier postings
 remain in the opening balance. Customer/connection reports keep each service
 account and liability separate, rather than silently transferring or netting
 balances. A credit balance needs review; neither a zero balance nor this report
-certifies complete billing or final settlement. PDF issuance and final
-settlement workflows are not part of this milestone.
+certifies complete billing or final settlement. Use the explicit lifecycle steps
+below for closing statements; PDF output remains deferred.
+
+### Close service and review settlement
+
+```sh
+wat service close SA-0001 --through 2026-11-16
+wat service settle SA-0001 --as-of 2026-11-16
+```
+
+`close` saves only the inclusive end date in `registry.yaml`. It neither zeros
+balances nor transfers them to a new occupant. A new service account at that
+connection may start the following day. The application does not reopen closed
+service, change a saved end date, or reassign its customer/ledger accounts.
+`settle` is a read-only review, not a financial posting or a stored status flag.
+
+Save any reviewed final charge or credit as a separate journal step:
+
+```sh
+wat service adjust SA-0001 --date 2026-11-17 --through 2026-11-16 \
+  --amount 25.00 --account Income:460.100:Service \
+  --reference "Approved final-charge calculation and service coverage"
+# Inspect the preview, then repeat with --save.
+```
+
+Amounts and counteraccounts are explicit operator decisions: positive amounts
+increase receivables, negative amounts credit them. Wat does not calculate
+proration, interest, vacancy responsibility, or write-offs. The example income
+account must already be declared and appropriate to the approved treatment.
+The adjustment helper cannot create bank movements or transfer customer debt.
+
+Later-posted noncash charges/adjustments require a transaction-level
+`; service-through: YYYY-MM-DD` tag within the closed service period. The helper
+adds it; the ordinary ledger editor can also supply it. Unsupported postclosure
+charges are rejected, including when attempting to close an account with such
+entries already present. Later receipts, actual refunds, and applications
+between that service account's own roles remain possible. Customer postings
+must use exact USD regular postings without commodity costs or separate posting
+dates.
+
+After reviewing all service coverage and saved financial activity, separately
+confirm billing completion:
+
+```sh
+wat service confirm-billing SA-0001 --through 2026-11-16 --date 2026-11-17 \
+  --review "Reviewed full service coverage, final charge and approved policy evidence"
+wat service settle SA-0001 --as-of 2026-11-17
+```
+
+This registry save records the covered end date, review date and explanation,
+plus IDs and SHA-256 digests of the normalized, already-saved transactions
+touching the account. Every related transaction must have a unique ID.
+Confirmation cannot predate closure or recorded account activity. Zero billing
+also requires explicit review; zero balances alone never prove completeness.
+
+The initial implementation deliberately invalidates confirmation after **any**
+added, removed, or revised related transaction, including payments and refunds.
+Reconfirm after separately saving and reviewing those steps. This conservative
+rule avoids inferring which changes affect final billing. It fingerprints ledger
+transactions, not the contents of externally referenced source documents.
+Settlement is derived only when service has ended, confirmation is valid as of
+the requested date, and **each** configured receivable/credit/deposit balance is
+zero. Opposite balances in different roles are not silently netted.
+
+### Apply liabilities and allocate an actual refund
+
+An application needs an explicitly configured liability role, an approved
+reference, sufficient liability, and sufficient outstanding receivable:
+
+```sh
+wat service apply SA-0001 --role deposit --amount 20.00 --date 2026-11-18 \
+  --reference "Approved deposit application; policy/evidence reference"
+# Review, then repeat with --save. Use --role credit for an approved credit liability.
+```
+
+This posts a debit to that liability and a credit to the same service account's
+receivable. It creates no cash entry. Each application is a new transaction;
+do not repeat `--save` unless another application is intended.
+
+A refund due is not a disbursement. First record the actual bank transaction
+through the existing bank-statement/manual workflow, then allocate that recorded
+payment:
+
+```sh
+wat service refund SA-0001 --transaction EXISTING-DISBURSEMENT-ID --role deposit
+# Review, then repeat with --save.
+```
+
+The refund helper revises a simple disbursement with one negative bank posting;
+it preserves the transaction ID, amount/date, journal location and statement
+evidence. It does not append another bank movement, and refuses amounts exceeding
+the selected refundable balance. Select `credit` for a credit liability or
+`receivable` for an explicitly reviewed receivable credit. Use the existing
+transaction editor for complex splits. Finished reconciliations remain locked
+until explicitly reopened. Reconfirm final billing after saved activity.
+
+### Issue a closing statement
+
+```sh
+wat service statement SA-0001 --as-of 2026-11-18 --issue
+```
+
+Issuance requires closed service and valid billing confirmation; debt or a refund
+may still be outstanding and is shown explicitly. It writes a complete,
+read-only text artifact to
+`sources/customer-statements/SA-0001/statement-0001.txt`. Subsequent issues use
+new numbered files and never overwrite an earlier issue. Include this private
+directory in backups and version control.
+
+Each issue snapshots identities and addresses, service/report/issue dates,
+opening and closing balances, recorded activity, derived settlement status,
+billing review, and transaction/source references. Publication happens only
+after the complete file is prepared and journal/registry inputs are rechecked.
+It changes neither journals nor registry. Later address corrections and ledger
+activity cannot alter issued files. The application will not open a viewer.
+
+The TUI service-account detail menu exposes closure, billing confirmation,
+settlement review, reviewed adjustments, liability applications and actual-refund
+allocation. Financial steps require a journal preview before Save. The
+**Statement / history** form has **Issue closing statement**; leave From blank
+to include the complete service history. Registry saves, journal saves and
+document issuance remain separate actions, with no all-or-nothing transaction
+claim. These tools enforce bookkeeping constraints, not tariff approval.
 
 ## QuickBooks reconstruction
 

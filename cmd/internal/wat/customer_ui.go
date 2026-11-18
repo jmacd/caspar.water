@@ -65,6 +65,14 @@ func (ui *terminal) customerDetails(kind, id string) {
 	if kind == "connection" {
 		list.AddItem("Edit connection", "", 'e', func() { ui.connectionForm(id) })
 	}
+	if kind == "service" {
+		list.AddItem("Close service (no money moves)", "", 'c', func() { ui.serviceLifecycleForm(id, "close") }).
+			AddItem("Confirm final billing (separate registry save)", "", 'b', func() { ui.serviceLifecycleForm(id, "confirm-billing") }).
+			AddItem("Review settlement", "", 'r', func() { ui.customerReportForm("settlement", id) }).
+			AddItem("Reviewed final charge / credit", "", 'a', func() { ui.serviceTransactionForm(id, "adjust") }).
+			AddItem("Apply approved deposit / credit", "", 'd', func() { ui.serviceTransactionForm(id, "apply") }).
+			AddItem("Allocate actual recorded refund", "", 'f', func() { ui.serviceTransactionForm(id, "refund") })
+	}
 	list.AddItem("Back", "", 'q', ui.customers)
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
@@ -85,9 +93,17 @@ func addressLines(text string) []string {
 }
 
 func (ui *terminal) registryForm(title string, form *tview.Form, draft *RegistryDraft, prepare func() (string, error)) {
-	original := draft.Registry
+	original, err := encodeRegistry(draft.Registry)
+	if err != nil {
+		ui.message(" Registry ", err.Error(), ui.customers)
+		return
+	}
 	ui.customerSaveForm(title, form, func() (string, bool, error) {
-		draft.Registry = original
+		registry, err := decodeRegistry(original, ui.books.chart)
+		if err != nil {
+			return "", false, err
+		}
+		draft.Registry = *registry
 		id, err := prepare()
 		if err != nil {
 			return "", false, err
@@ -282,26 +298,141 @@ func (ui *terminal) serviceForm() {
 func (ui *terminal) customerReportForm(kind, id string) {
 	asOf, from := time.Now().Format("2006-01-02"), ""
 	form := themedForm().
-		AddInputField("As of (inclusive)", asOf, 12, nil, func(text string) { asOf = text }).
-		AddInputField("From (blank = service start)", from, 12, nil, func(text string) { from = text })
+		AddInputField("As of (inclusive)", asOf, 12, nil, func(text string) { asOf = text })
+	if kind != "settlement" {
+		form.AddInputField("From (blank = service start)", from, 12, nil, func(text string) { from = text })
+	}
 	var show func()
 	show = func() {
 		ui.screen("Statement period", form, "Enter Select | Esc Back")
 		ui.app.SetFocus(form)
 	}
-	back := func() { ui.customerDetails(kind, id) }
+	back := func() {
+		if kind == "settlement" {
+			ui.customerDetails("service", id)
+		} else {
+			ui.customerDetails(kind, id)
+		}
+	}
 	form.AddButton("Show report", func() {
-		text, err := ui.books.CustomerReport(kind, id, from, asOf)
+		var text string
+		var err error
+		if kind == "settlement" {
+			var status ServiceSettlement
+			status, err = ui.books.ServiceSettlement(id, asOf)
+			text = status.String()
+		} else {
+			text, err = ui.books.CustomerReport(kind, id, from, asOf)
+		}
 		if err != nil {
 			ui.message(" Report failed ", err.Error(), show)
 			return
 		}
 		view := tview.NewTextView().SetWrap(false).SetText(text)
-		view.SetBorder(true).SetTitle(" Recorded activity - not final settlement ")
+		view.SetBorder(true).SetTitle(" Recorded activity / settlement review ")
 		view.SetDoneFunc(func(_ tcell.Key) { show() })
 		ui.screen("Customer statement", view, "Arrows/PgUp/PgDn Scroll | Esc Back")
-	}).AddButton("Back", back)
+	})
+	if kind == "service" {
+		form.AddButton("Issue closing statement", func() {
+			if from != "" {
+				ui.message(" Issue statement ", "Clear From to issue the complete service history.", show)
+				return
+			}
+			path, err := ui.books.IssueClosingStatement(id, asOf)
+			if err != nil {
+				ui.message(" Issue statement ", err.Error(), show)
+				return
+			}
+			ui.message(" Statement issued ", path+"\nNo financial posting.", back)
+		})
+	}
+	form.AddButton("Back", back)
 	form.SetCancelFunc(back).SetInputCapture(formNavigation)
+	show()
+}
+
+func (ui *terminal) serviceLifecycleForm(id, action string) {
+	draft, err := ui.books.NewRegistryDraft()
+	if err != nil {
+		ui.message(" Service ", err.Error(), ui.customers)
+		return
+	}
+	service, err := draft.Registry.Service(id)
+	if err != nil {
+		ui.message(" Service ", err.Error(), ui.customers)
+		return
+	}
+	through, date, review := "", time.Now().Format("2006-01-02"), ""
+	if service.ServiceThrough != nil {
+		through = *service.ServiceThrough
+	}
+	form := themedForm().AddInputField("Last inclusive service date", through, 12, nil, func(text string) { through = text })
+	if action == "confirm-billing" {
+		form.AddInputField("Review date", date, 12, nil, func(text string) { date = text }).
+			AddInputField("Billing-completeness review / evidence", "", 60, nil, func(text string) { review = text })
+	}
+	ui.registryForm(action+" "+id+" (no financial posting)", form, draft, func() (string, error) {
+		if action == "close" {
+			return id, draft.CloseService(id, through)
+		}
+		return id, draft.ConfirmServiceBilling(id, through, date, review)
+	})
+}
+
+func (ui *terminal) serviceTransactionForm(id, action string) {
+	date, through, amount, account, reference, transaction := time.Now().Format("2006-01-02"), "", "", "", "", ""
+	role := "deposit"
+	form := themedForm()
+	if action == "refund" {
+		form.AddInputField("Existing disbursement transaction ID", "", 40, nil, func(text string) { transaction = text })
+	} else {
+		form.AddInputField("Posting date", date, 12, nil, func(text string) { date = text }).
+			AddInputField("USD amount (adjust: negative = credit)", "", 16, nil, func(text string) { amount = text }).
+			AddInputField("Approved policy / evidence reference", "", 60, nil, func(text string) { reference = text })
+	}
+	if action == "adjust" {
+		form.AddInputField("Service covered through (inclusive)", "", 12, nil, func(text string) { through = text }).
+			AddInputField("Approved nonbank counteraccount", "", 65, nil, func(text string) { account = text })
+	} else {
+		roles := []string{"deposit", "credit"}
+		if action == "refund" {
+			roles = append(roles, "receivable")
+		}
+		form.AddDropDown("Account role", roles, 0, func(text string, _ int) { role = text })
+	}
+	var show func()
+	show = func() {
+		ui.screen(action+" "+id, form, "Preview before saving | Esc Back | No automatic tariff or refund")
+		ui.app.SetFocus(form)
+	}
+	back := func() { ui.customerDetails("service", id) }
+	form.AddButton("Preview journal step", func() {
+		var draft *Draft
+		var text string
+		var err error
+		switch action {
+		case "adjust":
+			draft, text, err = ui.books.ServiceAdjustmentDraft(id, date, through, amount, account, reference)
+		case "apply":
+			draft, text, err = ui.books.ServiceApplyDraft(id, role, amount, date, reference)
+		case "refund":
+			draft, text, err = ui.books.ServiceRefundDraft(transaction, id, role)
+		}
+		if err != nil {
+			ui.message(" Journal step ", err.Error(), show)
+			return
+		}
+		ui.preview(draft, text, back, func() { ui.edit(draft, text, back) })
+	}).AddButton("Back", back)
+	form.SetCancelFunc(back).SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		for i := 0; i < form.GetFormItemCount(); i++ {
+			if dropdown, ok := form.GetFormItem(i).(*tview.DropDown); ok && dropdown.IsOpen() {
+				return event
+			}
+		}
+		return formNavigation(event)
+	})
 	show()
 }
 
