@@ -1,5 +1,17 @@
 # Caspar Water Books — Operator's Guide
 
+> **Historical design, not the current Wat operator guide.** For the implemented
+> file-authoritative CLI/TUI, use
+> [Water Accounting Terminal](../wat/README.md#customers-and-service-accounts-direct-files).
+> The `pond run /accounts` commands below are not Wat commands and are not an
+> operational prerequisite. Current metadata lives in `registry.yaml` with
+> `C-`, `CN-` and `SA-` IDs; balances remain in native hledger journals.
+> Service dates are inclusive, and closing does not settle or transfer debt.
+> Proration, automatic billing/payment classification and duplicate detection
+> described below must not be assumed to be implemented or approved policy.
+> Wat requires explicit reviewed amounts, separate saves, and complete private
+> filesystem backups; a Pond is not its authoritative store.
+
 > A reference manual for the day-to-day operator. The system is already
 > set up for you. This guide covers the routine tasks: cycling tenants,
 > recording expenses and payments, running a billing cycle, and asking

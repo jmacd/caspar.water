@@ -3,72 +3,63 @@
 `wat` is a local terminal workbench for ordinary hledger journals. It supports
 transaction entry, journal review, strict validation, bank-statement
 reconciliation checkpoints, and reports. It does not calculate bills or close years.
-The application itself uses ordinary local files and has no database, server, or
-browser. The development runner stores those files transactionally in a local
-Watertown Pond.
+The application uses ordinary local files and has no database, server, or
+browser. Customer and service-account workflows do not require a Watertown Pond.
+Keep the private filesystem workspace authoritative.
 
-## Start a workspace
+## Start a direct-file workspace
 
-For a persistent test workspace, run:
-
-```sh
-./cmd/wat/run.sh --azure-cli
-./cmd/wat/run.sh check
-./cmd/wat/run.sh report journal
-```
-
-The script requires an existing git-ignored `local/wat-test/wat.yaml`; it does
-not install a demo workspace. It creates `local/wat-inbox` and initializes the
-persistent Pond at `local/wat-pond`, then builds a Linux accounting image. The
-first Pond run imports the complete existing `local/wat-test` workspace, so work
-from the earlier direct runner is preserved. Before every later run, the runner
-copies changed `local/wat-test/wat.yaml` and its configured `chart_defs` into Pond and
-refreshes the exec factory definition. These are the host-editable inputs;
-manual/bank journals, generated files, and statement caches remain Pond-owned.
-Edit the YAML or chart while Wat is stopped, then restart it. Each run stages
-`/accounting/`, opens `wat` interactively, and commits all saved changes together
-only after a clean exit. Ctrl-C stops `wat` cleanly, allowing the runner to
-commit changes already saved during the session.
-
-Place statement PDFs in `local/wat-inbox`, set `WAT_STATEMENT_INBOX`, or select
-another host directory explicitly:
+Run from the application checkout with Go and hledger 1.52 available on `PATH`.
+Use an existing, operator-reviewed `wat.yaml` and workspace-relative chart
+definitions. For the private top-level `wat/` workspace:
 
 ```sh
-./cmd/wat/run.sh --inbox ../caspar_water_bank
-WAT_STATEMENT_INBOX=../caspar_water_bank ./cmd/wat/run.sh
+go run ./cmd/wat --config wat/wat.yaml check
+go run ./cmd/wat --config wat/wat.yaml report journal
+go run ./cmd/wat --config wat/wat.yaml
 ```
 
-The host inbox is mounted read-only. `wat` hashes regular PDFs, copies unseen
-content into `/accounting/sources/statements/<sha256>/original.pdf`, and lists
-the Pond-owned copy as pending. Identical content is imported once regardless
-of filename. Symlinked and nonregular `.pdf` entries are rejected. No extraction
+Use `--config /absolute/path/to/wat.yaml` for a workspace elsewhere. Startup
+regenerates account/include declarations and creates missing writable journals
+as empty files; it does not reconstruct missing history. Before opening a
+restored workspace, verify that all authoritative files were restored.
+Edit configuration or reference charts only while Wat is stopped.
+
+Saved journal and registry steps take effect immediately in those ordinary
+files; exiting the TUI is not an additional commit or rollback boundary. There
+is no startup import/export cycle or copy-back step. The former
+`cmd/wat/run.sh` Pond prototype is not shipped in this checkout and is not the
+operational path. Watertown-backed execution remains a separate integration.
+
+To import statement PDFs from an existing read-only source inbox:
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml --statement-inbox ../caspar_water_bank
+```
+
+Wat treats the inbox as read-only; it does not require a container mount.
+It hashes regular PDFs, copies unseen content into the workspace's
+`sources/statements/<sha256>/original.pdf`, and lists the local copy as pending.
+Identical content is imported once regardless of filename. Symlinked and
+nonregular `.pdf` entries are rejected. No extraction
 runs during startup. Choose **Bank statements** and select one
 **READY TO EXTRACT** statement. `wat` extracts only that statement, applies
 the complete original PDF through `bankstatementparser`, and opens the result
 for review. A failed extraction returns to the statement list and leaves the
 PDF pending; the inbox remains untouched.
 
-The runner requires Docker (or set `WAT_CONTAINER_RUNTIME=podman`) and uses a
-privileged development container because nested bubblewrap namespaces require
-it. Its image supplies hledger, Go, Rust, Python 3.13, and the pinned statement
-parser; these tools do not need to be installed on the host. The image build
-checks that Debian's hledger package is from the required 1.52 series.
-For Azure statement extraction, `--azure-cli` requires an authenticated `az`
-CLI session with the Cognitive Services OpenAI User role. The runner obtains a
-short-lived Entra token and passes it through the container and sandbox
-environment. The token is not written to YAML, Pond, extraction results, or
-command arguments. Restart the runner to obtain a new token if the session
-remains open past token expiry. Non-Azure workflows omit `--azure-cli`.
-The sandbox wrapper sets `WAT_STATEMENT_PYTHON=/usr/local/bin/python3.13`, so
-a workspace migrated from the old direct runner may retain its host virtualenv
-path in YAML without making that path meaningful inside the sandbox. Direct
-invocations continue to use `statement.python` unless the same explicit
-environment override is supplied.
+Customer setup, manual journal entry and reports do not need model
+credentials or a statement parser. New PDF extraction uses the configured
+`statement.python` and the dependencies in `requirements-statement.txt`, plus
+the configured model service. `WAT_STATEMENT_PYTHON` explicitly overrides the
+configured Python executable. For Azure, supply a short-lived `AZURE_AD_TOKEN`
+through the environment using the operator's credential setup; never put tokens
+in workspace files or Git. `--azure-cli` and `--inbox` were wrapper options,
+not Wat CLI flags.
 
-For direct file-authoritative operation, use the private top-level `wat/`
-workspace and follow its [operational guide](../../wat/README.md). Keep
-`wat/wat.yaml`, journals, source documents, and review artifacts untracked.
-The committed `wat/reference/cpuc-u39w.yaml` is the CPUC U-39-W master account
+Keep `wat/wat.yaml`, journals, source documents, and review artifacts out of this
+public repository; use independent private version control and backups.
+The workspace's `wat/reference/cpuc-u39w.yaml` is the CPUC U-39-W master account
 chart selected by the workspace-relative `chart_defs` list. The structured YAML
 is reference data, not an hledger journal. Do not add vendors, banks, owners, or
 other instance names to the master chart. No opening balances, purchase price,
@@ -94,7 +85,8 @@ The live books layout is fixed; the reference chart path is configured:
 - `reference/cpuc-u39w.yaml` is the manually maintained CPUC reference chart.
 - additional reference YAML files may be added to `chart_defs`; account numbers
   must remain unique across the merged definitions.
-- `books/accounts.journal` is generated from `accounts` and `bank_accounts`.
+- `books/accounts.journal` is generated from `accounts`, `bank_accounts`, and
+  enabled registry-owned service accounts.
 - `books/payees.journal` is an ordinary hledger journal containing native
   `payee NAME` directives. It may include additional `.journal` files using
   hledger's `include` directive.
@@ -113,6 +105,8 @@ The live books layout is fixed; the reference chart path is configured:
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
+- `registry.yaml`, when enabled, holds customer/connection/service metadata.
+- `sources/customer-statements` holds immutable issued closing statements.
 
 Generated files carry a do-not-edit header and are refreshed when Wat opens the
 workspace. The generated account declarations include `commodity $` and declare
@@ -423,6 +417,71 @@ to include the complete service history. Registry saves, journal saves and
 document issuance remain separate actions, with no all-or-nothing transaction
 claim. These tools enforce bookkeeping constraints, not tariff approval.
 
+### Private rollout, checkpoints and restore
+
+Rehearse on an explicitly selected private copy before adopting customer
+metadata in the operational books. Initializing a registry does not import old
+customer identities or reconstruct balances. Review the customer, connection,
+service dates and any adopted `141`/liability accounts yourself. Do not run
+another `customer init` over an existing registry or fabricate opening entries
+to make an adoption balance. No private-copy migration is implicit in these
+instructions.
+
+Stop Wat and other workspace writers before making a backup or Git checkpoint.
+A closed account with debt, an unapplied deposit, or a stale billing
+confirmation is a valid intermediate state; preserve it rather than changing
+money to make a checkpoint look complete. Back up the **whole workspace**:
+configuration, every configured chart, native payee declarations and includes,
+all manual/historical/bank journals, the registry, mappings/review artifacts,
+and the complete `sources/` tree. Bank PDFs, extractions and reconciliation
+checkpoints are needed together. Issued statements are historical artifacts;
+do not discard them as regenerable reports.
+
+Keep original source systems/inboxes backed up independently. A private Git
+checkpoint is useful history but does not include ignored/untracked files or
+preserve all file permissions. It is not a substitute for a complete private
+backup. Keep backups outside the live workspace and outside this public repo.
+
+For example, with existing private parent directories, replace these paths and
+choose fresh, nonsymlink destinations. These copies preserve file modes and
+include hidden files; they do not merge a backup into an existing workspace:
+
+```sh
+umask 077
+test ! -e /private/backups/wat-0001 &&
+  test ! -L /private/backups/wat-0001 &&
+  cp -pR /private/books/wat /private/backups/wat-0001
+test ! -e /private/restores/wat-0001 &&
+  test ! -L /private/restores/wat-0001 &&
+  cp -pR /private/backups/wat-0001 /private/restores/wat-0001
+```
+
+Verify the restored file inventory and contents against the stopped snapshot
+**before** starting Wat. Missing writable journals would otherwise be recreated
+empty. Use a new directory, retain the original, and never mix registry,
+journals or checkpoints from different snapshots. Only `books/accounts.journal`
+and `books/books.journal` are regenerated declarations; other files are not
+reconstructed at startup.
+
+From the application checkout, open the copy explicitly:
+
+```sh
+go run ./cmd/wat --config /private/restores/wat-0001/wat.yaml check
+go run ./cmd/wat --config /private/restores/wat-0001/wat.yaml customer list
+go run ./cmd/wat --config /private/restores/wat-0001/wat.yaml service settle SA-0001 --as-of 2026-11-18
+go run ./cmd/wat --config /private/restores/wat-0001/wat.yaml service statement SA-0001 --as-of 2026-11-18
+hledger --no-conf -f /private/restores/wat-0001/books/books.journal balance
+```
+
+Use the same account IDs and as-of dates as the pre-backup comparison. Confirm
+that registry identities, separate obligation balances, billing confirmation,
+bank reconciliation locks and issued statement bytes match. Do not use
+`--issue` just to compare an existing statement: it intentionally creates
+another numbered artifact. File-relative journal includes and evidence IDs
+survive moving the workspace; review host-specific Python/model paths separately
+before new extraction. A successful `check` is not proof of completeness,
+reconciliation, or an approved tariff.
+
 ## QuickBooks reconstruction
 
 `wat quickbooks` generates an editable candidate journal from a directory of
@@ -444,10 +503,11 @@ renders only unbalanced `(TODO:Source-Magnitude:...)` evidence, and refuses to
 manufacture a counterposting. A reviewer must replace all placeholders with
 complete supported postings before moving an entry into the books.
 
-The local runner scans its read-only inbox when no filenames are supplied:
+The CLI scans its read-only inbox when no filenames are supplied. Supply any
+required model credentials through the environment:
 
 ```sh
-./cmd/wat/run.sh --azure-cli --inbox ../caspar_water_bank \
+go run ./cmd/wat --config wat/wat.yaml --statement-inbox ../caspar_water_bank \
   quickbooks --year 2021 >2021-draft.journal
 ```
 
@@ -455,7 +515,7 @@ Inspect the same inputs deterministically without configuring or calling a
 model:
 
 ```sh
-./cmd/wat/run.sh --inbox ../caspar_water_bank \
+go run ./cmd/wat --config wat/wat.yaml --statement-inbox ../caspar_water_bank \
   quickbooks --inspect --year 2021
 ```
 
@@ -471,7 +531,7 @@ deterministic mapping review. It does not call a model or modify the books.
 Review those source categories in Wat instead of deciding mappings in a prompt:
 
 ```sh
-./cmd/wat/run.sh --inbox ../caspar_water_bank \
+go run ./cmd/wat --config wat/wat.yaml --statement-inbox ../caspar_water_bank \
   quickbooks --review --year 2021
 ```
 
@@ -488,11 +548,10 @@ skeleton that omits a mapped account. Remove a mapping in the review screen to
 make that category unresolved again.
 
 Pass filenames after the command to select a subset. Relative filenames are
-resolved inside the configured inbox, which avoids exposing host paths inside
-the accounting sandbox:
+resolved inside the configured inbox:
 
 ```sh
-./cmd/wat/run.sh --azure-cli --inbox ../caspar_water_bank \
+go run ./cmd/wat --config wat/wat.yaml --statement-inbox ../caspar_water_bank \
   quickbooks --year 2021 \
   'Caspar_Water_SMBC_Register.xls' \
   'Joshua MacDonald and Ariana Bayer_Account QuickReport.xlsx'
@@ -584,8 +643,8 @@ detect external journal changes and refuse to overwrite them.
 
 ## Work through a bank statement
 
-For the Pond workflow, place PDFs in the configured inbox and run
-`./cmd/wat/run.sh`. Choose **Bank statements (5)** to see both pending inbox PDFs
+Run `go run ./cmd/wat --config wat/wat.yaml --statement-inbox PATH` to import
+PDFs from a read-only inbox. Choose **Bank statements (5)** to see pending PDFs
 and previously extracted statements. The title reports extracted and ready
 counts. Cached entries labeled **EXTRACTED** appear first, followed by pending
 entries labeled **READY TO EXTRACT**, so a successful extraction remains visible
@@ -594,7 +653,7 @@ immediately; no extraction questions or command-line statement flags are
 required. While extraction is running, the screen animates and shows the
 configured model and elapsed time.
 
-To reopen an imported statement later, run `./cmd/wat/run.sh` without flags and
+To reopen an imported statement later, run `go run ./cmd/wat --config wat/wat.yaml` and
 choose **Bank statements (5)**. Select a cached statement to review its pending
 rows or revise its recorded entries. The list shows the bound bank account,
 actual statement period,
@@ -615,8 +674,8 @@ not post entries or mark anything reconciled.
 For a sequence, let the shell expand the glob, or supply explicit filenames:
 
 ```sh
-./cmd/wat/run.sh --statements 2022/*.pdf
-./cmd/wat/run.sh --statements 2022/01.pdf 2022/02.pdf
+go run ./cmd/wat --config wat/wat.yaml --statements 2022/*.pdf
+go run ./cmd/wat --config wat/wat.yaml --statements 2022/01.pdf 2022/02.pdf
 ```
 
 Files are processed in exactly the supplied argument order; `wat` neither

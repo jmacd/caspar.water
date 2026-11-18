@@ -1,6 +1,8 @@
 package wat
 
 import (
+	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -277,7 +279,7 @@ func TestServiceEvidenceRequiresUniqueIDsAndExactUSD(t *testing.T) {
 	require.Equal(t, "-92233720368547758.08", formatCents(math.MinInt64))
 }
 
-func TestServiceRefundPreservesStatementEvidenceAndLock(t *testing.T) {
+func TestServiceRefundAndWorkspaceRestorePreserveEvidenceAndLock(t *testing.T) {
 	books, statement, _ := statementFixture(t)
 	books = enableTestCustomers(t, books)
 	registry, err := books.NewRegistryDraft()
@@ -326,4 +328,91 @@ func TestServiceRefundPreservesStatementEvidenceAndLock(t *testing.T) {
 	require.NoError(t, books.FinishReconciliation(statement))
 	_, _, err = books.ServiceRefundDraft(refundID, "SA-0001", "deposit")
 	require.ErrorContains(t, err, "locked by finished bank reconciliation")
+
+	confirmTestBilling(t, books, "2021-05-31")
+	status, err := books.ServiceSettlement("SA-0001", "2021-05-31")
+	require.NoError(t, err)
+	require.True(t, status.BillingValid)
+	require.False(t, status.Settled, "unrefunded deposit must remain a customer obligation")
+	require.Equal(t, int64(-8766), status.Balances[1].Cents)
+	report, err := books.ServiceStatement("SA-0001", "", "2021-05-31")
+	require.NoError(t, err)
+	balance, err := books.run(books.Config.Journal, "balance", "--output-format=json")
+	require.NoError(t, err)
+	issued, err := books.IssueClosingStatement("SA-0001", "2021-05-31")
+	require.NoError(t, err)
+	issuedText := read(t, issued)
+	issuedRelative, err := filepath.Rel(books.Config.root, issued)
+	require.NoError(t, err)
+	registryText := read(t, books.Config.Registry)
+
+	backup, restoredRoot := t.TempDir(), t.TempDir()
+	copyCustomerTestWorkspace(t, books.Config.root, backup)
+	require.NoError(t, os.Rename(books.Config.root, filepath.Join(t.TempDir(), "offline-original")))
+	require.NoDirExists(t, books.Config.root)
+	copyCustomerTestWorkspace(t, backup, restoredRoot)
+	config, err := LoadConfig(filepath.Join(restoredRoot, "wat.yaml"))
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(config.LocalAccounts))
+	require.NoError(t, os.Remove(config.Journal))
+	restored, err := Open(config)
+	require.NoError(t, err, "restoring must not depend on original absolute paths or saved generated declarations")
+	require.NoError(t, restored.Check())
+	require.Equal(t, registryText, read(t, restored.Config.Registry))
+	restoredStatus, err := restored.ServiceSettlement("SA-0001", "2021-05-31")
+	require.NoError(t, err)
+	require.Equal(t, status, restoredStatus, "relocation must preserve billing evidence and outstanding obligations")
+	restoredReport, err := restored.ServiceStatement("SA-0001", "", "2021-05-31")
+	require.NoError(t, err)
+	require.Equal(t, report, restoredReport)
+	restoredBalance, err := restored.run(restored.Config.Journal, "balance", "--output-format=json")
+	require.NoError(t, err)
+	require.Equal(t, balance, restoredBalance, "ordinary hledger must read the restored books directly")
+	restoredIssue := filepath.Join(restored.Config.root, issuedRelative)
+	require.Equal(t, issuedText, read(t, restoredIssue))
+	info, err := os.Stat(restoredIssue)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0400), info.Mode().Perm())
+	statements, err := restored.CachedStatements()
+	require.NoError(t, err)
+	require.Len(t, statements, 1)
+	require.Equal(t, statement.Hash, statements[0].Hash)
+	reconciliation, err := restored.Reconciliation(statements[0])
+	require.NoError(t, err)
+	require.NotNil(t, reconciliation.Checkpoint)
+	_, _, err = restored.ServiceRefundDraft(refundID, "SA-0001", "deposit")
+	require.ErrorContains(t, err, "locked by finished bank reconciliation")
+	nextIssue, err := restored.IssueClosingStatement("SA-0001", "2021-05-31")
+	require.NoError(t, err)
+	require.Equal(t, "statement-0002.txt", filepath.Base(nextIssue))
+	require.Equal(t, issuedText, read(t, restoredIssue), "restored issuance cannot overwrite its predecessor")
+}
+
+func copyCustomerTestWorkspace(t *testing.T, source, destination string) {
+	t.Helper()
+	require.NoError(t, filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, relative)
+		if entry.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("nonregular synthetic workspace file: %s", path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	}))
 }
