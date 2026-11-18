@@ -413,6 +413,16 @@ Efficiency is evaluated by comparing these counters at similar input volumes
 after retention has reached steady state. Tick bytes, syscall counts, and
 runtime should plateau rather than rise with transaction history.
 
+Exclude the first tick after deploying a pond binary that includes
+watertown#224, and the first tick after the pond's `cache/` directory is lost,
+from these comparisons. That tick has no materialization checkpoints yet, so
+each `materialize-*` node checks its whole target against source history. It
+also seals the backlog of rollup data older than a day. Expect one slow tick
+with `materialize-series: verifying ... lower_us=None` warnings. Later ticks
+should not log them. If that tick fails with `was not advanced`, the existing
+target was already inconsistent; see
+[Repairs that do not need a reset](#repairs-that-do-not-need-a-reset).
+
 ### Reset an instance
 
 ```bash
@@ -442,16 +452,6 @@ ERROR Factory 'logfile-ingest' execution error: ... Prefix verification failed
   File may have been rotated during ingestion.
 Error: Transaction aborted: Execution failed for factory 'logfile-ingest'
 ```
-Exclude the first tick after deploying a pond binary that includes
-watertown#224, and the first tick after the pond's `cache/` directory is lost,
-from these comparisons. That tick has no materialization checkpoints yet, so
-each `materialize-*` node checks its whole target against source history. It
-also seals the backlog of rollup data older than a day. Expect one slow tick
-with `materialize-series: verifying ... lower_us=None` warnings. Later ticks
-should not log them. If that tick fails with `was not advanced`, the existing
-target was already inconsistent; see
-[Repairs that do not need a reset](#repairs-that-do-not-need-a-reset).
-
 
 This means the host file was rotated/replaced without matching the mknod's
 `archived_pattern`, so the pond holds a stale pre-rotation segment that is not a
