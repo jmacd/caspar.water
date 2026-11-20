@@ -54,9 +54,14 @@ bank_accounts:
 	require.Equal(t, config, string(data))
 	_, err = run("customer", "init")
 	require.ErrorContains(t, err, "will not overwrite")
+	require.ErrorContains(t, err, "Set customer_registry: true")
 	require.NoError(t, os.WriteFile(configPath, []byte(config+"customer_registry: true\n"), 0600))
+	_, err = run("customer", "init")
+	require.ErrorIs(t, err, os.ErrExist)
+	require.ErrorContains(t, err, "Open 'wat customer' with the same --config")
+	require.NotContains(t, err.Error(), "Set customer_registry: true")
+	require.NoDirExists(t, filepath.Join(root, "books"), "reinitializing an enabled registry must not open or modify the books")
 	for _, args := range [][]string{
-		{"payee", "add", "Example Customer"},
 		{"payee", "add", "Deposit"},
 		{"customer", "add", "--payee", "Example Customer", "--address", "100 Example Street", "--address", "Exampletown, CA"},
 		{"connection", "add", "--name", "House", "--address", "100 Example Street"},
@@ -69,6 +74,13 @@ bank_accounts:
 	data, err = os.ReadFile(manual)
 	require.NoError(t, err)
 	require.Empty(t, data, "setup must not fabricate money")
+	payeesPath := filepath.Join(root, "books", "payees.journal")
+	manualPayees, err := os.ReadFile(payeesPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(manualPayees), "Example Customer")
+	customerPayees, err := os.ReadFile(filepath.Join(root, "books", "customers.journal"))
+	require.NoError(t, err)
+	require.Contains(t, string(customerPayees), "payee Example Customer\n")
 	for _, args := range [][]string{
 		{"customer", "list"}, {"connection", "list"}, {"service", "list"},
 		{"customer", "show", "Example Customer", "--as-of", "2021-02-01"},
@@ -116,7 +128,10 @@ bank_accounts:
 	_, err = run("service", "open", "--customer", "C-0001", "--connection", "CN-0001", "--from", "2021-02-01")
 	require.ErrorContains(t, err, "overlaps")
 	_, err = run("customer", "add", "--payee", "Undeclared", "--address", "Somewhere")
-	require.ErrorContains(t, err, "declare payee")
+	require.NoError(t, err, "customer names are declared automatically from the registry")
+	data, err = os.ReadFile(payeesPath)
+	require.NoError(t, err)
+	require.Equal(t, manualPayees, data)
 
 	_, err = run("service", "close", "SA-0001", "--through", "2021-01-31")
 	require.NoError(t, err)

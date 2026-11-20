@@ -28,8 +28,7 @@ func (ui *terminal) customers() {
 	}
 	list := themedList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" Customers / service accounts ")
-	list.AddItem("Declare a payee", "Separate save to the native payee journal", 'p', ui.customerPayeeForm).
-		AddItem("Add customer", "Select an already declared payee", 'a', func() { ui.customerForm("") }).
+	list.AddItem("Add customer", "Save the name and billing address in the registry", 'a', func() { ui.customerForm("") }).
 		AddItem("Add connection", "Create a physical service point", 'n', func() { ui.connectionForm("") }).
 		AddItem("Open service", "Link a customer to a connection without posting money", 'o', ui.serviceForm)
 	for _, customer := range registry.Customers {
@@ -52,7 +51,7 @@ func (ui *terminal) customers() {
 		}
 		return event
 	})
-	ui.screen("Customers / service accounts", list, "Enter Select | p Payee | a Customer | n Connection | o Open service | Esc Back")
+	ui.screen("Customers / service accounts", list, "Enter Select | a Customer | n Connection | o Open service | Esc Back")
 }
 
 func (ui *terminal) customerDetails(kind, id string) {
@@ -165,33 +164,13 @@ func (ui *terminal) customerSaveForm(title string, form *tview.Form, save func()
 	show()
 }
 
-func (ui *terminal) customerPayeeForm() {
-	var payee string
-	form := themedForm().AddInputField("Payee", "", 48, nil, func(text string) { payee = text })
-	ui.customerSaveForm("Declare payee (separate step)", form, func() (string, bool, error) {
-		backup, saved, err := ui.books.DeclarePayee(payee)
-		return "Payee declared. Next add the customer.\nRecovery copy: " + backup, saved, err
-	})
-}
-
 func (ui *terminal) customerForm(id string) {
 	draft, err := ui.books.NewRegistryDraft()
 	if err != nil {
 		ui.message(" Customer ", err.Error(), ui.customers)
 		return
 	}
-	payees, err := ui.books.declaredPayees()
-	if err != nil {
-		ui.message(" Customer ", err.Error(), ui.customers)
-		return
-	}
-	if len(payees) == 0 {
-		ui.message(" Customer ", "Declare a payee first. That is a separate save.", ui.customers)
-		return
-	}
 	payee, address := "", ""
-	selected := 0
-	options := append([]string{"Select a declared payee"}, payees...)
 	if id != "" {
 		customer, err := draft.Registry.Customer(id)
 		if err != nil {
@@ -199,19 +178,9 @@ func (ui *terminal) customerForm(id string) {
 			return
 		}
 		payee, address = customer.Payee, strings.Join(customer.BillingAddress.Lines, "; ")
-		for i, name := range options {
-			if name == payee {
-				selected = i
-			}
-		}
 	}
 	form := themedForm().
-		AddDropDown("Declared payee", options, selected, func(_ string, index int) {
-			payee = ""
-			if index > 0 {
-				payee = payees[index-1]
-			}
-		}).
+		AddInputField("Customer name", payee, 48, nil, func(text string) { payee = text }).
 		AddInputField("Billing address (; separates lines)", address, 60, nil, func(text string) { address = text })
 	ui.registryForm("Customer", form, draft, func() (string, error) {
 		if id == "" {

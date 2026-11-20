@@ -28,8 +28,8 @@ func TestServiceLifecycleFormsCloseConfirmAndIssue(t *testing.T) {
 	require.NotEqual(t, before, read(t, books.Config.Registry))
 	require.Empty(t, read(t, books.Config.ManualJournal))
 	key(tcell.KeyEnter, 0)
-	// Menu entries: four setup actions, customer, connection, then this service.
-	for i := 0; i < 6; i++ {
+	// Menu entries: three setup actions, customer, connection, then this service.
+	for i := 0; i < 5; i++ {
 		key(tcell.KeyDown, 0)
 	}
 	key(tcell.KeyEnter, 0)
@@ -43,7 +43,7 @@ func TestServiceLifecycleFormsCloseConfirmAndIssue(t *testing.T) {
 	frame = key(tcell.KeyF2, 0)
 	require.Contains(t, frame.text, "Saved SA-0001", "failed saves must allow corrected retry")
 	key(tcell.KeyEnter, 0)
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		key(tcell.KeyDown, 0)
 	}
 	key(tcell.KeyEnter, 0)
@@ -140,6 +140,52 @@ func TestCustomerFormsSaveAndCancelDirectly(t *testing.T) {
 	require.Len(t, registry.ServiceAccounts, 2)
 	require.Equal(t, "CN-0002", registry.ServiceAccounts[1].Connection)
 	require.Contains(t, read(t, books.Config.LocalAccounts), "Asset:141.000:Customers:SA-0002")
+}
+
+func TestFirstConnectionFormSavesWithLegacyJournalDescription(t *testing.T) {
+	books, _ := fixture(t, legacyCustomerJournal)
+	books = enableTestCustomers(t, books)
+	_, key := customerTestTerminal(t, books, func(ui *terminal) { ui.customers() })
+	key(tcell.KeyRune, 'n')
+	for _, r := range "First house" {
+		key(tcell.KeyRune, r)
+	}
+	key(tcell.KeyTab, 0)
+	for _, r := range "100 Example Street" {
+		key(tcell.KeyRune, r)
+	}
+	frame := key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "Saved CN-0001")
+	registry, err := books.Customers()
+	require.NoError(t, err)
+	require.Len(t, registry.Connections, 1)
+	require.Equal(t, "First house", registry.Connections[0].Name)
+	require.Equal(t, legacyCustomerJournal, read(t, books.Config.ManualJournal))
+}
+
+func TestCustomerFormCreatesNameWithoutManualPayee(t *testing.T) {
+	books, _ := fixture(t, "")
+	configurePayees(t, books)
+	books = enableTestCustomers(t, books)
+	_, key := customerTestTerminal(t, books, func(ui *terminal) { ui.customers() })
+	key(tcell.KeyRune, 'a')
+	for _, r := range "New Customer" {
+		key(tcell.KeyRune, r)
+	}
+	key(tcell.KeyTab, 0)
+	for _, r := range "100 Example Street" {
+		key(tcell.KeyRune, r)
+	}
+	frame := key(tcell.KeyF2, 0)
+	require.Contains(t, frame.text, "Saved C-0001")
+	registry, err := books.Customers()
+	require.NoError(t, err)
+	require.Len(t, registry.Customers, 1)
+	require.Equal(t, "New Customer", registry.Customers[0].Payee)
+	require.Contains(t, read(t, books.Config.CustomerPayees), "payee New Customer\n")
+	require.Empty(t, read(t, books.Config.Payees))
+	require.Empty(t, read(t, books.Config.ManualJournal))
+	require.NoError(t, books.Check())
 }
 
 func TestServiceChooserRevisesOnlySelectedPosting(t *testing.T) {

@@ -121,10 +121,12 @@ func customerCommands(getBooks func() *wat.Books, getConfig func() wat.Config) [
 				},
 			}
 			nameFlag := "name"
+			nameHelp := "connection name"
 			if root == customer {
 				nameFlag = "payee"
+				nameHelp = "customer name (declared automatically from the registry)"
 			}
-			cmd.Flags().StringVar(&name, nameFlag, "", "existing declared payee or connection name")
+			cmd.Flags().StringVar(&name, nameFlag, "", nameHelp)
 			cmd.Flags().StringArrayVar(&address, "address", nil, "address line (repeat for additional lines)")
 			if action == "edit" {
 				cmd.Use += " ID"

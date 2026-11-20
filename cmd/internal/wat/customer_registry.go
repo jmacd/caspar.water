@@ -78,6 +78,13 @@ func InitCustomerRegistry(cfg Config) (err error) {
 	}
 	// Link publishes the complete initial file without replacing an existing registry.
 	if err := os.Link(path, cfg.Registry); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			next := "Open 'wat customer' with the same --config to use the existing registry."
+			if !cfg.CustomerRegistry {
+				next = "Set customer_registry: true in wat.yaml first. " + next
+			}
+			return fmt.Errorf("customer registry %s: %w; will not overwrite it. %s", cfg.Registry, os.ErrExist, next)
+		}
 		return fmt.Errorf("create registry (will not overwrite an existing file): %w", err)
 	}
 	if err := syncDirectory(cfg.root); err != nil {
@@ -190,7 +197,7 @@ func (r CustomerRegistry) validate(chart accountChart) error {
 			return err
 		}
 		if !validPayeeName(customer.Payee) {
-			return fmt.Errorf("%s: invalid payee name", customer.ID)
+			return fmt.Errorf("%s: invalid customer name", customer.ID)
 		}
 		if err := customer.BillingAddress.validate(); err != nil {
 			return fmt.Errorf("%s billing address: %w", customer.ID, err)
@@ -291,6 +298,15 @@ func (r CustomerRegistry) accounts() []string {
 		accounts = append(accounts, service.accounts()...)
 	}
 	return accounts
+}
+
+func (r CustomerRegistry) payees() []string {
+	payees := make([]string, 0, len(r.Customers))
+	for _, customer := range r.Customers {
+		payees = append(payees, customer.Payee)
+	}
+	slices.Sort(payees)
+	return slices.Compact(payees)
 }
 
 func (r CustomerRegistry) Customer(selector string) (Customer, error) {
@@ -411,7 +427,7 @@ func (b *Books) checkCustomerPayees(r CustomerRegistry) error {
 	}
 	for _, customer := range r.Customers {
 		if !slices.Contains(payees, customer.Payee) {
-			return fmt.Errorf("%s: declare payee %q in books/payees.journal before saving the customer", customer.ID, customer.Payee)
+			return fmt.Errorf("%s: generated declaration for customer %q is missing; restart Wat to regenerate customer declarations", customer.ID, customer.Payee)
 		}
 	}
 	return nil
@@ -426,7 +442,6 @@ func (b *Books) NewRegistryDraft() (*RegistryDraft, error) {
 	if err != nil {
 		return nil, err
 	}
-	draft.target = b.Config.LocalAccounts
 	return &RegistryDraft{Registry: registry, books: b, draft: draft}, nil
 }
 
@@ -510,9 +525,6 @@ func (d *RegistryDraft) Save() (string, error) {
 			return "", fmt.Errorf("service account %s is already closed; cannot change its service end date", prior.ID)
 		}
 	}
-	if err := b.checkCustomerPayees(d.Registry); err != nil {
-		return "", err
-	}
 	data, err := encodeRegistry(d.Registry)
 	if err != nil {
 		return "", err
@@ -521,24 +533,52 @@ func (d *RegistryDraft) Save() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var changedServices []ServiceAccount
+	for _, service := range candidate.ServiceAccounts {
+		prior, err := b.registry.Service(service.ID)
+		if err != nil || !reflect.DeepEqual(prior, service) {
+			changedServices = append(changedServices, service)
+		}
+	}
 	cfg := b.Config
 	cfg.registryAccounts = d.Registry.accounts()
-	accounts := cfg.postingAccounts()
-	for _, bank := range cfg.BankAccounts {
-		accounts = append(accounts, bank.Account)
-	}
+	cfg.registryPayees = d.Registry.payees()
 	validate := func() error {
-		return d.draft.withProposedBooks(generatedAccounts(cfg), func(journal string) error {
-			proposed := *b
-			proposed.registry = candidate
-			if err := proposed.checkJournal(journal, accounts); err != nil {
+		return d.draft.withProposedBooks(map[string][]byte{
+			cfg.LocalAccounts:  generatedAccounts(cfg),
+			cfg.CustomerPayees: generatedCustomerPayees(cfg),
+		}, func(journal string) error {
+			// Metadata saves retain structural checks, not unrelated historical-entry audits.
+			if err := b.checkSyntax(journal); err != nil {
 				return err
 			}
-			transactions, err := proposed.transactions(journal)
+			if len(changedServices) == 0 {
+				return nil
+			}
+			transactions, err := b.transactions(journal)
 			if err != nil {
 				return err
 			}
-			for _, service := range candidate.ServiceAccounts {
+			var affected []journalTransaction
+			for _, tx := range transactions {
+				for _, service := range changedServices {
+					if service.touches(tx) {
+						affected = append(affected, tx)
+						break
+					}
+				}
+			}
+			accounts := cfg.postingAccounts()
+			for _, bank := range cfg.BankAccounts {
+				accounts = append(accounts, bank.Account)
+			}
+			if err := checkPostingAccounts(affected, accounts); err != nil {
+				return err
+			}
+			if err := checkServiceTransactions(candidate, affected); err != nil {
+				return err
+			}
+			for _, service := range changedServices {
 				prior, _ := b.registry.Service(service.ID)
 				if service.FinalBilling != nil && !reflect.DeepEqual(prior.FinalBilling, service.FinalBilling) {
 					evidence, err := serviceEvidence(service, transactions)
@@ -566,8 +606,9 @@ func (d *RegistryDraft) Save() (string, error) {
 	b.registryState = fileState{data: data, mode: b.registryState.mode}
 	b.registry = candidate
 	b.Config.registryAccounts = cfg.registryAccounts
-	if generationErr := writeGeneratedFile(cfg.LocalAccounts, generatedAccounts(cfg)); generationErr != nil {
-		b.registryError = fmt.Errorf("registry saved, but account generation failed; restart Wat to regenerate before continuing: %w", generationErr)
+	b.Config.registryPayees = cfg.registryPayees
+	if generationErr := writeGeneratedDeclarations(cfg); generationErr != nil {
+		b.registryError = fmt.Errorf("registry saved, but declaration generation failed; restart Wat to regenerate before continuing: %w", generationErr)
 		err = errors.Join(err, b.registryError)
 	}
 	return backup, err
@@ -595,8 +636,6 @@ func (b *Books) DeclarePayee(payee string) (backup string, saved bool, err error
 	}
 	data := append(append([]byte(nil), state.data...), []byte("\npayee "+payee+"\n")...)
 	return saveSingleFile(draft.target, state, data, draft.unchanged, func() error {
-		return draft.withProposedBooks(data, func(journal string) error {
-			return b.checkJournal(journal, draft.accounts)
-		})
+		return draft.withProposedBooks(map[string][]byte{draft.target: data}, b.checkSyntax)
 	})
 }

@@ -17,18 +17,21 @@ func configurePayees(t *testing.T, books *Books, names ...string) {
 }
 
 func TestCheckUsesHledgerDeclaredPayees(t *testing.T) {
-	journal := `2021-01-01 PG&E | Electricity
-    Expense:615.000:Utility  $12.34
-    Equity:218.000:Owner  $-12.34
-`
-	books, _ := fixture(t, journal)
-	configurePayees(t, books, "PG&E")
-	require.NoError(t, books.Check())
+	for _, description := range []string{"PG&E", "PG&E | Electricity"} {
+		t.Run(description, func(t *testing.T) {
+			journal := "2021-01-01 " + description + "\n" +
+				"    Expense:615.000:Utility  $12.34\n" +
+				"    Equity:218.000:Owner  $-12.34\n"
+			books, _ := fixture(t, journal)
+			configurePayees(t, books, "PG&E")
+			require.NoError(t, books.Check())
 
-	configurePayees(t, books, "Electric Company")
-	err := books.Check()
-	require.ErrorContains(t, err, `payee "PG&E" has not been declared`)
-	require.ErrorContains(t, err, "payee PG&E")
+			configurePayees(t, books, "Electric Company")
+			err := books.Check()
+			require.ErrorContains(t, err, `payee "PG&E" has not been declared`)
+			require.ErrorContains(t, err, "payee PG&E")
+		})
+	}
 }
 
 func TestCheckAcceptsDeclaredPayeeWithSplitExpenses(t *testing.T) {
@@ -43,7 +46,7 @@ func TestCheckAcceptsDeclaredPayeeWithSplitExpenses(t *testing.T) {
 }
 
 func TestCheckAcceptsBankDeposit(t *testing.T) {
-	journal := `2021-01-01 Deposit | Customer payment
+	journal := `2021-01-01 Deposit
     Bank:131.200:Checking  $100.00
     Equity:218.000:Owner  $-100.00
 `
@@ -62,7 +65,7 @@ func TestCheckAcceptsJournalExpenseWithoutMetadata(t *testing.T) {
 	require.NoError(t, books.Check())
 }
 
-func TestCheckRequiresStrictPayeeMemoSyntax(t *testing.T) {
+func TestCheckAcceptsNativeDescriptionSyntax(t *testing.T) {
 	for _, description := range []string{
 		"PG&E",
 		"PG&E|Electricity",
@@ -70,7 +73,6 @@ func TestCheckRequiresStrictPayeeMemoSyntax(t *testing.T) {
 		"PG&E |  Electricity",
 		"PG&E | Electricity | January",
 		"PG&E |",
-		"| Electricity",
 	} {
 		t.Run(description, func(t *testing.T) {
 			journal := "2021-01-01 " + description + "\n" +
@@ -78,7 +80,8 @@ func TestCheckRequiresStrictPayeeMemoSyntax(t *testing.T) {
 				"    Equity:218.000:Owner  $-12.34\n"
 			books, _ := fixture(t, journal)
 			configurePayees(t, books, "PG&E")
-			require.ErrorContains(t, books.Check(), "transaction description must")
+			require.NoError(t, books.Check())
+			require.Equal(t, journal, read(t, books.Config.ManualJournal))
 		})
 	}
 }
@@ -94,6 +97,14 @@ func TestCheckDepositSemantics(t *testing.T) {
     Expense:615.000:Utility  $-12.34
 `,
 			message: "must not contain Expense postings",
+		},
+		{
+			name: "bare deposit without bank",
+			journal: `2021-01-01 Deposit
+    Equity:218.000:Owner  $12.34
+    Income:421.000:Misc  $-12.34
+`,
+			message: "requires a Bank posting",
 		},
 		{
 			name: "without bank",

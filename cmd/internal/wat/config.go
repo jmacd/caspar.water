@@ -15,13 +15,14 @@ import (
 )
 
 const (
-	booksDirectory   = "books"
-	masterJournal    = "books.journal"
-	chartJournal     = "chart.journal"
-	accountsJournal  = "accounts.journal"
-	payeesJournal    = "payees.journal"
-	manualJournal    = "manual.journal"
-	sourcesDirectory = "sources"
+	booksDirectory        = "books"
+	masterJournal         = "books.journal"
+	chartJournal          = "chart.journal"
+	accountsJournal       = "accounts.journal"
+	payeesJournal         = "payees.journal"
+	customerPayeesJournal = "customers.journal"
+	manualJournal         = "manual.journal"
+	sourcesDirectory      = "sources"
 )
 
 var (
@@ -45,6 +46,7 @@ type Config struct {
 	ChartDefs              []string            `yaml:"-"`
 	LocalAccounts          string              `yaml:"-"`
 	Payees                 string              `yaml:"-"`
+	CustomerPayees         string              `yaml:"-"`
 	ManualJournal          string              `yaml:"-"`
 	HistoricalJournals     []string            `yaml:"-"`
 	Sources                string              `yaml:"-"`
@@ -54,6 +56,7 @@ type Config struct {
 	configPath             string
 	configState            fileState
 	registryAccounts       []string
+	registryPayees         []string
 }
 
 type BankAccountConfig struct {
@@ -164,6 +167,7 @@ func LoadConfig(path string) (Config, error) {
 	cfg.Journal = filepath.Join(books, masterJournal)
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
 	cfg.Payees = filepath.Join(books, payeesJournal)
+	cfg.CustomerPayees = filepath.Join(books, customerPayeesJournal)
 	manualPath := cfg.ManualJournalPath
 	if manualPath == "" {
 		manualPath = filepath.Join(booksDirectory, manualJournal)

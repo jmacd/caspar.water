@@ -7,11 +7,9 @@ import (
 
 func checkTransactionDescriptions(transactions []journalTransaction) error {
 	for _, tx := range transactions {
-		payee, err := transactionPayee(tx.Description)
-		if err != nil {
-			return fmt.Errorf("%s %s: %w", tx.Date, tx.Description, err)
-		}
-		if payee != "Deposit" {
+		// In hledger, the first pipe separates an optional memo from the payee.
+		payee, _, _ := strings.Cut(tx.Description, "|")
+		if strings.TrimSpace(payee) != "Deposit" {
 			continue
 		}
 		if transactionHasExpense(tx) {
@@ -30,21 +28,6 @@ func checkTransactionDescriptions(transactions []journalTransaction) error {
 		}
 	}
 	return nil
-}
-
-func transactionPayee(description string) (string, error) {
-	if strings.Count(description, "|") != 1 {
-		return "", fmt.Errorf(`transaction description must contain exactly one " | " separator`)
-	}
-	payee, memo, found := strings.Cut(description, " | ")
-	if !found ||
-		payee == "" ||
-		memo == "" ||
-		strings.TrimSpace(payee) != payee ||
-		strings.TrimSpace(memo) != memo {
-		return "", fmt.Errorf(`transaction description must use "PAYEE | MEMO" with nonempty fields`)
-	}
-	return payee, nil
 }
 
 func transactionHasExpense(tx journalTransaction) bool {

@@ -192,7 +192,12 @@ func (d *Draft) validate(data []byte) error {
 	return d.validateBooks(data, true)
 }
 
-func (d *Draft) withProposedBooks(data []byte, check func(string) error) (err error) {
+func (d *Draft) withProposedBooks(proposed map[string][]byte, check func(string) error) (err error) {
+	for path := range proposed {
+		if _, ok := d.files[path]; !ok {
+			return fmt.Errorf("proposed journal is not included in the books: %s", path)
+		}
+	}
 	root, err := os.MkdirTemp("", "wat-validate-")
 	if err != nil {
 		return err
@@ -216,7 +221,7 @@ func (d *Draft) withProposedBooks(data []byte, check func(string) error) (err er
 			return err
 		}
 		content := state.data
-		if path == d.target {
+		if data, ok := proposed[path]; ok {
 			content = data
 		}
 		if err := os.WriteFile(target, content, 0600); err != nil {
@@ -247,7 +252,7 @@ func (d *Draft) withProposedBooks(data []byte, check func(string) error) (err er
 }
 
 func (d *Draft) validateBooks(data []byte, requireDetail bool) error {
-	return d.withProposedBooks(data, func(journal string) error {
+	return d.withProposedBooks(map[string][]byte{d.target: data}, func(journal string) error {
 		if err := d.books.checkSyntax(journal); err != nil {
 			return err
 		}

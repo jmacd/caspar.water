@@ -88,8 +88,11 @@ The live books layout is fixed; the reference chart path is configured:
 - `books/accounts.journal` is generated from `accounts`, `bank_accounts`, and
   enabled registry-owned service accounts.
 - `books/payees.journal` is an ordinary hledger journal containing native
-  `payee NAME` directives. It may include additional `.journal` files using
-  hledger's `include` directive.
+  `payee NAME` directives for manually maintained counterparties. It may include
+  additional `.journal` files using hledger's `include` directive.
+- `books/customers.journal`, when the customer registry is enabled, is generated
+  from customer names in `registry.yaml`. Do not edit it or duplicate those
+  names in `books/payees.journal`.
 - `books/books.journal` is the generated hledger include file.
 - `manual_journal` names the active writable journal that receives ordinary
   entries; it defaults to `books/manual.journal`.
@@ -97,11 +100,12 @@ The live books layout is fixed; the reference chart path is configured:
   and report. At year rollover, move the previous `manual_journal` path into
   this list and configure a new active yearly file.
 - `wat check` runs hledger's native `payees` check, so every transaction payee
-  must be declared with a `payee` directive. Every transaction description
-  must use exactly `PAYEE | MEMO`, with one spaced separator and nonempty
-  fields. `Journal` and `Deposit` are ordinary declared payees whose memo is
-  the complete explanation; neither requires special metadata. Wat additionally
-  requires `Deposit` to have a `Bank:` posting and no `Expense:` posting.
+  must be declared with a `payee` directive. Descriptions use native hledger
+  syntax: a pipe and memo are optional, and without a pipe the entire
+  description is the payee. Existing entries do not need to be rewritten as
+  `PAYEE | MEMO`. `Journal` and `Deposit` are ordinary declared payees; neither
+  requires special metadata. Wat additionally requires `Deposit` to have a
+  `Bank:` posting and no `Expense:` posting.
 - each bank account receives a derived all-years journal, such as
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
@@ -203,7 +207,17 @@ or journals. Once enabled, a missing, malformed, or symlinked registry is an
 error, not an empty customer list. Keep the registry in the private books'
 version-control and backup boundary, never the public application repository.
 
-A **customer** is the responsible party and references a native hledger payee.
+Run `customer init` only once. If `registry.yaml` already exists and
+`customer_registry: true` is enabled, open the existing customer menu instead:
+
+```sh
+go run ./cmd/wat customer --config wat/wat.yaml
+```
+
+A **customer** is the responsible party. Its name and billing address are
+maintained in `registry.yaml`; Wat generates native hledger payee declarations
+in `books/customers.journal` and includes that file automatically. Names are
+generated for all retained customers, not just those with open service.
 A **connection** is the physical service point. A **service account** links them
 for an explicit date range. IDs are stable (`C-0001`, `CN-0001`, `SA-0001`);
 changing a mailing address does not rename ledger accounts. One customer may
@@ -212,10 +226,9 @@ overlap; `service_through` is inclusive. Historical records remain in the
 registry. Closing ends responsibility, not the associated debt or refund
 obligation. The next occupant always receives a new service account.
 
-Declare a new payee as a separate save, then create the records:
+Create the records directly; no separate customer payee declaration is needed:
 
 ```sh
-wat payee add "Example Customer"
 wat customer add --payee "Example Customer" \
   --address "100 Example Street" --address "Exampletown, CA 00000"
 wat connection add --name "Example house" --address "100 Example Street"
@@ -224,10 +237,14 @@ wat service open --customer C-0001 --connection CN-0001 --from 2026-07-01
 
 These examples assume `wat` is installed and the workspace is the current
 directory; otherwise use `go run ./cmd/wat --config wat/wat.yaml` as above.
+The `--payee` flag sets the customer's transaction name in the registry.
 Use `customer list`, `connection list`, and `service list` to look up IDs.
 `customer edit ID --address ...` updates mailing information; `connection edit`
 updates the name or service address. Names must match exactly and unambiguously,
 or select the record by ID.
+Changing a customer name updates its generated declaration, not historical
+transaction descriptions. Old payee names still used by transactions must
+remain declared.
 
 Opening service normally creates `Asset:141.000:Customers:SA-0001`. Use
 `--receivable ACCOUNT` only to explicitly adopt an appropriate existing `141`
@@ -241,11 +258,20 @@ do not edit `books/accounts.journal`.
 In the TUI, choose **Customers / service accounts (c)** for setup, edits, and
 reports. Address inputs use semicolons to separate address lines. Each F2 saves
 one authoritative file immediately. Cancelling a later step does not undo an
-earlier payee or registry save. Registry saves refresh the derived declarations;
+earlier registry save. Registry saves refresh the derived account and customer
+declarations without editing `books/payees.journal`. Missing or outdated
+generated declarations are also rebuilt when Wat opens the workspace;
 if that refresh fails, Wat reports that metadata was saved and blocks further
 bookkeeping until restart successfully regenerates the declarations. There is
 no multi-file commit or rollback mechanism. Use one Wat session at a time and
 do not edit the workspace concurrently.
+
+Registry and native payee-declaration saves validate their metadata and journal
+structure without requiring cleanup of unrelated historical descriptions or
+undeclared transaction payees. Service-account changes still validate affected
+service activity and billing evidence. `wat check` remains the explicit full-book
+audit and continues to report historical issues; setup never rewrites those
+transactions.
 
 ### Allocate an existing deposited payment
 
@@ -419,13 +445,15 @@ claim. These tools enforce bookkeeping constraints, not tariff approval.
 
 ### Private rollout, checkpoints and restore
 
-Rehearse on an explicitly selected private copy before adopting customer
-metadata in the operational books. Initializing a registry does not import old
+Customer workflows and failure cases are covered by automated unit and
+integration tests; a manual rehearsal or private-copy pilot is not required.
+Use the existing direct-file installation with operator-managed private Git
+checkpoints and review saved changes there. Initializing a registry does not import old
 customer identities or reconstruct balances. Review the customer, connection,
 service dates and any adopted `141`/liability accounts yourself. Do not run
 another `customer init` over an existing registry or fabricate opening entries
-to make an adoption balance. No private-copy migration is implicit in these
-instructions.
+to make an adoption balance. Workspace copies are an optional recovery aid, not
+a prerequisite for using the customer commands.
 
 Stop Wat and other workspace writers before making a backup or Git checkpoint.
 A closed account with debt, an unapplied deposit, or a stale billing
@@ -995,10 +1023,11 @@ amounts or overflow show an explicit unavailable-balance message rather than an
 incorrect total. A balanced amount total alone does not mean the entry is valid.
 
 Enter the actual transaction date in `YYYY-MM-DD` form. Enter the payee,
-description/memo, reference, and source reference. `wat check` requires the
-rendered `PAYEE | MEMO` form and requires the payee to be declared in
-`books/payees.journal`. Every saved entry
-also receives a stable random `id` tag. Reference/source tags cannot contain
+description/memo, reference, and source reference. The form renders new entries
+as `PAYEE | MEMO`; `wat check` also accepts native descriptions without a memo.
+The payee must be declared in the books, either manually in `books/payees.journal`
+or automatically from the customer registry in `books/customers.journal`.
+Every saved entry also receives a stable random `id` tag. Reference/source tags cannot contain
 commas; fields cannot contain control characters. Payee/description cannot
 contain journal delimiters `;` or `|`.
 

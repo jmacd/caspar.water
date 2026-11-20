@@ -180,7 +180,11 @@ func TestCheckAndReports(t *testing.T) {
 			"  - Equity:218.000:Owner\nbank_accounts:\n" +
 			"  - Bank:131.200:Checking\n",
 		"reference/cpuc-u39w.yaml": testAccountChart,
-		"books/manual.journal":     "",
+		"books/payees.journal":     "payee Legacy contribution\n",
+		"books/manual.journal": `2021-01-01 Legacy contribution
+    Bank:131.200:Checking  $100
+    Equity:218.000:Owner  $-100
+`,
 	} {
 		require.NoError(
 			t,

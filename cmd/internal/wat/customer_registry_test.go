@@ -9,6 +9,82 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestInitCustomerRegistryWithoutHledger(t *testing.T) {
+	t.Setenv("PATH", "")
+	root := t.TempDir()
+	cfg := Config{root: root, Registry: filepath.Join(root, "registry.yaml")}
+	require.NoError(t, InitCustomerRegistry(cfg))
+	original := read(t, cfg.Registry)
+	registry, err := decodeRegistry([]byte(original), accountChart{})
+	require.NoError(t, err)
+	require.Empty(t, registry.Customers)
+	require.Empty(t, registry.Connections)
+	require.Empty(t, registry.ServiceAccounts)
+	info, err := os.Stat(cfg.Registry)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+
+	for _, enabled := range []bool{false, true} {
+		cfg.CustomerRegistry = enabled
+		err := InitCustomerRegistry(cfg)
+		require.ErrorIs(t, err, os.ErrExist)
+		require.ErrorContains(t, err, "Open 'wat customer' with the same --config")
+		require.NotContains(t, err.Error(), ".wat-registry-")
+		require.Equal(t, !enabled, strings.Contains(err.Error(), "Set customer_registry: true"))
+		require.Equal(t, original, read(t, cfg.Registry))
+	}
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "initialization and retries must leave only the registry, not books or temporary files")
+}
+
+func TestInitCustomerRegistryPreservesExistingPaths(t *testing.T) {
+	for _, kind := range []string{"file", "directory", "symlink", "dangling symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := Config{root: root, Registry: filepath.Join(root, "registry.yaml"), CustomerRegistry: true}
+			target := filepath.Join(t.TempDir(), "existing.yaml")
+			const original = "existing metadata must not be erased, even if malformed\n"
+			switch kind {
+			case "file":
+				require.NoError(t, os.WriteFile(cfg.Registry, []byte(original), 0400))
+			case "directory":
+				require.NoError(t, os.Mkdir(cfg.Registry, 0700))
+			case "symlink":
+				require.NoError(t, os.WriteFile(target, []byte(original), 0600))
+				require.NoError(t, os.Symlink(target, cfg.Registry))
+			case "dangling symlink":
+				require.NoError(t, os.Symlink(target, cfg.Registry))
+			}
+			before, err := os.Lstat(cfg.Registry)
+			require.NoError(t, err)
+			err = InitCustomerRegistry(cfg)
+			require.ErrorIs(t, err, os.ErrExist)
+			require.ErrorContains(t, err, "will not overwrite")
+			after, err := os.Lstat(cfg.Registry)
+			require.NoError(t, err)
+			require.Equal(t, before.Mode(), after.Mode())
+			require.Equal(t, before.ModTime(), after.ModTime())
+			if kind == "file" {
+				require.Equal(t, original, read(t, cfg.Registry))
+			}
+			if kind == "symlink" || kind == "dangling symlink" {
+				link, err := os.Readlink(cfg.Registry)
+				require.NoError(t, err)
+				require.Equal(t, target, link)
+				if kind == "symlink" {
+					require.Equal(t, original, read(t, target))
+				} else {
+					require.NoFileExists(t, target)
+				}
+			}
+			entries, err := os.ReadDir(root)
+			require.NoError(t, err)
+			require.Len(t, entries, 1, "failed initialization must clean up its temporary file")
+		})
+	}
+}
+
 func customerTestChart() string {
 	return strings.Replace(testChart, "  Equity:", `    - number: "141"
       name: Customer-Receivables
@@ -41,9 +117,6 @@ func customerFixture(t *testing.T) *Books {
 	t.Helper()
 	books, _ := fixture(t, "")
 	books = enableTestCustomers(t, books)
-	_, saved, err := books.DeclarePayee("Example Customer")
-	require.NoError(t, err)
-	require.True(t, saved)
 	draft, err := books.NewRegistryDraft()
 	require.NoError(t, err)
 	_, err = draft.AddCustomer("Example Customer", []string{"100 Example Street", "Exampletown"})
@@ -121,12 +194,14 @@ service_accounts:
 	require.ErrorContains(t, err, "matches 2")
 }
 
-func TestCustomerSetupSavesOnlyRegistryAndDerivedAccounts(t *testing.T) {
+func TestCustomerSetupSavesOnlyRegistryAndDerivedDeclarations(t *testing.T) {
 	books := customerFixture(t)
 	registryBytes := read(t, books.Config.Registry)
 	require.Empty(t, read(t, books.Config.ManualJournal))
 	require.Empty(t, read(t, books.Config.BankAccounts[0].Journal))
 	require.Contains(t, read(t, books.Config.LocalAccounts), "account Asset:141.000:Customers:SA-0001")
+	require.Contains(t, read(t, books.Config.CustomerPayees), "payee Example Customer\n")
+	require.NotContains(t, read(t, books.Config.Payees), "Example Customer")
 	require.NoError(t, books.Check())
 	require.ErrorContains(t, InitCustomerRegistry(books.Config), "will not overwrite")
 	require.Equal(t, registryBytes, read(t, books.Config.Registry))
@@ -152,15 +227,131 @@ func TestCustomerSetupSavesOnlyRegistryAndDerivedAccounts(t *testing.T) {
 
 	// Rebuildable declarations may lag an authoritative registry save after interruption.
 	require.NoError(t, os.WriteFile(books.Config.LocalAccounts, []byte("commodity $\n"), 0600))
+	require.NoError(t, os.Remove(books.Config.CustomerPayees))
 	cfg, err := LoadConfig(books.Config.configPath)
 	require.NoError(t, err)
 	reopened, err := Open(cfg)
 	require.NoError(t, err)
 	require.Contains(t, read(t, reopened.Config.LocalAccounts), "Asset:141.000:Customers:SA-0001")
+	require.Contains(t, read(t, reopened.Config.CustomerPayees), "payee Example Customer\n")
+	require.NotContains(t, read(t, reopened.Config.Payees), "Example Customer")
+	require.NoError(t, reopened.Check())
 	registry, err = reopened.Customers()
 	require.NoError(t, err)
 	require.Equal(t, []string{"Updated mailing address"}, registry.Customers[0].BillingAddress.Lines)
 	require.Empty(t, read(t, reopened.Config.ManualJournal))
+}
+
+func TestCustomerDeclarationsFollowRegistryWithoutEditingManualPayees(t *testing.T) {
+	books := customerFixture(t)
+	manualPayees := read(t, books.Config.Payees)
+	draft, err := books.NewRegistryDraft()
+	require.NoError(t, err)
+	for _, address := range []string{"First mailing address", "Second mailing address"} {
+		_, err = draft.AddCustomer("Electric company", []string{address})
+		require.NoError(t, err)
+	}
+	_, err = draft.Save()
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(read(t, books.Config.CustomerPayees), "payee Electric company\n"))
+	payees, err := books.declaredPayees()
+	require.NoError(t, err)
+	require.Contains(t, payees, "Electric company", "a customer may share a name with a manually declared counterparty")
+	require.NoError(t, books.Check())
+
+	draft, err = books.NewRegistryDraft()
+	require.NoError(t, err)
+	draft.Registry.Customers[0].Payee = "Updated Customer"
+	_, err = draft.Save()
+	require.NoError(t, err)
+	payees, err = books.declaredPayees()
+	require.NoError(t, err)
+	require.Contains(t, payees, "Updated Customer")
+	require.NotContains(t, payees, "Example Customer")
+	require.Equal(t, manualPayees, read(t, books.Config.Payees))
+	require.Empty(t, read(t, books.Config.ManualJournal))
+	require.NoError(t, books.Check())
+}
+
+const legacyCustomerJournal = `2022-01-20 Legacy utility
+    ; id: legacy-utility
+    Expense:615.000:Utility  $12.34
+    Bank:131.200:Checking  $-12.34
+`
+
+func TestCustomerSetupDoesNotAuditUnrelatedJournalHistory(t *testing.T) {
+	for _, tc := range []struct{ name, description string }{
+		{"legacy description", "Legacy utility"},
+		{"undeclared historical payee", "Legacy utility | Existing memo"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := strings.Replace(legacyCustomerJournal, "Legacy utility", tc.description, 1)
+			books, _ := fixture(t, original)
+			books = enableTestCustomers(t, books)
+			draft, err := books.NewRegistryDraft()
+			require.NoError(t, err)
+			connection, err := draft.AddConnection("First house", []string{"100 Example Street"})
+			require.NoError(t, err)
+			_, err = draft.Save()
+			require.NoError(t, err, "adding a connection must not audit unrelated transaction descriptions or payees")
+
+			_, saved, err := books.DeclarePayee("Example Customer")
+			require.NoError(t, err, "declaring a payee is not a historical-journal audit")
+			require.True(t, saved)
+			draft, err = books.NewRegistryDraft()
+			require.NoError(t, err)
+			customer, err := draft.AddCustomer("Example Customer", []string{"Mailing address"})
+			require.NoError(t, err)
+			_, err = draft.OpenService(ServiceAccount{
+				Customer: customer, Connection: connection, ServiceFrom: "2022-01-01",
+			})
+			require.NoError(t, err)
+			_, err = draft.Save()
+			require.NoError(t, err)
+			registry, err := books.Customers()
+			require.NoError(t, err)
+			require.Len(t, registry.Connections, 1)
+			require.Len(t, registry.Customers, 1)
+			require.Len(t, registry.ServiceAccounts, 1)
+			require.Equal(t, original, read(t, books.Config.ManualJournal))
+			require.Empty(t, read(t, books.Config.BankAccounts[0].Journal))
+			require.ErrorContains(t, books.Check(), "payees", "native full-book validation must still report undeclared payees")
+			_, saved, err = books.DeclarePayee("Legacy utility")
+			require.NoError(t, err)
+			require.True(t, saved)
+			require.NoError(t, books.Check())
+			_, err = books.CustomerReport("connection", connection, "", "2022-01-31")
+			require.NoError(t, err, "customer reports must accept native descriptions without rewriting historical entries")
+			require.Equal(t, original, read(t, books.Config.ManualJournal))
+		})
+	}
+}
+
+func TestRegistrySaveValidatesAffectedServiceNotUnrelatedMetadata(t *testing.T) {
+	books := customerFixture(t)
+	closeTestService(t, books)
+	const journal = `2021-02-01 Example Customer | Unsupported postclosure charge
+    ; id: later-charge
+    Asset:141.000:Customers:SA-0001  $10
+    Income:460.100:Service  $-10
+`
+	require.NoError(t, os.WriteFile(books.Config.ManualJournal, []byte(journal), 0600))
+	draft, err := books.NewRegistryDraft()
+	require.NoError(t, err)
+	_, err = draft.AddConnection("Unrelated connection", []string{"Another address"})
+	require.NoError(t, err)
+	_, err = draft.Save()
+	require.NoError(t, err)
+	savedRegistry := read(t, books.Config.Registry)
+
+	draft, err = books.NewRegistryDraft()
+	require.NoError(t, err)
+	require.NoError(t, draft.ConfirmServiceBilling("SA-0001", "2021-01-31", "2021-02-01", "Reviewed"))
+	_, err = draft.Save()
+	require.ErrorContains(t, err, "service-through", "changes to this service still require valid service coverage")
+	require.Equal(t, savedRegistry, read(t, books.Config.Registry))
+	require.Equal(t, journal, read(t, books.Config.ManualJournal))
+	require.ErrorContains(t, books.Check(), "service-through")
 }
 
 func TestCustomerRegistryRejectsInvalidAndStaleSaves(t *testing.T) {
@@ -170,7 +361,7 @@ func TestCustomerRegistryRejectsInvalidAndStaleSaves(t *testing.T) {
 		name, message string
 		change        func(*RegistryDraft)
 	}{
-		{"undeclared payee", "declare payee", func(d *RegistryDraft) { d.Registry.Customers[0].Payee = "Unknown customer" }},
+		{"invalid customer name", "invalid customer name", func(d *RegistryDraft) { d.Registry.Customers[0].Payee = "Invalid\ninclude other.journal" }},
 		{"removed customer", "unknown customer", func(d *RegistryDraft) { d.Registry.Customers = []Customer{} }},
 		{"reassigned service", "cannot be removed or reassigned", func(d *RegistryDraft) { d.Registry.ServiceAccounts[0].ServiceFrom = "2020-01-01" }},
 		{"duplicate ownership", "overlaps ownership", func(d *RegistryDraft) {

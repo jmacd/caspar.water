@@ -55,8 +55,6 @@ func TestServiceClosureRetainsDebtAndDoesNotNetRoles(t *testing.T) {
 	_, err = books.IssueClosingStatement("SA-0001", "2021-01-31")
 	require.ErrorContains(t, err, "cannot issue")
 
-	_, _, err = books.DeclarePayee("Next Occupant")
-	require.NoError(t, err)
 	draft, err := books.NewRegistryDraft()
 	require.NoError(t, err)
 	customer, err := draft.AddCustomer("Next Occupant", []string{"100 Example Street"})
@@ -354,6 +352,7 @@ func TestServiceRefundAndWorkspaceRestorePreserveEvidenceAndLock(t *testing.T) {
 	config, err := LoadConfig(filepath.Join(restoredRoot, "wat.yaml"))
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(config.LocalAccounts))
+	require.NoError(t, os.Remove(config.CustomerPayees))
 	require.NoError(t, os.Remove(config.Journal))
 	restored, err := Open(config)
 	require.NoError(t, err, "restoring must not depend on original absolute paths or saved generated declarations")

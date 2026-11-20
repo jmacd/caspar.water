@@ -126,6 +126,7 @@ func Open(cfg Config) (*Books, error) {
 			return nil, err
 		}
 		cfg.registryAccounts = registry.accounts()
+		cfg.registryPayees = registry.payees()
 	}
 	for _, name := range cfg.postingAccounts() {
 		account, _ := parsePostingAccount(name)
