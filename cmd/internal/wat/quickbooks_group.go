@@ -9,11 +9,12 @@ import (
 )
 
 type quickBooksTransactionGroup struct {
-	ID         string             `json:"id"`
-	Date       string             `json:"date"`
-	MatchBasis string             `json:"match_basis"`
-	Ambiguous  bool               `json:"ambiguous"`
-	Records    []quickBooksRecord `json:"records"`
+	ID                      string             `json:"id"`
+	Date                    string             `json:"date"`
+	MatchBasis              string             `json:"match_basis"`
+	Ambiguous               bool               `json:"ambiguous"`
+	SourceAmountsMayOverlap bool               `json:"source_amounts_may_overlap"`
+	Records                 []quickBooksRecord `json:"records"`
 }
 
 func quickBooksGroupSourceIDs(group quickBooksTransactionGroup) []string {
@@ -81,11 +82,12 @@ func groupQuickBooksRecords(records []quickBooksRecord) ([]quickBooksTransaction
 		}
 		ids[id] = true
 		groups = append(groups, quickBooksTransactionGroup{
-			ID:         id,
-			Date:       groupedRecords[0].Date,
-			MatchBasis: basis,
-			Ambiguous:  ambiguous,
-			Records:    groupedRecords,
+			ID:                      id,
+			Date:                    groupedRecords[0].Date,
+			MatchBasis:              basis,
+			Ambiguous:               ambiguous,
+			SourceAmountsMayOverlap: quickBooksSourceAmountsMayOverlap(groupedRecords),
+			Records:                 groupedRecords,
 		})
 	}
 	slices.SortStableFunc(groups, func(a, b quickBooksTransactionGroup) int {
@@ -95,6 +97,17 @@ func groupQuickBooksRecords(records []quickBooksRecord) ([]quickBooksTransaction
 		return strings.Compare(a.ID, b.ID)
 	})
 	return groups, nil
+}
+
+func quickBooksSourceAmountsMayOverlap(records []quickBooksRecord) bool {
+	nonCashSources := make(map[string]bool)
+	for _, record := range records {
+		if record.CashSource {
+			continue
+		}
+		nonCashSources[record.Source] = true
+	}
+	return len(nonCashSources) > 1
 }
 
 func quickBooksGroupingKey(record quickBooksRecord) (string, error) {

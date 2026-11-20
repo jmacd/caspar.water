@@ -143,7 +143,7 @@ func (e Entry) render(accounts []string, id string) (string, error) {
 		}
 		if !found || !singleLine(posting.Account) || strings.Contains(posting.Account, "  ") ||
 			strings.ContainsAny(posting.Account, ";[]()") {
-			return "", fmt.Errorf("select a declared Category:CPUC-number:LocalName posting account: %q", posting.Account)
+			return "", fmt.Errorf("select a declared Category:xxx.yyy:LocalName posting account: %q", posting.Account)
 		}
 		cents, err := ParseCents(posting.Amount)
 		if err != nil {

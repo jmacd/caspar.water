@@ -1,1 +1,2 @@
-bankstatementparser[hybrid]==0.0.28
+bankstatementparser[hybrid-vision]==0.0.28
+Pillow==11.3.0

@@ -26,7 +26,7 @@ func editorHelp(accounts []string) string {
 		"    ACCOUNT-NAME  $125.00",
 		"    ACCOUNT-NAME  $-125.00",
 		"",
-		"Copy/paste these declared Category:CPUC-number:LocalName accounts into postings above:",
+		"Copy/paste these declared Category:xxx.yyy:LocalName accounts into postings above:",
 	}
 	for _, account := range accounts {
 		lines = append(lines, "    "+account)

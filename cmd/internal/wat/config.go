@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,6 +18,7 @@ const (
 	masterJournal    = "books.journal"
 	chartJournal     = "chart.journal"
 	accountsJournal  = "accounts.journal"
+	payeesJournal    = "payees.journal"
 	manualJournal    = "manual.journal"
 	sourcesDirectory = "sources"
 )
@@ -25,20 +28,26 @@ var (
 	localAccountPartPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
+const maxStatementTransactionPromptLength = 4000
+
 type Config struct {
-	Version            int                 `yaml:"version"`
-	Name               string              `yaml:"name"`
-	Accounts           []string            `yaml:"accounts"`
-	BankAccounts       []BankAccountConfig `yaml:"bank_accounts"`
-	ChartDefPaths      []string            `yaml:"chart_defs,omitempty"`
-	Statement          StatementConfig     `yaml:"statement"`
-	Journal            string              `yaml:"-"`
-	ChartDefs          []string            `yaml:"-"`
-	LocalAccounts      string              `yaml:"-"`
-	ManualJournal      string              `yaml:"-"`
-	Sources            string              `yaml:"-"`
-	QuickBooksMappings string              `yaml:"-"`
-	root               string
+	Version                int                 `yaml:"version"`
+	Name                   string              `yaml:"name"`
+	Accounts               []string            `yaml:"accounts"`
+	BankAccounts           []BankAccountConfig `yaml:"bank_accounts"`
+	ChartDefPaths          []string            `yaml:"chart_defs,omitempty"`
+	ManualJournalPath      string              `yaml:"manual_journal,omitempty"`
+	HistoricalJournalPaths []string            `yaml:"historical_journals,omitempty"`
+	Statement              StatementConfig     `yaml:"statement"`
+	Journal                string              `yaml:"-"`
+	ChartDefs              []string            `yaml:"-"`
+	LocalAccounts          string              `yaml:"-"`
+	Payees                 string              `yaml:"-"`
+	ManualJournal          string              `yaml:"-"`
+	HistoricalJournals     []string            `yaml:"-"`
+	Sources                string              `yaml:"-"`
+	QuickBooksMappings     string              `yaml:"-"`
+	root                   string
 }
 
 type BankAccountConfig struct {
@@ -47,16 +56,23 @@ type BankAccountConfig struct {
 }
 
 type StatementConfig struct {
-	Python     string `yaml:"python"`
-	APIBase    string `yaml:"api_base"`
-	APIVersion string `yaml:"api_version"`
-	Model      string `yaml:"model"`
-	OllamaURL  string `yaml:"ollama_url,omitempty"`
+	Python             string                       `yaml:"python"`
+	APIBase            string                       `yaml:"api_base"`
+	APIVersion         string                       `yaml:"api_version"`
+	Model              string                       `yaml:"model"`
+	OllamaURL          string                       `yaml:"ollama_url,omitempty"`
+	TransactionPrompts []StatementTransactionPrompt `yaml:"transaction_prompts,omitempty"`
+	QuickBooksRegister string                       `yaml:"-"`
+}
+
+type StatementTransactionPrompt struct {
+	Payee  string `yaml:"payee" json:"payee"`
+	Prompt string `yaml:"prompt" json:"prompt"`
 }
 
 func (b *BankAccountConfig) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.ScalarNode {
-		return fmt.Errorf("bank account must be a Category:CPUC-number:LocalName string")
+		return fmt.Errorf("bank account must be a Category:xxx.yyy:LocalName string")
 	}
 	b.Account = node.Value
 	return nil
@@ -87,6 +103,35 @@ func LoadConfig(path string) (Config, error) {
 	if strings.TrimSpace(cfg.Statement.APIBase) != "" && strings.TrimSpace(cfg.Statement.OllamaURL) != "" {
 		return cfg, fmt.Errorf("statement.api_base and legacy statement.ollama_url cannot both be set")
 	}
+	promptPayees := make(map[string]bool, len(cfg.Statement.TransactionPrompts))
+	for index := range cfg.Statement.TransactionPrompts {
+		rule := &cfg.Statement.TransactionPrompts[index]
+		rule.Prompt = strings.TrimSpace(rule.Prompt)
+		if rule.Payee == "" ||
+			strings.TrimSpace(rule.Payee) != rule.Payee ||
+			!singleLine(rule.Payee) ||
+			strings.ContainsAny(rule.Payee, ";|") {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d].payee must be a nonempty single-line payee name",
+				index,
+			)
+		}
+		if promptPayees[rule.Payee] {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d] duplicates payee %q",
+				index,
+				rule.Payee,
+			)
+		}
+		if !validStatementTransactionPrompt(rule.Prompt) {
+			return cfg, fmt.Errorf(
+				"statement.transaction_prompts[%d].prompt must contain 1-%d printable characters",
+				index,
+				maxStatementTransactionPromptLength,
+			)
+		}
+		promptPayees[rule.Payee] = true
+	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return cfg, err
@@ -98,7 +143,26 @@ func LoadConfig(path string) (Config, error) {
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)
 	cfg.LocalAccounts = filepath.Join(books, accountsJournal)
-	cfg.ManualJournal = filepath.Join(books, manualJournal)
+	cfg.Payees = filepath.Join(books, payeesJournal)
+	manualPath := cfg.ManualJournalPath
+	if manualPath == "" {
+		manualPath = filepath.Join(booksDirectory, manualJournal)
+	}
+	cfg.ManualJournal, err = resolveBookJournalPath(cfg.root, "manual_journal", manualPath)
+	if err != nil {
+		return cfg, err
+	}
+	for index, path := range cfg.HistoricalJournalPaths {
+		resolved, err := resolveBookJournalPath(
+			cfg.root,
+			fmt.Sprintf("historical_journals[%d]", index),
+			path,
+		)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.HistoricalJournals = append(cfg.HistoricalJournals, resolved)
+	}
 	cfg.Sources = filepath.Join(cfg.root, sourcesDirectory)
 	cfg.QuickBooksMappings = filepath.Join(cfg.root, "quickbooks-mappings.yaml")
 	if cfg.ChartDefPaths == nil {
@@ -131,11 +195,32 @@ func LoadConfig(path string) (Config, error) {
 
 	accounts := make(map[string]bool)
 	identifiers := make(map[string]bool)
-	journals := make(map[string]bool)
+	journals := map[string]bool{
+		cfg.Journal:       true,
+		cfg.LocalAccounts: true,
+	}
+	if journals[cfg.ManualJournal] {
+		return cfg, fmt.Errorf("manual_journal conflicts with a generated workspace journal")
+	}
+	journals[cfg.ManualJournal] = true
+	for index, journal := range cfg.HistoricalJournals {
+		if journals[journal] {
+			return cfg, fmt.Errorf(
+				"historical_journals[%d] conflicts with another configured journal",
+				index,
+			)
+		}
+		journals[journal] = true
+	}
 	for index, name := range cfg.Accounts {
 		account, valid := parsePostingAccount(name)
 		if !valid || account.Category == "Bank" {
-			return cfg, fmt.Errorf("accounts[%d] must use Asset, Equity, Liability, Expense, or Income:CPUC-number:local-name", index)
+			return cfg, fmt.Errorf(
+				"accounts[%d] %q must use Asset, Equity, Liability, Expense, or "+
+					"Income:xxx.yyy:local-name",
+				index,
+				name,
+			)
 		}
 		if accounts[name] {
 			return cfg, fmt.Errorf("account %q is configured more than once", name)
@@ -146,7 +231,11 @@ func LoadConfig(path string) (Config, error) {
 		bank := &cfg.BankAccounts[index]
 		account, valid := parsePostingAccount(bank.Account)
 		if !valid || account.Category != "Bank" {
-			return cfg, fmt.Errorf("bank_accounts[%d] must use Bank:CPUC-number:local-name", index)
+			return cfg, fmt.Errorf(
+				"bank_accounts[%d] %q must use Bank:xxx.yyy:local-name",
+				index,
+				bank.Account,
+			)
 		}
 		if accounts[bank.Account] {
 			return cfg, fmt.Errorf("bank account %q is configured more than once", bank.Account)
@@ -157,12 +246,26 @@ func LoadConfig(path string) (Config, error) {
 		}
 		bank.Journal = filepath.Join(books, bankJournalFilename(bank.Account))
 		if journals[bank.Journal] {
-			return cfg, fmt.Errorf("bank accounts derive the same journal filename %s", bankJournalFilename(bank.Account))
+			return cfg, fmt.Errorf(
+				"bank account %q journal conflicts with another configured journal",
+				bank.Account,
+			)
 		}
 		accounts[bank.Account], identifiers[identifier], journals[bank.Journal] = true, true, true
 	}
 	reserved := append(
-		[]string{absolute, cfg.Journal, cfg.LocalAccounts, cfg.ManualJournal, cfg.QuickBooksMappings},
+		[]string{
+			absolute,
+			cfg.Journal,
+			cfg.LocalAccounts,
+			cfg.Payees,
+			cfg.ManualJournal,
+			cfg.QuickBooksMappings,
+		},
+		cfg.HistoricalJournals...,
+	)
+	reserved = append(
+		reserved,
 		cfg.writableJournals()...,
 	)
 	for index, chartDef := range cfg.ChartDefs {
@@ -179,11 +282,55 @@ func LoadConfig(path string) (Config, error) {
 	return cfg, nil
 }
 
+func validStatementTransactionPrompt(prompt string) bool {
+	if prompt == "" || utf8.RuneCountInString(prompt) > maxStatementTransactionPromptLength {
+		return false
+	}
+	return !strings.ContainsFunc(prompt, func(r rune) bool {
+		return !unicode.IsPrint(r) && r != '\n' && r != '\t'
+	})
+}
+
 func bankJournalFilename(account string) string {
 	parts := strings.Split(account, ":")
 	tail := strings.ToLower(strings.Join(parts[2:], "-"))
 	tail = filenameSeparatorPattern.ReplaceAllString(tail, "-")
 	return "bank-" + tail + ".journal"
+}
+
+func (c *Config) SetQuickBooksRegister(path string) error {
+	if strings.TrimSpace(path) != path || !singleLine(path) {
+		return fmt.Errorf("--quickbooks-register must be a single-line file path")
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".csv", ".xls", ".xlsx":
+	default:
+		return fmt.Errorf("--quickbooks-register must name a .csv, .xls, or .xlsx file")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve --quickbooks-register: %w", err)
+	}
+	c.Statement.QuickBooksRegister = absolute
+	return nil
+}
+
+func resolveBookJournalPath(root, label, path string) (string, error) {
+	if strings.TrimSpace(path) != path ||
+		!singleLine(path) ||
+		!filepath.IsLocal(path) ||
+		filepath.Clean(path) == "." {
+		return "", fmt.Errorf("%s must be a workspace-relative journal path inside books", label)
+	}
+	clean := filepath.Clean(path)
+	if ext := filepath.Ext(clean); ext != ".journal" && ext != ".ledger" {
+		return "", fmt.Errorf("%s must name a .journal or .ledger file inside books", label)
+	}
+	resolved := filepath.Join(root, clean)
+	if !within(filepath.Join(root, booksDirectory), resolved) {
+		return "", fmt.Errorf("%s must name a journal inside books", label)
+	}
+	return resolved, nil
 }
 
 func validLocalAccountName(name string) bool {

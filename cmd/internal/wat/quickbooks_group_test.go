@@ -28,6 +28,7 @@ func TestGroupQuickBooksRecordsMatchesReferenceAcrossReports(t *testing.T) {
 	require.Len(t, groups, 1)
 	require.Equal(t, "reference", groups[0].MatchBasis)
 	require.False(t, groups[0].Ambiguous)
+	require.False(t, groups[0].SourceAmountsMayOverlap)
 	require.Len(t, groups[0].Records, 2)
 }
 
@@ -76,6 +77,7 @@ func TestGroupQuickBooksRecordsMatchesSplitLinesByReference(t *testing.T) {
 	require.Len(t, groups, 1)
 	require.Equal(t, "reference", groups[0].MatchBasis)
 	require.False(t, groups[0].Ambiguous)
+	require.True(t, groups[0].SourceAmountsMayOverlap)
 	require.Len(t, groups[0].Records, 2)
 }
 

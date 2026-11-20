@@ -23,6 +23,14 @@ func prepareWorkspace(cfg Config) error {
 			return err
 		}
 	}
+	if err := ensureJournal(cfg.Payees); err != nil {
+		return err
+	}
+	for _, journal := range cfg.HistoricalJournals {
+		if _, err := readNonsymlinkFileState(journal, "historical journal"); err != nil {
+			return err
+		}
+	}
 	if err := writeGeneratedFile(cfg.LocalAccounts, generatedAccounts(cfg)); err != nil {
 		return fmt.Errorf("generate local accounts: %w", err)
 	}
@@ -74,11 +82,23 @@ func generatedMaster(cfg Config) []byte {
 	var text strings.Builder
 	text.WriteString(generatedHeader)
 	fmt.Fprintf(&text, "include %s\n", accountsJournal)
-	fmt.Fprintf(&text, "include %s\n", manualJournal)
+	fmt.Fprintf(&text, "include %s\n", payeesJournal)
+	for _, journal := range cfg.HistoricalJournals {
+		fmt.Fprintf(&text, "include %s\n", journalIncludePath(cfg, journal))
+	}
+	fmt.Fprintf(&text, "include %s\n", journalIncludePath(cfg, cfg.ManualJournal))
 	for _, bank := range cfg.BankAccounts {
-		fmt.Fprintf(&text, "include %s\n", filepath.Base(bank.Journal))
+		fmt.Fprintf(&text, "include %s\n", journalIncludePath(cfg, bank.Journal))
 	}
 	return []byte(text.String())
+}
+
+func journalIncludePath(cfg Config, journal string) string {
+	path, err := filepath.Rel(filepath.Dir(cfg.Journal), journal)
+	if err != nil {
+		panic(err)
+	}
+	return filepath.ToSlash(path)
 }
 
 func ensureDirectory(path string) error {
