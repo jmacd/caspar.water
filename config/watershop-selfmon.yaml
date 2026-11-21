@@ -919,7 +919,7 @@ spec:
   factory: materialize-series
   config:
     source: "series:///derived/perf"
-    target: /metrics/perf.series
+    target: /metrics/perf.r2.series
     time_column: timestamp
 ---
 # Materialize the historical wide limiter series independently from perf.
@@ -1017,7 +1017,7 @@ spec:
       - name: "perf"
         factory: "temporal-reduce"
         config:
-          in_pattern: "series:///metrics/perf.series"
+          in_pattern: "series:///metrics/perf.r2.series"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]

@@ -61,7 +61,8 @@ class SelfmonConfiguration(unittest.TestCase):
                 self.assertEqual(projection["config"]["patterns"],
                                  {"m": f"jsonlogs:///measure/{name}.jsonl"})
                 self.assertEqual(projection["config"]["locality"],
-                                 {"type": "timestamp-local", "event_time": "timestamp"})
+                                 {"type": "timestamp-local", "event_time": "timestamp",
+                                  "input_event_time": "ts"})
                 if name != "_self":
                     self.assertEqual(
                         projection["config"]["query"],
