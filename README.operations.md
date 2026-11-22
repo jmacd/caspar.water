@@ -387,6 +387,30 @@ Local checks use actual Caddy, a headless browser, and a disposable pond:
 make test-beacons
 ```
 
+Staging coverage uses `config/scripts/synthetic-traffic.py` on Watershop
+(Python stdlib, Chromium for browser visits). Synthetic views are
+indistinguishable from real ones, so use it only against staging. Copy it to a
+working directory outside the Terraform-managed checkout:
+
+```sh
+mkdir -p ~/analytics-synthetic && cp ~/watertown/config/scripts/synthetic-traffic.py ~/analytics-synthetic/
+cd ~/analytics-synthetic
+# Real page loads plus direct beacons identical to the script's POST; some go to
+# uncataloged /synthetic-unknown/N pages and some are malformed (expect 400).
+python3 synthetic-traffic.py send --browser-visits 4 --beacons 400 --invalid 8
+# After the next analytics-staging run:
+python3 synthetic-traffic.py check
+```
+
+`send` reads each site's published catalog and endpoint and appends every
+attempt to `ledger.jsonl`. `check` requires: every accepted ledger entry appears
+in the Caddy logs (synthetic-unknown pages exactly); Caddy's 204 views up to the
+newest ingested view equal `/analytics/<site>/daily` per UTC day and page; and
+`public` equals those views per day and section, classified through the pond's
+`pages.parquet`. It reads rotated `beacons-*.log` archives too, so a burst over
+the 10 MiB roll size (about 29k views per site) also checks rotation and
+archived-file ingestion. It exits non-zero on any mismatch.
+
 ### Deploy / Update configs
 
 ```bash
