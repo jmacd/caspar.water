@@ -29,6 +29,7 @@ azure_site_credentials = {
 # Routine applies must not interrupt production. Override this only for an
 # intentional production deployment.
 deploy_production = false
+staging_analytics_enabled = false
 
 # Production timers remain active during routine applies. Set false only while
 # initializing or resetting production, then restore true after canaries pass.

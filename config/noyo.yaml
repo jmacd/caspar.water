@@ -418,6 +418,12 @@ spec:
       # Pin the chart duration buttons to default to one month on first load
       # for every Noyo Harbor chart, overriding chart.js's adaptive default.
       default_range: "1M"
+
+    analytics:
+      enabled: false
+      site_id: noyo-staging
+      endpoint: /_analytics/noyo/view
+      default_section: Noyo
     
     exports:
       - name: "params"

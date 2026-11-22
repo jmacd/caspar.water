@@ -89,6 +89,10 @@ spec:
 #
 # run-selfmon.sh runs each of these via `pond run /system/etc/measure/<pond> push`
 # in a loop matching env/*.env.
+# Keep ingestion, projections, and join scopes in sync with Terraform's instances.
+# Check with: python3 config/scripts/test-selfmon.py (requires PyYAML).
+# RFC3339 bounds apply to newly ingested records; old unbounded versions remain
+# unchanged. Deploy a binary supporting this timestamp mode before this config.
 
 version: v1
 kind: mknod
@@ -100,6 +104,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/_self.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/_self.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -111,6 +117,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/limits.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/limits.jsonl"
     pond_path:        /measure
+    timestamp_field:  timestamp
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -122,6 +130,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -133,6 +143,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/noyo-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -144,6 +156,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -155,6 +169,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/septic-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -166,6 +182,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/site-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/site-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -177,6 +195,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/site-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/site-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -188,6 +208,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/water-staging.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/water-staging.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -199,6 +221,8 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/water-prod.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/water-prod.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 version: v1
 kind: mknod
@@ -210,6 +234,21 @@ spec:
     archived_pattern: "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl.*"
     active_pattern:   "${env:SELFMON_METRICS_DIR}/watershop-selfmon.jsonl"
     pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
+---
+version: v1
+kind: mknod
+metadata:
+  path: /system/etc/measure/analytics-staging
+spec:
+  factory: logfile-ingest
+  config:
+    archived_pattern: "${env:SELFMON_METRICS_DIR}/analytics-staging.jsonl.*"
+    active_pattern:   "${env:SELFMON_METRICS_DIR}/analytics-staging.jsonl"
+    pond_path:        /measure
+    timestamp_field:  ts
+    timestamp_unit:   rfc3339
 ---
 # Aggregated traffic series for sitegen / ad-hoc charting.
 #
@@ -266,6 +305,10 @@ spec:
       - name: "limiters"
         factory: "sql-derived-series"
         config:
+          # Requires the restricted exact-timestamp aggregation contract.
+          locality:
+            type: timestamp-grouped
+            event_time: timestamp
           patterns:
             m: "jsonlogs:///measure/limits.jsonl"
           query: >-
@@ -571,6 +614,11 @@ spec:
       - name: "azure-access"
         factory: "sql-derived-series"
         config:
+          # Requires timestamp-local support for non-limiting ORDER BY.
+          locality:
+            type: timestamp-local
+            event_time: timestamp
+            input_event_time: __REALTIME_TIMESTAMP
           patterns:
             # Include the selfmon unit as a permanent schema-bearing source
             # even before the first post-reset production run has logged an
@@ -678,6 +726,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/_self.jsonl"
           query: >-
@@ -696,6 +745,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/noyo-staging.jsonl"
           query: &pondseries >-
@@ -720,6 +770,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/noyo-prod.jsonl"
           query: *pondseries
@@ -730,6 +781,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/septic-staging.jsonl"
           query: *pondseries
@@ -740,6 +792,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/septic-prod.jsonl"
           query: *pondseries
@@ -750,6 +803,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/site-staging.jsonl"
           query: *pondseries
@@ -760,6 +814,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/site-prod.jsonl"
           query: *pondseries
@@ -770,6 +825,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/water-staging.jsonl"
           query: *pondseries
@@ -780,6 +836,7 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/water-prod.jsonl"
           query: *pondseries
@@ -790,8 +847,20 @@ spec:
           locality:
             type: timestamp-local
             event_time: timestamp
+            input_event_time: ts
           patterns:
             m: "jsonlogs:///measure/watershop-selfmon.jsonl"
+          query: *pondseries
+
+      - name: "p-analytics-staging"
+        factory: "sql-derived-series"
+        config:
+          locality:
+            type: timestamp-local
+            event_time: timestamp
+            input_event_time: ts
+          patterns:
+            m: "jsonlogs:///measure/analytics-staging.jsonl"
           query: *pondseries
 
       # ── Cross-pond perf series ───────────────────────────────────
@@ -822,11 +891,13 @@ spec:
               scope: "water-prod"
             - pattern: "series:///derived/p-watershop-selfmon"
               scope: "watershop-selfmon"
+            - pattern: "series:///derived/p-analytics-staging"
+              scope: "analytics-staging"
 ---
 # Materialize the `perf` join into a physical table:series.
 #
-# `/derived/perf` is DYNAMIC: every read re-runs ten sql-derived-series
-# queries over jsonlogs and FULL OUTER JOINs them.  That is fine for a
+# `/derived/perf` is DYNAMIC: every read re-runs the per-pond sql-derived-series
+# queries over jsonlogs and FULL OUTER JOINs them. That is fine for a
 # one-shot read but it is a terrible thing to put underneath a
 # temporal-reduce, which is exactly the bottleneck that made the noyo
 # subsite export ~90% of a site publish.
@@ -848,7 +919,7 @@ spec:
   factory: materialize-series
   config:
     source: "series:///derived/perf"
-    target: /metrics/perf.series
+    target: /metrics/perf.r2.series
     time_column: timestamp
 ---
 # Materialize the historical wide limiter series independently from perf.
@@ -902,18 +973,18 @@ spec:
 # Engaging the cache is necessary but not sufficient to stop rescanning
 # history.  Reads are bounded only once something SEALS: until the first
 # segment exists, sealed_hi is null, which is the "every bucket is hot"
-# case and reads all of it.  Sealing is gated on SEAL_TARGET_BYTES (1
-# MiB), so a young cache rescans until it has accumulated enough to be
-# worth freezing -- deliberate, so a pond rebuilt each minute does not
-# grow a file each minute.  Verify with sealed_hi_secs/segments in
+# case and reads all of it. Sealing is triggered by SEAL_TARGET_BYTES (1 MiB)
+# or one day of sealable backlog, whichever comes first. The backlog is the
+# span of old-enough buckets still in hot, excluding allowed_lateness.
+# This avoids both weeks of sparse recomputation and a tiny seal on every
+# timer tick. Verify with sealed_hi_secs/segments in
 # {POND}/cache/merged_*/res60/*.json, not by the merged_* dir existing.
 #
 # Consequence: the sealed-runs bookkeeping now runs here, so
 # allowed_lateness becomes a live knob for this node.  Leave it unset.
-# The 1d default is not the binding constraint anyway -- the hot window
-# spans max(allowed_lateness, span-at-which-hot-reaches-1MiB), and at ~94
-# columns the size gate is ~4096 one-minute buckets (~2.8d), so it wins.
-# Expect the window to oscillate ~1d..~2.8d rather than sit at 1d.
+# Its 1d default remains unchanged. With the 1d backlog backstop, regular
+# sparse builds generally keep about 1d..2d hot, subject to bucket granularity
+# and build cadence. This bounds duration, not absolute upstream work.
 #
 # Note the water.yaml/septic.yaml allowed_lateness comments describe a
 # hard error ("backfills an already-sealed bucket") that watertown #123
@@ -924,7 +995,7 @@ spec:
 # Nothing here needs that tuning.
 #
 # Aggregations omit `columns`, which applies them to every numeric column
-# -- the join is ~94 columns and grows whenever a pond is added.
+# -- the column count grows whenever a pond is added.
 # chart.js already understands the `.avg`/`.min`/`.max` suffixes that
 # temporal-reduce appends.
 #
@@ -946,7 +1017,7 @@ spec:
       - name: "perf"
         factory: "temporal-reduce"
         config:
-          in_pattern: "series:///metrics/perf.series"
+          in_pattern: "series:///metrics/perf.r2.series"
           out_pattern: "data"
           time_column: "timestamp"
           resolutions: [1m, 10m, 1h, 6h, 1d]

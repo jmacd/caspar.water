@@ -274,7 +274,7 @@ fi
 #   3. sync     -- copy site templates from host into pond.
 #   4. maintain -- delta-log checkpoint / cleanup.
 #   5. materialize -- append this tick's new /derived/perf rows into the
-#                  physical /metrics/perf.series that /reduced reads.
+#                  physical /metrics/perf.r2.series that /reduced reads.
 #   6. sitegen  -- render dashboard from /reduced into /var/www.
 
 export MEASURE_OUT_DIR="${SELFMON_METRICS_DIR}"

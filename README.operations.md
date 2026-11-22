@@ -213,6 +213,204 @@ The enabled instance sends every Monday at 09:00 America/Los_Angeles. Add
 `site-prod` only after the staging message is received and the corresponding
 Watertown image has been promoted.
 
+### Site analytics via Caddy (opt-in)
+
+Watershop staging uses one dedicated `analytics-staging` pond, with independent
+`/analytics/caspar` and `/analytics/noyo` trees. Its ordinary five-minute pond
+timer ingests separate Caddy logs, copies changed Parquet inventories from the
+last successful `site-staging` build, and renders two bounded reports through
+Sitegen at `/analytics/caspar/` and `/analytics/noyo/`. There is no combined
+report, collector server, or feature-owned query cache. This staging arrangement
+renders directly in the owning pond; it needs no additional publishing import.
+
+Enable it with the ignored Watershop `analytics.auto.tfvars` setting
+`staging_analytics_enabled = true`, then plan/apply with
+`-var deploy_production=false -var deploy_selfmon=false`. Terraform renders
+`config/analytics/site-pond.yaml.tftpl` separately for each site's literal paths,
+provisions `pond-analytics-staging-0001` and its MinIO backup bucket, upgrades
+Caddy using a checksum-pinned ARM64 package, and installs the beacon routes.
+Staging copies of the main/Noyo Sitegen configs contain literal opt-in booleans,
+so imported Noyo config does not depend on the publisher's environment.
+The shared source configurations and production instrumentation remain disabled.
+
+Original logs under `/var/log/caddy/beacons/staging/{caspar,noyo}` are retained;
+they are readable by ingestion but outside every web root. No automatic source
+retention or deletion is enabled. Monitor disk usage before extending rollout.
+Only the last three generated report builds are retained. Failed refreshes log
+errors and publish a no-data/unavailable page for the affected site rather than
+republishing stale counts; the main site build and the other report continue.
+The failed timer run remains visible to operators.
+
+The following single-site configurations remain useful for standalone setups
+and integration checks:
+
+The collection path is browser beacon -> dedicated Caddy log -> ordinary pond
+log ingestion -> pond queries. No analytics server, collector inventory, or
+host report-state directory is needed. The checked-in configurations are not
+installed or enabled by deployment. Browser instrumentation remains off by
+default.
+
+After choosing the owning pond and approving collection, install
+`config/caddy/beacons.caddy` as a Caddy snippet definition. Import it outside
+the site block, then configure each site's endpoint and private log directory:
+
+```caddyfile
+import /etc/caddy/beacons.caddy
+
+example.com {
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    import analytics-beacons caspar-staging /_analytics/caspar/view /var/log/caddy/beacons/caspar-staging
+    import analytics-beacons noyo-staging /_analytics/noyo/view /var/log/caddy/beacons/noyo-staging
+
+    handle {
+        root * /path/to/published/site
+        try_files {path} {path}.html {path}/
+        file_server
+    }
+}
+```
+
+Keep the existing `/selfmon` and `/monitor` handlers when adapting the Watershop
+configuration. Ordinary `try_files` and static serving must be inside the
+fallback `handle`, not at site scope where rewriting could happen before the
+beacon handler. Validate the complete configuration before reloading Caddy.
+The snippet uses built-in Caddy directives; local integration uses Caddy 2.10.2.
+
+Each named beacon logger receives only its endpoint's requests, instead of
+also writing them to the ordinary weblog. It removes the complete request
+object, response headers, and authenticated user field. Only validated POSTs
+receive the selected `page_uri` and `catalog_id` fields; site identity comes
+from Caddy configuration, not the client. Unknown query parameters are not
+logged. This checks basic payload shape, not catalog membership or humanity.
+The browser sends no request body, credentials, referrer, or current-page URL
+state. Successful requests return 204 and `Cache-Control: no-store`; this
+does not promise an fsync-before-response journal acknowledgement.
+
+Provision log directories outside web roots, writable by Caddy and readable
+by the ingestion account. The snippet uses mode 0640 and uncompressed rotated
+logs for ordinary `logfile-ingest`. It deliberately does not delete archives:
+monitor disk use and approve a source backup/retention policy before production.
+Do not silently enable Caddy sampling for page counts.
+
+Apply `config/analytics.yaml` only in the site's writable owning pond:
+
+```sh
+export POND=/path/to/owning-pond
+export ANALYTICS_LOG_DIR=/var/log/caddy/beacons/noyo-staging
+pond apply -f config/analytics.yaml
+pond run /etc/analytics-ingest push
+pond cat /analytics/daily --format=table
+```
+
+For containers, mount that source directory read-only and set
+`ANALYTICS_LOG_DIR` to its container-visible path. Schedule the existing ingest
+command in the owning pond's periodic workflow; do not ingest or write through
+another pond's imported mount. Site/environment source directories and datasets
+remain separate; staging uses separate subtrees in one pond as described above.
+These single-site example files do not themselves install a timer or owning pond.
+
+Raw source versions live under `/analytics/raw`. The supplied Caddy snippet logs
+`ts` as an RFC3339 UTC string (`time_format rfc3339_nano`), and ingestion records
+it with `timestamp_unit: rfc3339`. That metadata lets `/analytics/views` declare a
+timestamp-local projection (`CAST(ts AS TIMESTAMP)`, full precision) that pond
+can verify; `/analytics/daily` groups it by UTC day, site, and canonical page.
+Caddy's default fractional Unix-second `ts` cannot be proven timestamp-local, so
+logs in that format cannot be read by these configurations; start a new log and
+pond generation when switching formats.
+The queries contain no replica-local site-ID environment dependency, so imports
+can evaluate them under their effective root. Parsed logs use the existing
+shared format cache. Daily counts use ordinary `temporal-reduce-series` with
+site/page grouping, sharing its incremental cache and late-data handling rather
+than introducing an analytics-specific rollup. A query before the first accepted
+event may be unavailable; that is not evidence of zero views.
+
+For section classification, configure the main site's instrumentation with:
+
+```yaml
+analytics:
+  enabled: true
+  site_id: caspar-staging  # Must match the site's Caddy logger identity.
+  endpoint: /_analytics/caspar/view
+  default_section: Static content
+  sections:
+    /blog: Blog
+    /data: Monitoring
+    /analysis: Monitoring
+    /septic: Monitoring
+    /explore: Monitoring
+```
+
+For Noyo, use its own site ID/endpoint, `default_section: Noyo`, and no section
+overrides. These are configuration examples, not enabled deployment settings.
+Sitegen emits `_analytics/pages.parquet` for each independently instrumented site,
+with non-null UTF-8 `site_id`, `page_uri`, and `section` columns even when empty.
+After successful publication, copy that site's inventory into its owning
+analytics pond and install the optional public projection:
+
+```sh
+pond copy host:///path/to/published/_analytics/pages.parquet /analytics/pages.parquet
+pond apply -f config/analytics-public.yaml
+pond cat /analytics/public/daily-sections --format=table
+```
+
+Use ordinary data-file copy, not `host+table` or `host+series`: only the current
+inventory should classify the reporting window. The query uses the existing
+`file+table:///analytics/pages.parquet` cast to read current file content.
+These facts then replicate with the pond.
+The query emits only UTC day, section, and reported views over the last 30 UTC
+calendar days. Unrecognized paths contribute to Other / unclassified without
+exposing their names. Classification follows the current inventory: retired
+pages move to Other and changed section assignments reclassify displayed history.
+Duplicate keys do not multiply counts; conflicting section labels become Other.
+A valid zero-row inventory replaces previous classifications and moves retained
+views into Other; it does not mean zero activity. Missing or unreadable inventory
+is a report error, not an empty inventory.
+
+This prepares the public dataset, not the dashboard. The enclosing site should
+import the source ponds, combine their daily section counts, and export only
+the public projection to Parquet. Sitegen chart wiring, automated inventory
+transfer, and honest freshness/coverage presentation remain pending.
+The standalone collector, custom rollup/table
+factories, host-state report command, and their service templates and wrapper
+mounts have been removed. Remove any experimental `analytics_report` settings
+or collector-specific ingestion configuration before using this version.
+There is no `ANALYTICS_REPORT_ROOT` or replacement host report store.
+
+Local checks use actual Caddy, a headless browser, and a disposable pond:
+
+```sh
+# Caddy must be available, or set CADDY_BIN to its executable.
+make test-beacons
+```
+
+Staging coverage uses `config/scripts/synthetic-traffic.py` on Watershop
+(Python stdlib, Chromium for browser visits). Synthetic views are
+indistinguishable from real ones, so use it only against staging. Copy it to a
+working directory outside the Terraform-managed checkout:
+
+```sh
+mkdir -p ~/analytics-synthetic && cp ~/watertown/config/scripts/synthetic-traffic.py ~/analytics-synthetic/
+cd ~/analytics-synthetic
+# Real page loads plus direct beacons identical to the script's POST; some go to
+# uncataloged /synthetic-unknown/N pages and some are malformed (expect 400).
+python3 synthetic-traffic.py send --browser-visits 4 --beacons 400 --invalid 8
+# After the next analytics-staging run:
+python3 synthetic-traffic.py check
+```
+
+`send` reads each site's published catalog and endpoint and appends every
+attempt to `ledger.jsonl`. `check` requires: every accepted ledger entry appears
+in the Caddy logs (synthetic-unknown pages exactly); Caddy's 204 views up to the
+newest ingested view equal `/analytics/<site>/daily` per UTC day and page; and
+`public` equals those views per day and section, classified through the pond's
+`pages.parquet`. It reads rotated `beacons-*.log` archives too, so a burst over
+the 10 MiB roll size (about 29k views per site) also checks rotation and
+archived-file ingestion. It exits non-zero on any mismatch.
+
 ### Deploy / Update configs
 
 ```bash
@@ -272,6 +470,16 @@ Efficiency is evaluated by comparing these counters at similar input volumes
 after retention has reached steady state. Tick bytes, syscall counts, and
 runtime should plateau rather than rise with transaction history.
 
+Exclude the first tick after deploying a pond binary that includes
+watertown#224, and the first tick after the pond's `cache/` directory is lost,
+from these comparisons. That tick has no materialization checkpoints yet, so
+each `materialize-*` node checks its whole target against source history. It
+also seals the backlog of rollup data older than a day. Expect one slow tick
+with `materialize-series: verifying ... lower_us=None` warnings. Later ticks
+should not log them. If that tick fails with `was not advanced`, the existing
+target was already inconsistent; see
+[Repairs that do not need a reset](#repairs-that-do-not-need-a-reset).
+
 ### Reset an instance
 
 ```bash
@@ -327,6 +535,43 @@ recent deploy caused it:
 ```bash
 journalctl --user -u "pond-selfmon@<instance>.service" --no-pager \
   | grep "Prefix verification failed" | head -2
+```
+
+### Repairs that do not need a reset
+
+These failures also repeat on every tick and never repair themselves, but each
+has an in-place fix. Both need a pond binary that includes watertown#224.
+
+**`materialize-series` rejects a retroactive change.** The tick logs
+`materialize-series: target <path> was not advanced ... rejects retroactive
+changes`. A source already copied into the target has changed at or before the
+target's watermark, usually because an input was re-ingested or a row landed
+exactly at the watermark. If the message also says `source version(s) were
+removed or replaced`, source rows the target already holds have disappeared.
+The selfmon sources (`/measure/<name>.jsonl`) do not match the archived names
+logfile-ingest gives rotated files, so rotating `${SELFMON_METRICS_DIR}/*.jsonl`
+causes exactly this. Do not rotate those files. No target rows or progress were
+published. Pond cannot delete the target, so either:
+
+1. restore the source if the change was a mistake; the next tick then passes, or
+2. retarget: in `config/watershop-selfmon.yaml`, change the `materialize-*`
+   node's `target` to a new path (for example `/metrics/perf.r2.series`), update
+   every consumer of the old path (the rollup `in_pattern`s), and redeploy so
+   `pond apply` updates the node. The next tick rebuilds the new target from the
+   whole source, and rollup caches rebuild once. Expect one slow tick. The old
+   target is left unused.
+
+**`logfile-ingest` refuses a record without a usable timestamp.** The tick logs
+`logfile-ingest: refusing to ingest <host file> into <pond path>: the JSON
+record at byte offset <N> ... has a missing or unusable '<field>' timestamp`.
+Nothing was written and the file's ingest offset did not advance, so later
+records in that file are blocked too. Broken (unparseable) JSON lines are only
+skipped with a warning; this error means a well-formed record lacks its
+timestamp. Inspect it, fix the producer, then correct that record in the host
+file; the next tick ingests from the same offset:
+
+```bash
+tail -c +$((N + 1)) /var/log/watertown-selfmon/<instance>/<name>.jsonl | head -1
 ```
 
 ### Production generation cutover

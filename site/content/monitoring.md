@@ -32,3 +32,4 @@ chlorine level for health. Find our live monitoring status below.
 
 <script type="module" src="assets/monitor-status.js"></script>
 
+[site stats](/analytics/caspar/)
