@@ -172,6 +172,7 @@ variable "reset_instances" {
     condition = alltrue([
       for name in var.reset_instances :
       contains([
+        "analytics-staging",
         "noyo-prod",
         "noyo-staging",
         "septic-prod",
