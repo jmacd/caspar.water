@@ -15,7 +15,7 @@ spec:
     active_pattern: /beacons/${site}/beacons.log
     pond_path: /analytics/${site}/raw
     timestamp_field: ts
-    timestamp_unit: seconds
+    timestamp_unit: rfc3339
 ---
 version: v1
 kind: mknod
@@ -29,9 +29,9 @@ spec:
     locality:
       type: timestamp-local
       event_time: timestamp
+      input_event_time: ts
     query: >-
-      SELECT to_timestamp_seconds(CAST(floor(CAST(ts AS DOUBLE)) AS BIGINT)) AS timestamp,
-        site_id, page_uri
+      SELECT CAST(ts AS TIMESTAMP) AS timestamp, site_id, page_uri
       FROM source
       WHERE schema_version = '1' AND event = 'pageview' AND status = '204'
         AND site_id = '${site}-staging'

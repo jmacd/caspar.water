@@ -4,6 +4,7 @@
 import http.client
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import shutil
@@ -17,6 +18,11 @@ from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = "a" * 64
+
+
+def rfc3339(seconds):
+    """Format Unix seconds like Caddy's rfc3339_nano UTC timestamps."""
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class Beacons(unittest.TestCase):
@@ -134,8 +140,9 @@ http://127.0.0.1:{self.port} {{
         self.assertEqual(a[0]["catalog_id"], CATALOG)
         self.assertEqual(str(a[0]["schema_version"]), "1")
         self.assertEqual(a[0]["event"], "pageview")
-        self.assertIsInstance(a[0]["ts"], (int, float))
-        self.assertLess(a[0]["ts"], 10**11)
+        self.assertIsInstance(a[0]["ts"], str)
+        self.assertTrue(a[0]["ts"].endswith("Z"), a[0]["ts"])
+        self.assertLess(abs(datetime.fromisoformat(a[0]["ts"]).timestamp() - time.time()), 60)
         self.assertEqual([row["status"] for row in a], [204] + [400] * 5)
         for row in a + b:
             self.assertNotIn("request", row)
@@ -202,7 +209,7 @@ http://127.0.0.1:{self.port} {{
         with (self.work / "a/beacons.log").open("a") as log:
             for timestamp in [86399.75, 86400.25]:
                 log.write(json.dumps({
-                    **template, "ts": timestamp, "page_uri": "/day-boundary",
+                    **template, "ts": rfc3339(timestamp), "page_uri": "/day-boundary",
                 }) + "\n")
         ingest_and_count(5)
         output = run("cat", "/analytics/daily", "--format=table", "--sql",
@@ -219,7 +226,7 @@ http://127.0.0.1:{self.port} {{
             for timestamp in [today - 29 * 86400 + 0.25,
                               today - 29 * 86400 - 0.25, today + 86400 + 0.25]:
                 log.write(json.dumps({
-                    **template, "ts": timestamp, "page_uri": "/water",
+                    **template, "ts": rfc3339(timestamp), "page_uri": "/water",
                 }) + "\n")
         ingest_and_count(9)
         inventory_source = self.work / "pages-source.jsonl"
@@ -313,7 +320,7 @@ http://127.0.0.1:{self.port} {{
         for site, count, base in [("caspar", 2, "/"), ("noyo", 3, "/noyo-harbor/")]:
             logs = self.work / "logs" / site
             logs.mkdir(parents=True)
-            event = {"ts": now, "schema_version": 1, "event": "pageview", "status": 204,
+            event = {"ts": rfc3339(now), "schema_version": 1, "event": "pageview", "status": 204,
                      "site_id": f"{site}-staging", "page_uri": base}
             (logs / "beacons.log").write_text(
                 "".join(json.dumps(event) + "\n" for _ in range(count))

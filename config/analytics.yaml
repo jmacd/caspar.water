@@ -16,7 +16,7 @@ spec:
     active_pattern: "${env:ANALYTICS_LOG_DIR}/beacons.log"
     pond_path: /analytics/raw
     timestamp_field: ts
-    timestamp_unit: seconds
+    timestamp_unit: rfc3339
 ---
 version: v1
 kind: mknod
@@ -28,11 +28,12 @@ spec:
     patterns:
       source: "jsonlogs:///analytics/raw/beacons*.log"
     locality:
-      # Rounding to seconds is not timestamp-preserving.
-      type: global
+      type: timestamp-local
+      event_time: timestamp
+      input_event_time: ts
     query: >-
       SELECT
-        to_timestamp_seconds(CAST(floor(CAST(ts AS DOUBLE)) AS BIGINT)) AS timestamp,
+        CAST(ts AS TIMESTAMP) AS timestamp,
         site_id,
         page_uri,
         catalog_id

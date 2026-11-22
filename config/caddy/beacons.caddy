@@ -13,7 +13,10 @@
 			roll_keep_for 0
 		}
 		format filter {
-			wrap json
+			# RFC3339 UTC event time lets pond prove the views are timestamp-local.
+			wrap json {
+				time_format rfc3339_nano
+			}
 			fields {
 				request delete
 				resp_headers delete

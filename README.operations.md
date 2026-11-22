@@ -313,10 +313,14 @@ another pond's imported mount. Site/environment source directories and datasets
 remain separate; staging uses separate subtrees in one pond as described above.
 These single-site example files do not themselves install a timer or owning pond.
 
-Raw source versions live under `/analytics/raw`, with Caddy's default fractional
-Unix-second `ts` recorded using conservative event-time bounds. `/analytics/views`
-is a typed projection of accepted beacons with timestamps floored to whole
-seconds; `/analytics/daily` groups them by UTC day, site, and canonical page.
+Raw source versions live under `/analytics/raw`. The supplied Caddy snippet logs
+`ts` as an RFC3339 UTC string (`time_format rfc3339_nano`), and ingestion records
+it with `timestamp_unit: rfc3339`. That metadata lets `/analytics/views` declare a
+timestamp-local projection (`CAST(ts AS TIMESTAMP)`, full precision) that pond
+can verify; `/analytics/daily` groups it by UTC day, site, and canonical page.
+Caddy's default fractional Unix-second `ts` cannot be proven timestamp-local, so
+logs in that format cannot be read by these configurations; start a new log and
+pond generation when switching formats.
 The queries contain no replica-local site-ID environment dependency, so imports
 can evaluate them under their effective root. Parsed logs use the existing
 shared format cache. Daily counts use ordinary `temporal-reduce-series` with
