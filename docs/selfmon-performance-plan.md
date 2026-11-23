@@ -1,6 +1,8 @@
 # Watershop selfmon: next performance fixes
 
-**Status: planned, not deployed.** Start with the journal preflight and template copies in `caspar.water`. The first Watertown engine fix is the commit-log read: it affects every small write, not just selfmon. Re-measure ingestion after that fix before designing a batch interface.
+**Status: milestone 1 implemented locally, not deployed.** Selfmon now runs the count without a preflight listing and logs cursor-check/seed time separately as `selfmon_timing step=journal-cursor elapsed_s=...`. On a disposable `0.309.228` pond, a first run seeded the cursor, a warm run counted all three rows across two files without reseeding, and no-match and query-error runs each recorded one `read-benchmark` failure. The time saved on Watershop is not yet measured.
+
+Next: skip unchanged template copies in `caspar.water`. The first Watertown engine fix is the commit-log read: it affects every small write, not just selfmon. Re-measure ingestion after that fix before designing a batch interface.
 
 The goal is less work for the **same tick**: keep the full-history benchmark, all measurement feeds, current timer, maintenance safeguards, and visible failures. Do not trade away history or correctness for a faster dashboard.
 
