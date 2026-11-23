@@ -16,6 +16,13 @@ azure_site_credentials = {
   client_secret = ""
 }
 
+# Write identity for the analytics-prod backup container
+# (terraform -chdir=../azure output -json analytics_credentials).
+azure_analytics_credentials = {
+  client_id     = ""
+  client_secret = ""
+}
+
 minio_site_credentials = {
   endpoint   = ""
   region     = ""

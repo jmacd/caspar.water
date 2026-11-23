@@ -9,7 +9,23 @@ BASE_DIR=$(cd "${SCRIPTS}/../.." && pwd)
 source "${BASE_DIR}/env/${INSTANCE}.env"
 ANALYTICS_PUBLISHED_DIR=$(readlink -f "${ANALYTICS_SITE_ROOT}")
 export ANALYTICS_PUBLISHED_DIR
+# Containers see the published build at /published and write reports to /www;
+# native ponds use host paths directly.
+NATIVE=0
 EXE="${SCRIPTS}/pond.sh"
+PUBLISHED_URL="host:///published"
+if [ "${POND_RUNTIME:-container}" = "native" ]; then
+    NATIVE=1
+    EXE="${SCRIPTS}/pond-native.sh"
+    PUBLISHED_URL="host://${ANALYTICS_PUBLISHED_DIR}"
+fi
+build_output() {
+    if [ "${NATIVE}" = 1 ]; then
+        echo "$1"
+    else
+        echo /www
+    fi
+}
 DEPLOY_BASE="${BASE_DIR}/www/${INSTANCE}"
 mkdir -p "${DEPLOY_BASE}"
 WORK=$(mktemp -d "${DEPLOY_BASE}/.render-XXXXXX")
@@ -42,21 +58,22 @@ for SITE in caspar noyo; do
             echo "WARNING: Cannot read previous ${SITE} inventory; replacing from published source" >&2
         fi
         if [ "${COPY}" = 1 ] &&
-            ! "${EXE}" "${INSTANCE}" copy "host:///published/${INVENTORY}" "/analytics/${SITE}/pages.parquet"; then
+            ! "${EXE}" "${INSTANCE}" copy "${PUBLISHED_URL}/${INVENTORY}" "/analytics/${SITE}/pages.parquet"; then
             echo "ERROR: ${SITE} inventory copy failed; publishing unavailable report" >&2
             READY=0
         fi
     fi
     mkdir "${WORK}/${SITE}"
     if [ "${READY}" = 1 ] &&
-        SITE_BUILD_DIR="${WORK}/${SITE}" "${EXE}" "${INSTANCE}" run "/etc/site-${SITE}" -- build /www; then
+        SITE_BUILD_DIR="${WORK}/${SITE}" "${EXE}" "${INSTANCE}" run "/etc/site-${SITE}" \
+            -- build "$(build_output "${WORK}/${SITE}")"; then
         mv "${WORK}/${SITE}" "${DEPLOY_DIR}/${SITE}"
     else
         echo "ERROR: ${SITE} analytics unavailable; no previous counts will be republished" >&2
         FAILED=1
         mkdir "${WORK}/${SITE}-unavailable"
         SITE_BUILD_DIR="${WORK}/${SITE}-unavailable" "${EXE}" "${INSTANCE}" \
-            run "/etc/site-${SITE}" -- build /www --quick
+            run "/etc/site-${SITE}" -- build "$(build_output "${WORK}/${SITE}-unavailable")" --quick
         mv "${WORK}/${SITE}-unavailable" "${DEPLOY_DIR}/${SITE}"
     fi
 done

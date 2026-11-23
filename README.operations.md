@@ -241,6 +241,32 @@ errors and publish a no-data/unavailable page for the affected site rather than
 republishing stale counts; the main site build and the other report continue.
 The failed timer run remains visible to operators.
 
+Production reports run natively on the cloud (Linode) host in its own
+`analytics-prod` pond (`~/pond-analytics-prod`), rendered from the same template
+with site IDs `caspar-prod`/`noyo-prod` and logs under
+`/var/log/caddy/beacons/prod/{caspar,noyo}`. Its five-minute
+`pond-native@analytics-prod.timer` copies inventories from the rsynced
+`~/watertown/www/current` site-prod build, publishes to
+`~/watertown/www/analytics-prod/current`, and Caddy serves that at
+`https://casparwater.us/analytics/{caspar,noyo}/`. Backups push to the Azure
+container `analytics-prod-0001` using a dedicated `analytics-prod` write
+identity. Roll out in order:
+
+1. `terraform/station/azure`: apply (container, identity, role assignment),
+   then copy the `analytics_credentials` output into the cloud
+   `azure.auto.tfvars.json` as `azure_analytics_credentials`.
+2. `terraform/station/cloud`: apply (beacon routes, `/analytics/` handler,
+   log directories, pond init, Azure remote, timer). The Linode token comes
+   from `li_token` in the ignored `terraform.tfvars` or from `TF_VAR_li_token`.
+3. `terraform/station/watershop`: set `production_analytics_enabled = true`
+   and apply with `deploy_production=true`. This turns on browser beacons in the
+   site-prod and noyo-prod builds. Enable it only after step 2, because before
+   then the cloud host has no beacon endpoint.
+
+Until each production site has an accepted view, its report shows
+unavailable and the timer run fails; an empty beacon source is not yet treated
+as no data.
+
 The following single-site configurations remain useful for standalone setups
 and integration checks:
 

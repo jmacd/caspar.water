@@ -24,6 +24,21 @@ output "site_credentials" {
   }
 }
 
+output "analytics_credentials" {
+  sensitive = true
+  value = {
+    client_id     = azuread_application.pond["analytics-prod"].client_id
+    client_secret = azuread_application_password.pond["analytics-prod"].value
+  }
+}
+
+output "analytics_container_urls" {
+  value = {
+    for name, container in azurerm_storage_container.analytics :
+    name => container.url
+  }
+}
+
 output "container_urls" {
   value = {
     for name, container in azurerm_storage_container.native :

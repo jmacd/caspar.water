@@ -40,12 +40,13 @@ locals {
       extra_env      = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nNOYO_GIT_REF=${var.noyo_git_ref}"
     }
     noyo-prod = {
-      s3         = local.no_s3
-      s3_url     = ""
-      interval   = "1h"
-      boot_delay = "6min"
-      volume     = "pond-noyo-prod-0003"
-      extra_env  = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0003"
+      s3          = local.no_s3
+      s3_url      = ""
+      interval    = "1h"
+      boot_delay  = "6min"
+      volume      = "pond-noyo-prod-0003"
+      config_file = "noyo-prod.yaml"
+      extra_env   = "HYDRO_KEY_ID=${var.hydrovu_key_id}\nHYDRO_KEY_VALUE=${var.hydrovu_key_value}\nSITE_BASE_URL=/noyo-harbor/\nAZURE_URL=az://noyo-prod-0003"
     }
     water-staging = {
       s3             = local.staging_s3
@@ -111,6 +112,7 @@ locals {
       interval       = "3h"
       boot_delay     = "8min"
       email_report   = contains(var.weekly_report_email_instances, "site-prod")
+      config_file    = "site-prod.yaml"
       extra_env      = "WATER_AZURE_URL=az://water-prod-0003\nNOYO_AZURE_URL=az://noyo-prod-0003\nSEPTIC_AZURE_URL=az://septic-prod-0003\nSITE_BASE_URL=/\nGIT_REF=main\nNOYO_GIT_REF=main\nCLOUD_HOST=cloud\nPOND_MEMORY_LIMIT_MB=1024"
     }
     watershop-selfmon = {
@@ -198,13 +200,37 @@ resource "local_file" "staging_site_configs" {
   ])
 }
 
+# Same literal rendering for production, whose beacons are logged by the cloud
+# host's Caddy under the caspar-prod/noyo-prod identities.
+resource "local_file" "production_site_configs" {
+  for_each        = { site = "caspar-prod", noyo = "noyo-prod" }
+  filename        = "${path.module}/dist/${each.key}-prod.yaml"
+  file_permission = "0644"
+  content = join("\n---\n", [
+    for source in [
+      for text in split("\n---\n", file("${path.module}/../../../config/${each.key}.yaml")) :
+      { text = text, doc = yamldecode(text) }
+    ] :
+    try(source.doc.spec.factory, "") == "sitegen" ? yamlencode(merge(source.doc, {
+      spec = merge(source.doc.spec, {
+        config = merge(source.doc.spec.config, {
+          analytics = merge(source.doc.spec.config.analytics, {
+            enabled = var.production_analytics_enabled
+            site_id = each.value
+          })
+        })
+      })
+    })) : source.text
+  ])
+}
+
 resource "local_file" "analytics_config" {
   filename        = "${path.module}/dist/analytics-staging.yaml"
   file_permission = "0644"
   content = join("\n", concat([
     for site, title in { caspar = "Caspar Water", noyo = "Noyo Harbor" } :
     templatefile("${path.module}/../../../config/analytics/site-pond.yaml.tftpl", {
-      site = site, title = title
+      site = site, title = title, environment = "staging", log_root = "/beacons"
     })
     ], [<<-YAML
 version: v1
@@ -297,6 +323,7 @@ resource "null_resource" "watershop" {
     local_file.timer_files,
     local_file.analytics_config,
     local_file.staging_site_configs,
+    local_file.production_site_configs,
   ]
 
   lifecycle {
@@ -373,6 +400,16 @@ resource "null_resource" "watershop" {
   provisioner "file" {
     source      = local_file.staging_site_configs["noyo"].filename
     destination = "${local.base_dir}/config/noyo-staging.yaml"
+  }
+
+  provisioner "file" {
+    source      = local_file.production_site_configs["site"].filename
+    destination = "${local.base_dir}/config/site-prod.yaml"
+  }
+
+  provisioner "file" {
+    source      = local_file.production_site_configs["noyo"].filename
+    destination = "${local.base_dir}/config/noyo-prod.yaml"
   }
 
   # Push deploy key for watershop → cloud rsync (site-prod)
