@@ -328,7 +328,8 @@ http://127.0.0.1:{self.port} {{
             )
             config = self.work / f"{site}-pond.yaml"
             config.write_text(template.replace("${site}", site).replace("${title}", site)
-                              .replace("/beacons/", str(self.work / "logs") + "/"))
+                              .replace("${environment}", "staging")
+                              .replace("${log_root}", str(self.work / "logs")))
             run("apply", "-f", str(config))
             run("run", f"/etc/ingest-{site}", "push")
             source = self.work / f"{site}-source"

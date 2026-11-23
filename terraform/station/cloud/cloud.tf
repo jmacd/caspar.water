@@ -35,6 +35,15 @@ variable "azure_site_credentials" {
   sensitive = true
 }
 
+variable "azure_analytics_credentials" {
+  description = "Azure service-principal credentials for the analytics-prod backup container"
+  type = object({
+    client_id     = string
+    client_secret = string
+  })
+  sensitive = true
+}
+
 provider "linode" {
   token = var.li_token
 }
@@ -53,6 +62,9 @@ locals {
   setup_src           = "${path.module}/setup_script.sh"
   teardown_src        = "${path.module}/teardown_script.sh"
   config_src          = "${path.module}/../../../config"
+  beacons_src         = "${local.config_src}/caddy/beacons.caddy"
+  beacon_log_root     = "/var/log/caddy/beacons/prod"
+  analytics_sites     = { caspar = "Caspar Water", noyo = "Noyo Harbor" }
 
   site_env_content = join("\n", [
     "POND=${local.home}/pond-site-prod",
@@ -74,6 +86,54 @@ locals {
     "",
   ])
 
+  # analytics-prod reads the beacon logs written by this host's Caddy and the
+  # page inventories in the site build that Watershop rsyncs here.
+  analytics_env_content = join("\n", [
+    "POND=${local.home}/pond-analytics-prod",
+    "POND_RUNTIME=native",
+    "POND_MEMORY_LIMIT_MB=256",
+    "AZURE_STORAGE_ACCOUNT=${var.azure_storage_account}",
+    "AZURE_TENANT_ID=${var.azure_tenant_id}",
+    "AZURE_CLIENT_ID=${var.azure_analytics_credentials.client_id}",
+    "AZURE_CLIENT_SECRET=${var.azure_analytics_credentials.client_secret}",
+    "AZURE_URL=az://analytics-prod-0001",
+    "ANALYTICS_LOG_ROOT=${local.beacon_log_root}",
+    "ANALYTICS_SITE_ROOT=${local.base_dir}/www/current",
+    "RUST_LOG=info",
+    "",
+  ])
+
+  analytics_config_content = join("\n", concat([
+    for site, title in local.analytics_sites :
+    templatefile("${local.config_src}/analytics/site-pond.yaml.tftpl", {
+      site = site, title = title, environment = "prod", log_root = local.beacon_log_root
+    })
+    ], [<<-YAML
+version: v1
+kind: copy
+metadata:
+  path: /analytics/templates/overview.md
+spec:
+  source: host://${local.base_dir}/config/analytics/site/overview.md
+  overwrite: true
+YAML
+  ]))
+
+  # An instance-specific unit overrides the 3h pond-native@.timer template.
+  analytics_timer_content = <<-EOT
+[Unit]
+Description=Watertown native analytics-prod (every 5min)
+
+[Timer]
+OnBootSec=9min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOT
+
+  analytics_pond = "${local.base_dir}/config/scripts/pond-native.sh analytics-prod"
+
   host = tolist(linode_instance.debian12-us-west.ipv4)[0]
 }
 
@@ -81,6 +141,12 @@ resource "local_sensitive_file" "site_prod_env" {
   filename        = "${path.module}/env/site-prod.env"
   file_permission = "0600"
   content         = local.site_env_content
+}
+
+resource "local_sensitive_file" "analytics_prod_env" {
+  filename        = "${path.module}/env/analytics-prod.env"
+  file_permission = "0600"
+  content         = local.analytics_env_content
 }
 
 resource "linode_instance" "debian12-us-west" {
@@ -334,6 +400,7 @@ resource "null_resource" "influxdb_config" {
 resource "null_resource" "caddyfile" {
   triggers = {
     caddyfile_hash = filesha256(local.caddyfile_src)
+    beacons_hash   = filesha256(local.beacons_src)
     host_id        = linode_instance.debian12-us-west.id
   }
 
@@ -349,15 +416,111 @@ resource "null_resource" "caddyfile" {
     host        = local.host
   }
 
+  # Caddy writes the beacon logs; the analytics-prod pond reads them as jmacd.
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "install -d -o caddy -g jmacd -m 2750 ${join(" ", [for site in keys(local.analytics_sites) : "${local.beacon_log_root}/${site}"])}",
+    ]
+  }
+
+  provisioner "file" {
+    source      = local.beacons_src
+    destination = "/tmp/beacons.caddy"
+  }
+
   provisioner "file" {
     source      = local.caddyfile_src
-    destination = local.caddyfile_dst
+    destination = "/tmp/Caddyfile"
+  }
+
+  # Validate as caddy so any log file opened during validation has the
+  # service's ownership rather than root's.
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "install -o root -g root -m 0644 /tmp/beacons.caddy /etc/caddy/beacons.caddy",
+      "runuser -u caddy -- caddy validate --config /tmp/Caddyfile --adapter caddyfile",
+      "install -o root -g root -m 0644 /tmp/Caddyfile ${local.caddyfile_dst}",
+      "rm /tmp/beacons.caddy /tmp/Caddyfile",
+      "systemctl reload-or-restart caddy",
+    ]
+  }
+}
+
+# Native analytics-prod pond: ingests this host's beacon logs every 5 minutes,
+# publishes /analytics/{caspar,noyo}/, and backs up to its own Azure container.
+# Initialization is idempotent; this resource never resets pond state.  Until
+# the first beacon arrives (and the site build carries page inventories) each
+# run publishes an "unavailable" report and exits non-zero.
+resource "null_resource" "analytics_runtime" {
+  triggers = {
+    runtime_hash = sha256(join("", [
+      filesha256("${local.config_src}/scripts/pond-native.sh"),
+      filesha256("${local.config_src}/scripts/run.sh"),
+      filesha256("${local.config_src}/scripts/run-analytics.sh"),
+      filesha256("${local.config_src}/remotes/producer-azure.yaml"),
+      filesha256("${local.config_src}/analytics/site/overview.md"),
+    ]))
+    config_hash = sha256(local.analytics_config_content)
+    timer_hash  = sha256(local.analytics_timer_content)
+    env_hash    = nonsensitive(sha256(local.analytics_env_content))
+    host_id     = linode_instance.debian12-us-west.id
+  }
+
+  depends_on = [
+    null_resource.site_runtime,
+    null_resource.caddyfile,
+    local_sensitive_file.analytics_prod_env,
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "jmacd"
+    private_key = file(local.ssh_key)
+    host        = local.host
   }
 
   provisioner "remote-exec" {
     inline = [
-      "caddy validate --config ${local.caddyfile_dst} --adapter caddyfile",
-      "systemctl reload-or-restart caddy",
+      "set -e",
+      "install -d -m 0755 ${local.base_dir}/config ${local.base_dir}/env ${local.base_dir}/www/analytics-prod",
+      "install -d -m 0700 ${local.base_dir}/incoming-env",
+    ]
+  }
+
+  provisioner "file" {
+    source      = "${local.config_src}/"
+    destination = "${local.base_dir}/config"
+  }
+
+  provisioner "file" {
+    content     = local.analytics_config_content
+    destination = "${local.base_dir}/config/analytics-prod.yaml"
+  }
+
+  provisioner "file" {
+    source      = local_sensitive_file.analytics_prod_env.filename
+    destination = "${local.base_dir}/incoming-env/analytics-prod.env"
+  }
+
+  provisioner "file" {
+    content     = local.analytics_timer_content
+    destination = "${local.home}/.config/systemd/user/pond-native@analytics-prod.timer"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "install -m 0600 ${local.base_dir}/incoming-env/analytics-prod.env ${local.base_dir}/env/analytics-prod.env",
+      "rm -r ${local.base_dir}/incoming-env",
+      "chmod +x ${local.base_dir}/config/scripts/*.sh",
+      "pond_dir=$(. ${local.base_dir}/env/analytics-prod.env && echo \"$POND\"); if [ -d \"$pond_dir/data/_delta_log\" ]; then echo '[init] analytics-prod: already initialized'; else ${local.analytics_pond} init --birthplace analytics-prod; fi",
+      "${local.analytics_pond} apply -f ${local.base_dir}/config/analytics-prod.yaml",
+      # Same attach-and-verify sequence as Watershop's production producers.
+      "raw_listing=$(${local.analytics_pond} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); unexpected=$(printf '%s\\n' \"$raw_names\" | awk '$1 != \"azure\" { print $1 }'); for remote in $unexpected; do echo \"[remote] analytics-prod: detaching unexpected $remote\"; ${local.analytics_pond} remote remove \"$remote\"; done; ${local.analytics_pond} apply -f ${local.base_dir}/config/remotes/producer-azure.yaml; ${local.analytics_pond} push azure; raw_listing=$(${local.analytics_pond} list /sys/remotes/) || exit 1; raw_names=$(printf '%s\\n' \"$raw_listing\" | awk '{ name=$NF; sub(\"^.*/\", \"\", name); print name }'); remotes=$(${local.analytics_pond} remote list) || exit 1; [ \"$raw_names\" = azure ] && printf '%s\\n' \"$remotes\" | awk -v url='az://analytics-prod-0001' 'NR == 1 { next } $1 == \"azure\" && $2 == url && $3 == \"push\" && $4 == \"-\" { found++; next } { unexpected=1 } END { exit !(found == 1 && !unexpected) }' || exit 1; echo '[remote] analytics-prod: Azure remote converged'",
+      "systemctl --user daemon-reload",
+      "systemctl --user enable --now pond-native@analytics-prod.timer",
     ]
   }
 }

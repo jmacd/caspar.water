@@ -11,8 +11,8 @@ metadata:
 spec:
   factory: logfile-ingest
   config:
-    archived_pattern: /beacons/${site}/beacons-*.log
-    active_pattern: /beacons/${site}/beacons.log
+    archived_pattern: ${log_root}/${site}/beacons-*.log
+    active_pattern: ${log_root}/${site}/beacons.log
     pond_path: /analytics/${site}/raw
     timestamp_field: ts
     timestamp_unit: rfc3339
@@ -34,7 +34,7 @@ spec:
       SELECT CAST(ts AS TIMESTAMP) AS timestamp, site_id, page_uri
       FROM source
       WHERE schema_version = '1' AND event = 'pageview' AND status = '204'
-        AND site_id = '${site}-staging'
+        AND site_id = '${site}-${environment}'
 ---
 version: v1
 kind: mknod

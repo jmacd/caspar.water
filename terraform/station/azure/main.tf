@@ -36,7 +36,11 @@ locals {
     for producer in local.producers :
     producer => "${producer}-0003"
   }
-  identities = setunion(local.producers, toset(["site-prod"]))
+  # First-party analytics is backed up separately and imported by no site.
+  analytics_containers = {
+    analytics-prod = "analytics-prod-0001"
+  }
+  identities = setunion(local.producers, toset(["site-prod"]), toset(keys(local.analytics_containers)))
 }
 
 resource "azurerm_resource_group" "backups" {
@@ -86,6 +90,14 @@ resource "azurerm_storage_container" "production" {
 
 resource "azurerm_storage_container" "native" {
   for_each = local.native_production_containers
+
+  name                  = each.value
+  storage_account_id    = azurerm_storage_account.backups.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "analytics" {
+  for_each = local.analytics_containers
 
   name                  = each.value
   storage_account_id    = azurerm_storage_account.backups.id
@@ -148,6 +160,15 @@ resource "azurerm_role_assignment" "native_site" {
   scope                = azurerm_storage_container.native[each.key].id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = azuread_service_principal.pond["site-prod"].object_id
+  principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "analytics_producer" {
+  for_each = local.analytics_containers
+
+  scope                = azurerm_storage_container.analytics[each.key].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.pond[each.key].object_id
   principal_type       = "ServicePrincipal"
 }
 

@@ -105,6 +105,14 @@ variable "staging_analytics_enabled" {
   default     = false
 }
 
+# The beacon endpoints and analytics-prod pond live on the cloud host
+# (terraform/station/cloud); enable this only after that apply has succeeded.
+variable "production_analytics_enabled" {
+  description = "Instrument production site builds with caspar-prod/noyo-prod beacons and page inventories."
+  type        = bool
+  default     = false
+}
+
 variable "deploy_selfmon" {
   description = "Deploy the native watershop self-monitor instance"
   type        = bool

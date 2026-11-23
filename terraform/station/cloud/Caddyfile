@@ -1,22 +1,38 @@
+# First-party analytics beacon snippet, installed from config/caddy/beacons.caddy.
+import /etc/caddy/beacons.caddy
+
 casparwater.us {
-	root * /home/jmacd/watertown/www/current
+	# Beacons are appended to per-site logs read by the analytics-prod pond.
+	import analytics-beacons caspar-prod /_analytics/caspar/view /var/log/caddy/beacons/prod/caspar
+	import analytics-beacons noyo-prod /_analytics/noyo/view /var/log/caddy/beacons/prod/noyo
 
-	# Extensionless URLs: try path, then path.html, then directory
-	try_files {path} {path}.html {path}/
+	# Aggregate activity reports rendered by the analytics-prod pond.
+	handle_path /analytics/* {
+		root * /home/jmacd/watertown/www/analytics-prod/current
+		header Cache-Control no-cache
+		file_server
+	}
 
-	file_server
+	handle {
+		root * /home/jmacd/watertown/www/current
 
-	# Vendor assets: aggressive caching (content-addressed by sitegen)
-	@vendor path /vendor/* /noyo-harbor/vendor/*
-	header @vendor Cache-Control "public, max-age=31536000, immutable"
+		# Extensionless URLs: try path, then path.html, then directory
+		try_files {path} {path}.html {path}/
 
-	# Everything that isn't a content-addressed vendor asset (HTML pages,
-	# parquet/.series data, including subsites like /noyo-harbor/data/*)
-	# uses content-stable names whose contents change on every build, so
-	# require revalidation (cheap 304 via ETag/Last-Modified) to avoid
-	# serving stale data.
-	@revalidate not path /vendor/* /noyo-harbor/vendor/*
-	header @revalidate Cache-Control "no-cache"
+		file_server
+
+		# Vendor assets: aggressive caching (content-addressed by sitegen)
+		@vendor path /vendor/* /noyo-harbor/vendor/*
+		header @vendor Cache-Control "public, max-age=31536000, immutable"
+
+		# Everything that isn't a content-addressed vendor asset (HTML pages,
+		# parquet/.series data, including subsites like /noyo-harbor/data/*)
+		# uses content-stable names whose contents change on every build, so
+		# require revalidation (cheap 304 via ETag/Last-Modified) to avoid
+		# serving stale data.
+		@revalidate not path /vendor/* /noyo-harbor/vendor/*
+		header @revalidate Cache-Control "no-cache"
+	}
 
 	# Compress responses
 	encode zstd gzip
