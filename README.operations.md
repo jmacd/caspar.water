@@ -463,6 +463,9 @@ pass.
 
 ### Selfmon I/O diagnostics
 
+The [Watershop selfmon performance plan](docs/selfmon-performance-plan.md)
+records the `0.309.228` baseline, the next fixes, and how to measure them.
+
 `run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step,
 including the custom Sitegen invocation, and one aggregate line when the tick
 exits:
