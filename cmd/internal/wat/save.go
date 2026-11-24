@@ -134,6 +134,9 @@ func (d *Draft) Preview(entry Entry) (string, error) {
 	if d.saved {
 		return "", fmt.Errorf("this transaction has already been saved")
 	}
+	if d.revision == nil {
+		entry.Payee = d.books.canonicalPayee(entry.Payee)
+	}
 	text, err := entry.render(d.accounts, d.id)
 	if err != nil {
 		return "", err

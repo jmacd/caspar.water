@@ -2,7 +2,8 @@
 
 `wat` is a local terminal workbench for ordinary hledger journals. It supports
 transaction entry, journal review, strict validation, bank-statement
-reconciliation checkpoints, and reports. It does not calculate bills or close years.
+reconciliation checkpoints, reports, and billing at operator-selected cutoffs. It does
+not issue recurring invoices or lock a fiscal year.
 The application uses ordinary local files and has no database, server, or
 browser. Customer and service-account workflows do not require a Watertown Pond.
 Keep the private filesystem workspace authoritative.
@@ -88,8 +89,9 @@ The live books layout is fixed; the reference chart path is configured:
 - `books/accounts.journal` is generated from `accounts`, `bank_accounts`, and
   enabled registry-owned service accounts.
 - `books/payees.journal` is an ordinary hledger journal containing native
-  `payee NAME` directives for manually maintained counterparties. It may include
-  additional `.journal` files using hledger's `include` directive.
+  `payee NAME` directives. With `payee_registry: true`, it is generated from
+  canonical names and aliases in `payees.yaml`; otherwise it remains manually
+  maintained and may include other declaration journals.
 - `books/customers.journal`, when the customer registry is enabled, is generated
   from customer names in `registry.yaml`. Do not edit it or duplicate those
   names in `books/payees.journal`.
@@ -110,6 +112,7 @@ The live books layout is fixed; the reference chart path is configured:
   `books/bank-sbmc-0000.journal`.
 - `sources/statements` holds Wat-managed statement sources and caches.
 - `registry.yaml`, when enabled, holds customer/connection/service metadata.
+- `payees.yaml`, when enabled, holds canonical counterparty names and explicit aliases.
 - `sources/customer-statements` holds immutable issued closing statements.
 
 Generated files carry a do-not-edit header and are refreshed when Wat opens the
@@ -118,6 +121,61 @@ the `Bank` hierarchy as hledger Asset type. Writable journals are created when
 missing and remain ordinary plain-text hledger files. All workspace files and
 directories must be nonsymlink paths. Unknown configuration keys and additional
 YAML documents are errors.
+
+### Canonical payee names and aliases
+
+Import the existing manual payee declarations once, then enable their YAML
+source in the configuration:
+
+```sh
+wat payee init
+```
+
+```yaml
+payee_registry: true
+```
+
+Initialization refuses to overwrite an existing `payees.yaml` or migration
+backup. It imports declaration-only files (including their declaration includes),
+preserves the original `books/payees.journal` as
+`books/payees.journal.pre-registry`, and does not enable the flag or edit
+transaction journals. Included source files remain untouched. Back up the whole
+workspace before switching sources; subsequent edits belong in `payees.yaml`,
+not the generated journal.
+
+```yaml
+version: 1
+payees:
+  - name: Electric company
+    aliases:
+      - POWER ONLINE
+      - POWER CO
+```
+
+Use `wat payee list`, `wat payee add "Electric company"`, and
+`wat payee alias "Electric company" "POWER ONLINE"`, or edit the YAML while Wat
+is stopped. To merge two imported names, keep one canonical record and move
+the other name and its aliases into that record's `aliases` list. Ambiguous
+names or aliases are errors, never silently merged.
+
+Aliases match whole names after case and whitespace normalization, not
+substrings or fuzzy guesses. Check numbers cannot be aliases. Explicit registry
+names take precedence over AI payee guesses; exact QuickBooks register evidence
+retains its existing precedence. New drafts use canonical names without changing
+bank amounts, source rows, or reconciliation evidence. Existing entries are
+never rewritten merely by opening or searching them; editing an existing
+transaction starts with its recorded payee.
+
+Wat generates native declarations for both canonical names and aliases, so old
+journal descriptions remain valid. Keep old names as aliases when renaming a
+canonical payee. Customer names still come from `registry.yaml` and
+`books/customers.journal`; do not duplicate them in the payee registry. Aliases
+cannot redirect a customer name to a different canonical name.
+
+The journal browser and `wat history --search "POWER ONLINE"` show canonical
+labels and match any registered alias. The unfiltered bank running balances
+remain intact when searching. `wat report journal` and direct hledger reports
+remain raw audit views of the original journal descriptions.
 
 An account must use `Category:xxx.yyy:LocalName[:MoreNames...]`. `xxx` is the
 three-digit CPUC family and `yyy` combines one formal branch digit with a
@@ -272,6 +330,92 @@ undeclared transaction payees. Service-account changes still validate affected
 service activity and billing evidence. `wat check` remains the explicit full-book
 audit and continues to report historical issues; setup never rewrites those
 transactions.
+
+### Review pending costs and apply a billing cutoff
+
+Start with the whole interval you want to check; no rate policy is needed:
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml billing review --from 2021-01-15 --through 2021-12-31
+```
+
+Dates are inclusive. `review YYYY-MM` remains a one-month shortcut. The
+worksheet shows the number of positive and negative postings and the net cost
+per expense account. For each nonbank asset and liability it shows debit and
+credit counts plus opening/change/closing balances. Those balances are for
+review, not amounts passed through to customers. A debit to operator expense
+and credit to the operator payable counts as an expense in the month it is
+posted. A later payment debiting the payable does not bill the expense again.
+Review debit balances on payables, missing accruals, prepaid insurance and
+tax allocations against the underlying records. Record any supported corrections
+in the normal journal workflow first, then regenerate. This is a worksheet,
+not proof that all liabilities have been recognized or a period lock.
+
+Copy [the example billing policy](examples/billing-policy.yaml) to a private
+location. Review its first billable month, exact expense account names, and
+CPUC income classification(s). The example is illustrative, not an approved
+tariff. Anything not in `billable_expenses` stays out of the cost base; excluded
+expense activity remains visible. The old CSV expense totals, V1 billing
+estimates and bank deposits are **not** inputs.
+
+With the customer registry enabled, preview the proposed hledger journal
+(example weights and markup, not historical rates):
+
+```sh
+go run ./cmd/wat --config wat/wat.yaml billing close --from 2021-01-15 --through 2021-12-31 \
+  --policy /private/path/billing-policy.yaml --margin-percent 5 \
+  --default-weight 1 --weight CN-0002=2 --unbilled-weight 1
+```
+
+**Previewing does not advance coverage.** For a hypothetical reconstruction,
+add `--output /private/path/2021-12.journal` to create a new file outside
+the workspace. To **book** the proposed charges, repeat the same command with
+`--apply TOKEN`, using the review token from the preview. Do not apply a
+hypothetical gross charge on top of one already billed. Apply writes the
+reviewed entries and a posting-free `Journal` transaction to the active manual
+journal in one save, with a recovery copy. The `Journal` payee must be declared.
+An externally generated journal deliberately included in the books also counts
+as applied; do not both include it and apply it.
+
+The marker records `billing-close: FIRST..LAST`, the number of assessments
+and a fingerprint of expense postings. It exists even when there were no
+billable charges. For the next review or close, supply **only** `--through`;
+Wat starts the day after the last applied cutoff and rejects gaps or overlaps
+on close. An explicit range is still available for read-only inspection. Old
+`billing-month` assessment tags count as covered calendar months. Backdated
+expense changes in a marked interval produce a warning, not a second set of bills.
+
+The markup is **on cost**: $100.00 of billable expense at `5` makes a $105.00
+pool. The markup is rounded once per billing interval to the nearest cent (ties away
+from zero), then split by relative integer weights using largest remainders,
+ties by connection ID. Negative net expenses produce credits by the same rule.
+`--default-weight` applies only to active connections; omit it to require an
+explicit `--weight` for each one. A zero weight excludes a connection from
+the denominator; `--unbilled-weight` reserves shares in the denominator
+without charging anyone. An explicit weight for a vacant connection also
+stays unassigned. No share is silently transferred to a later occupant.
+Before `bill_from`, costs remain unassigned without markup or carry-forward,
+even if the review spans the start of billing. At a move, use the outgoing
+service's last day as the cutoff. Continuing customers accumulate charges on
+their existing receivables; the next occupant gets a different service account.
+Wat does not prorate one pool across two occupants; if a weighted service
+changes within the billable interval, split the interval at that boundary.
+
+Each nonzero assessment is dated at the cutoff, debits the responsible
+service's `141` receivable and credits the selected revenue account (reversed
+for credits). The journal contains **no** payments, expenses or new accruals;
+costs and liabilities appear only as worksheet comments. A chart-valid
+revenue account not yet declared is declared in the generated journal.
+
+For comparison with a six-month invoice, use a matching interval or sum
+nonoverlapping cutoffs. For example, `hledger -f oct.journal -f nov.journal
+-f dec.journal balance 'acct:^Asset:141\.' --flat` totals those files by
+service. Compare the **sum
+over the invoice's full coverage** to the actual new charge, not its balance
+forward or the customer's payments. Calculated minus originally charged is
+the underbilling (positive) or overbilling (negative) under the selected
+policy. Do not book the reconstructed gross charge on top of a charge already
+recorded; a reconciled difference is a separate, reviewed adjustment.
 
 ### Allocate an existing deposited payment
 
@@ -957,7 +1101,9 @@ The journal browser is a chronological one-row table. When bank accounts are
 configured, **Bank change** and the running **Bank balance** are right-aligned
 and computed independently for each account. With multiple accounts, the table
 also identifies the affected bank account. All dated activity is shown and
-contributes to the running balances. Up/Down selects a row, Enter revises it, and Esc or `q` returns
+contributes to the running balances. Press `/` to search names, aliases, dates,
+IDs or memos, then Enter to return to the table; Esc in the search field clears
+the filter. Up/Down selects a row, Enter revises it, and Esc or `q` returns
 to the menu. These key instructions appear once in the footer rather than on
 every transaction.
 
@@ -996,8 +1142,11 @@ step through fields and buttons in order: account, amount, next account, next
 amount. Moving away from a field never accepts a suggestion.
 
 Payee and description suggest case-insensitive text matches from existing
-transactions across all included journals, including earlier years. Suggestions
-refresh when you start a new transaction; no separate history database is kept.
+transactions across all included journals, including earlier years. Payee
+suggestions also include registry canonical names; typing an alias suggests its canonical name.
+With the registry enabled, historical labels use canonical names without changing
+the original transactions.
+Suggestions refresh when you start a new transaction; no separate history database is kept.
 Account suggestions come from declared local accounts that resolve through the
 configured CPUC chart. Start with digits to match the CPUC-number prefix (`13`
 matches `131.200`, but not a `13` later in a local name); start with other text to

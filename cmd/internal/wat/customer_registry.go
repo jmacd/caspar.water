@@ -379,6 +379,9 @@ func (b *Books) inputStates() map[string]fileState {
 	if b.registry != nil {
 		states[b.Config.Registry] = b.registryState
 	}
+	if b.payeeRegistry != nil {
+		states[b.Config.PayeeRegistryFile] = b.payeeRegistryState
+	}
 	return states
 }
 
@@ -504,6 +507,11 @@ func (d *RegistryDraft) Save() (string, error) {
 	if err := d.Registry.validate(b.chart); err != nil {
 		return "", err
 	}
+	if b.payeeRegistry != nil {
+		if err := b.payeeRegistry.validate(d.Registry.payees()); err != nil {
+			return "", err
+		}
+	}
 	for _, prior := range b.registry.Customers {
 		if current, err := d.Registry.Customer(prior.ID); err != nil || current.ID != prior.ID {
 			return "", fmt.Errorf("cannot remove customer %s", prior.ID)
@@ -617,6 +625,17 @@ func (d *RegistryDraft) Save() (string, error) {
 func (b *Books) DeclarePayee(payee string) (backup string, saved bool, err error) {
 	if !validPayeeName(payee) {
 		return "", false, fmt.Errorf("payee must be nonempty single-line text without ';' or '|'")
+	}
+	if b.payeeRegistry != nil {
+		registry, err := b.Payees()
+		if err != nil {
+			return "", false, err
+		}
+		if _, exists := registry.names[payeeKey(payee)]; exists || slices.Contains(b.Config.registryPayees, payee) {
+			return "", false, fmt.Errorf("payee %q is already declared", payee)
+		}
+		registry.Payees = append(registry.Payees, PayeeRecord{Name: payee})
+		return b.savePayees(registry)
 	}
 	draft, err := b.NewDraft()
 	if err != nil {

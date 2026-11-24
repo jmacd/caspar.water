@@ -79,7 +79,7 @@ func newEntryGrid(app *tview.Application, entry *Entry, draft *Draft, focus *int
 			SetText(*item.value).SetChangedFunc(func(text string) { *item.value = text })
 		switch row {
 		case 1:
-			completeInput(field, func(query string) []string { return matchingText(draft.history.payees, query) })
+			completeInput(field, draft.history.matchingPayees)
 		case 2:
 			completeInput(field, func(query string) []string { return matchingText(draft.history.descriptions, query) })
 		}

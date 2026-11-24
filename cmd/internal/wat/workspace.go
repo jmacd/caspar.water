@@ -41,6 +41,11 @@ func prepareWorkspace(cfg Config) error {
 }
 
 func writeGeneratedDeclarations(cfg Config) error {
+	if cfg.PayeeRegistry {
+		if err := writeGeneratedFile(cfg.Payees, generatedPayees(cfg)); err != nil {
+			return fmt.Errorf("generate payee declarations: %w", err)
+		}
+	}
 	if err := writeGeneratedFile(cfg.LocalAccounts, generatedAccounts(cfg)); err != nil {
 		return fmt.Errorf("generate local accounts: %w", err)
 	}
@@ -158,6 +163,29 @@ func ensureJournal(path string) error {
 	default:
 		return nil
 	}
+}
+
+// Publish complete private output without ever replacing an existing path.
+func createExclusiveFile(path string, data []byte) (err error) {
+	file, err := os.CreateTemp(filepath.Dir(path), ".wat-publish-")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	defer func() { err = errors.Join(err, os.Remove(temporary)) }()
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := writeSynced(temporary, data, 0600); err != nil {
+		return err
+	}
+	if err := os.Link(temporary, path); err != nil {
+		return fmt.Errorf("will not overwrite %s: %w", path, err)
+	}
+	if err := syncDirectory(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("%s created, but directory sync failed: %w", path, err)
+	}
+	return nil
 }
 
 func writeGeneratedFile(path string, data []byte) (err error) {

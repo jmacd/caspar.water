@@ -14,6 +14,7 @@ import (
 type completionHistory struct {
 	payees       []string
 	descriptions []string
+	payeeSearch  map[string]string
 }
 
 func (b *Books) completionHistory() (completionHistory, error) {
@@ -25,7 +26,7 @@ func (b *Books) completionHistory() (completionHistory, error) {
 	for _, transaction := range transactions {
 		payee, description, _ := strings.Cut(transaction.Description, "|")
 		if value := strings.TrimSpace(payee); value != "" {
-			payees[value] = true
+			payees[b.canonicalPayee(value)] = true
 		}
 		if value := strings.TrimSpace(description); value != "" {
 			descriptions[value] = true
@@ -39,7 +40,33 @@ func (b *Books) completionHistory() (completionHistory, error) {
 		sort.Strings(result)
 		return result
 	}
-	return completionHistory{payees: sorted(payees), descriptions: sorted(descriptions)}, nil
+	if b.payeeRegistry != nil {
+		for _, record := range b.payeeRegistry.Payees {
+			payees[record.Name] = true
+		}
+	}
+	search := make(map[string]string)
+	for name := range payees {
+		search[name] = b.payeeSearchText(name)
+	}
+	return completionHistory{payees: sorted(payees), descriptions: sorted(descriptions), payeeSearch: search}, nil
+}
+
+func (h completionHistory) matchingPayees(query string) []string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+	var matches []string
+	for _, name := range h.payees {
+		if name == query {
+			return nil
+		}
+		if strings.Contains(payeeKey(name)+" "+h.payeeSearch[name], payeeKey(query)) {
+			matches = append(matches, name)
+		}
+	}
+	return matches
 }
 
 func matchingText(values []string, query string) []string {

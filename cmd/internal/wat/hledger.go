@@ -20,6 +20,8 @@ type Books struct {
 	registry               *CustomerRegistry
 	registryState          fileState
 	registryError          error
+	payeeRegistry          *PayeeRegistry
+	payeeRegistryState     fileState
 }
 
 type ledgerAmount struct {
@@ -75,6 +77,16 @@ func (b *Books) transactions(journal string, options ...string) ([]journalTransa
 }
 
 func Open(cfg Config) (*Books, error) {
+	return openBooks(cfg, prepareWorkspace)
+}
+
+// OpenForBilling requires an already prepared workspace and never refreshes
+// declarations or creates missing transaction journals to perform a close.
+func OpenForBilling(cfg Config) (*Books, error) {
+	return openBooks(cfg, verifyBillingWorkspace)
+}
+
+func openBooks(cfg Config, prepare func(Config) error) (*Books, error) {
 	binary, err := exec.LookPath("hledger")
 	if err != nil {
 		return nil, fmt.Errorf("wat requires hledger on PATH: %w", err)
@@ -128,6 +140,19 @@ func Open(cfg Config) (*Books, error) {
 		cfg.registryAccounts = registry.accounts()
 		cfg.registryPayees = registry.payees()
 	}
+	var payeeRegistry *PayeeRegistry
+	var payeeState fileState
+	if cfg.PayeeRegistry {
+		payeeState, err = readNonsymlinkFileState(cfg.PayeeRegistryFile, "payee registry")
+		if err != nil {
+			return nil, err
+		}
+		payeeRegistry, err = decodePayeeRegistry(payeeState.data, cfg.registryPayees)
+		if err != nil {
+			return nil, err
+		}
+		cfg.payeeDeclarations = payeeRegistry.declarations()
+	}
 	for _, name := range cfg.postingAccounts() {
 		account, _ := parsePostingAccount(name)
 		if _, err := chart.resolve(account); err != nil {
@@ -140,13 +165,14 @@ func Open(cfg Config) (*Books, error) {
 			return nil, err
 		}
 	}
-	if err := prepareWorkspace(cfg); err != nil {
+	if err := prepare(cfg); err != nil {
 		return nil, err
 	}
 	books := &Books{
 		Config: cfg, binary: binary, chart: chart, chartStates: chartStates,
 		quickBooksRegisterYear: make(map[int][]quickBooksRecord),
 		registry:               registry, registryState: registryState,
+		payeeRegistry: payeeRegistry, payeeRegistryState: payeeState,
 	}
 	if err := books.checkSyntax(cfg.Journal); err != nil {
 		return nil, err

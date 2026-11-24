@@ -286,7 +286,11 @@ func (ui *terminal) statementList() {
 			label = "RECONCILED"
 			hint = "Finished reconciliation; transaction is read-only"
 		}
-		list.AddItem(tview.Escape(fmt.Sprintf("%s | %s | %s | %s USD", label, row.Date, row.Description, formatCents(row.Cents))),
+		description := ui.books.canonicalDescription(row.Description)
+		if description != row.Description {
+			hint = "Bank description: " + row.Description + " | " + hint
+		}
+		list.AddItem(tview.Escape(fmt.Sprintf("%s | %s | %s | %s USD", label, row.Date, description, formatCents(row.Cents))),
 			tview.Escape(hint), 0, func() { ui.statementOpen(index) })
 	}
 	if checkpoint == nil && recorded == len(statuses) {

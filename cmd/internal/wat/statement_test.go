@@ -351,6 +351,9 @@ payee Electric company
 payee Feiner Fixings
 payee Journal
 `), 0600))
+	books = enableTestPayees(t, books)
+	_, _, err := books.AddPayeeAlias("Feiner Fixings", "FIXINGS WEB")
+	require.NoError(t, err)
 	pdfBytes := []byte("%PDF-1.7\nsynthetic check statement\n")
 	pdf := filepath.Join(root, "checks.pdf")
 	require.NoError(t, os.WriteFile(pdf, pdfBytes, 0600))
@@ -412,8 +415,9 @@ fi
 	t.Setenv("WAT_FAKE_REQUEST", requestPath)
 	books.Config.Statement = StatementConfig{
 		Python: fake, APIBase: "http://invalid.test:11434", Model: "ollama/test",
-		TransactionPrompts: transactionPrompts,
+		TransactionPrompts: append([]StatementTransactionPrompt{}, transactionPrompts...),
 	}
+	books.Config.Statement.TransactionPrompts[0].Payee = "FIXINGS WEB"
 
 	var progress strings.Builder
 	statement, err := books.LoadStatement(pdf, StatementOptions{}, &progress)
@@ -463,7 +467,7 @@ fi
 	books.quickBooksRegisterYear = make(map[int][]quickBooksRecord)
 	_, entry, err = books.StatementDraft(statement, 1)
 	require.NoError(t, err)
-	require.Equal(t, "Electric Company", entry.Payee, "an exact QuickBooks match is stronger evidence")
+	require.Equal(t, "Electric company", entry.Payee, "an exact QuickBooks match is stronger evidence, using its canonical spelling")
 	require.Equal(t, []Posting{
 		{Account: "Bank:131.200:Checking", Amount: "-12.34"},
 		{Account: "Expense:615.000:Utility", Amount: "12.34"},

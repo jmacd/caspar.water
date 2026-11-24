@@ -132,7 +132,7 @@ func (b *Books) statementAccountInputs(statement *Statement) ([]statementAccount
 			configuredAccounts = append(configuredAccounts, account.Name)
 		}
 	}
-	payees, err := b.declaredPayees()
+	payees, err := b.preferredPayees()
 	if err != nil {
 		return nil, err
 	}

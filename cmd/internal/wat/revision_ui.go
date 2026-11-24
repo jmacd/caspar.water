@@ -60,39 +60,52 @@ func (ui *terminal) journalEntryList(selectedID string) {
 			}{"Bank balance", tview.AlignRight, 0},
 		)
 	}
-	for column, header := range headers {
-		table.SetCell(0, column, tview.NewTableCell(header.text).
-			SetAlign(header.align).SetExpansion(header.expansion).
-			SetAttributes(tcell.AttrBold).SetSelectable(false))
-	}
-	selectedRow := 1
-	for index, entry := range entries {
-		state := "WORKING"
-		if entry.ReadOnly != "" {
-			state = "READ-ONLY"
+	allEntries := entries
+	refresh := func(query string) {
+		entries = FilterJournalEntries(allEntries, query)
+		table.Clear()
+		for column, header := range headers {
+			table.SetCell(0, column, tview.NewTableCell(header.text).
+				SetAlign(header.align).SetExpansion(header.expansion).
+				SetAttributes(tcell.AttrBold).SetSelectable(false))
 		}
-		row := index + 1
-		table.SetCell(row, 0, tview.NewTableCell(state).SetReference(entry.ID))
-		table.SetCell(row, 1, tview.NewTableCell(entry.Date))
-		table.SetCell(row, 2, tview.NewTableCell(entry.Description).SetExpansion(1))
-		column := 3
-		if len(ui.books.Config.BankAccounts) > 1 {
-			table.SetCell(row, column, tview.NewTableCell(entry.BankAccount))
-			column++
-		}
-		if len(ui.books.Config.BankAccounts) != 0 {
-			change, balance := "", ""
-			if entry.BankValues {
-				change, balance = formatCents(entry.BankChange), formatCents(entry.BankBalance)
+		selectedRow := 1
+		for index, entry := range entries {
+			state := "WORKING"
+			if entry.ReadOnly != "" {
+				state = "READ-ONLY"
 			}
-			table.SetCell(row, column, tview.NewTableCell(change).SetAlign(tview.AlignRight))
-			table.SetCell(row, column+1, tview.NewTableCell(balance).SetAlign(tview.AlignRight))
+			row := index + 1
+			table.SetCell(row, 0, tview.NewTableCell(state).SetReference(entry.ID))
+			table.SetCell(row, 1, tview.NewTableCell(entry.Date))
+			table.SetCell(row, 2, tview.NewTableCell(entry.Description).SetExpansion(1))
+			column := 3
+			if len(ui.books.Config.BankAccounts) > 1 {
+				table.SetCell(row, column, tview.NewTableCell(entry.BankAccount))
+				column++
+			}
+			if len(ui.books.Config.BankAccounts) != 0 {
+				change, balance := "", ""
+				if entry.BankValues {
+					change, balance = formatCents(entry.BankChange), formatCents(entry.BankBalance)
+				}
+				table.SetCell(row, column, tview.NewTableCell(change).SetAlign(tview.AlignRight))
+				table.SetCell(row, column+1, tview.NewTableCell(balance).SetAlign(tview.AlignRight))
+			}
+			if selectedID != "" && entry.ID == selectedID {
+				selectedRow = row
+			}
 		}
-		if selectedID != "" && entry.ID == selectedID {
-			selectedRow = row
-		}
+		table.Select(selectedRow, 0)
 	}
-	table.Select(selectedRow, 0)
+	refresh("")
+	search := themedInputField().SetLabel("Search: ").SetChangedFunc(refresh)
+	search.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEscape {
+			search.SetText("")
+		}
+		ui.app.SetFocus(table)
+	})
 	table.SetSelectedFunc(func(row, _ int) {
 		if row < 1 || row > len(entries) {
 			return
@@ -112,17 +125,23 @@ func (ui *terminal) journalEntryList(selectedID string) {
 	})
 	table.SetBorder(true).SetTitle(" Journal | one row per transaction ")
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == '/' {
+			ui.app.SetFocus(search)
+			return nil
+		}
 		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
 			ui.menu()
 			return nil
 		}
 		return event
 	})
-	footer := "Up/Down Select | Enter Revise | Esc/q Menu"
+	footer := "Up/Down Select | / Search names/aliases | Enter Revise original entry | Esc/q Menu"
 	if len(ui.books.Config.BankAccounts) == 1 {
 		footer += "\n Bank columns: " + ui.books.Config.BankAccounts[0].Account
 	} else if len(ui.books.Config.BankAccounts) > 1 {
 		footer += "\n Bank balances are tracked independently for each configured account"
 	}
-	ui.screen("Review / revise journal", table, footer)
+	body := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(search, 1, 0, false).AddItem(table, 0, 1, true)
+	ui.screen("Review / revise journal", body, footer)
 }

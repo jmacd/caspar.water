@@ -356,8 +356,12 @@ func (b *Books) loadStatementCheckPayees(statement *Statement, dir string) error
 	if err != nil {
 		return err
 	}
+	prompts, err := b.canonicalTransactionPrompts()
+	if err != nil {
+		return err
+	}
 	if cache.Version == 0 || !slices.Equal(cache.Candidates, statementCheckPayeeCandidates(statement)) ||
-		!slices.Equal(cache.TransactionPrompts, b.Config.Statement.TransactionPrompts) {
+		!slices.Equal(cache.TransactionPrompts, prompts) {
 		return nil
 	}
 	applyStatementCheckPayees(statement, cache)
@@ -377,17 +381,21 @@ func (b *Books) extractStatementCheckPayees(
 	if err != nil {
 		return nil, fmt.Errorf("check payee extraction: %w", err)
 	}
-	declaredPayees, err := b.declaredPayees()
+	declaredPayees, err := b.preferredPayees()
 	if err != nil {
 		return nil, fmt.Errorf("load declared payees for check image context: %w", err)
 	}
 	if declaredPayees == nil {
 		declaredPayees = []string{}
 	}
-	for index, rule := range b.Config.Statement.TransactionPrompts {
+	transactionPrompts, err := b.canonicalTransactionPrompts()
+	if err != nil {
+		return nil, err
+	}
+	for index, rule := range transactionPrompts {
 		if !slices.Contains(declaredPayees, rule.Payee) {
 			return nil, fmt.Errorf(
-				"statement.transaction_prompts[%d] payee %q is not declared in books/payees.journal",
+				"statement.transaction_prompts[%d] payee %q is not declared in the books",
 				index,
 				rule.Payee,
 			)
@@ -406,7 +414,7 @@ func (b *Books) extractStatementCheckPayees(
 	request := statementCheckPayeeRequest{
 		DeclaredPayees:     declaredPayees,
 		DeclaredAccounts:   declaredAccounts,
-		TransactionPrompts: append([]StatementTransactionPrompt{}, b.Config.Statement.TransactionPrompts...),
+		TransactionPrompts: transactionPrompts,
 	}
 	for _, rowNumber := range candidates {
 		row := statement.Rows[rowNumber-1]
@@ -466,7 +474,7 @@ func (b *Books) extractStatementCheckPayees(
 	if !slices.Equal(cache.DeclaredAccounts, declaredAccounts) {
 		return nil, fmt.Errorf("check payee extraction did not preserve its declared account context")
 	}
-	if !slices.Equal(cache.TransactionPrompts, b.Config.Statement.TransactionPrompts) {
+	if !slices.Equal(cache.TransactionPrompts, transactionPrompts) {
 		return nil, fmt.Errorf("check payee extraction did not preserve its transaction prompts")
 	}
 	applyStatementCheckPayees(statement, cache)

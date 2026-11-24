@@ -46,10 +46,14 @@ func command() *cobra.Command {
 				}
 			}
 			if cmd.Name() == "config-path" || cmd.Name() == "reopen-reconciliation" ||
-				(cmd.Name() == "init" && cmd.Parent().Name() == "customer") {
+				(cmd.Name() == "init" && (cmd.Parent().Name() == "customer" || cmd.Parent().Name() == "payee")) {
 				return nil
 			}
-			books, err = wat.Open(cfg)
+			if cmd.Parent() != nil && cmd.Parent().Name() == "billing" {
+				books, err = wat.OpenForBilling(cfg)
+			} else {
+				books, err = wat.Open(cfg)
+			}
 			if err != nil {
 				return err
 			}
@@ -208,6 +212,26 @@ func command() *cobra.Command {
 			return err
 		},
 	})
+	var historySearch string
+	history := &cobra.Command{
+		Use: "history", Short: "Show canonical transaction names; search names, aliases, dates and memos",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			entries, err := books.JournalEntries()
+			if err != nil {
+				return err
+			}
+			output := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+			for _, entry := range wat.FilterJournalEntries(entries, historySearch) {
+				if _, err := fmt.Fprintf(output, "%s\t%s\t%s\n", entry.Date, entry.ID, entry.Description); err != nil {
+					return err
+				}
+			}
+			return output.Flush()
+		},
+	}
+	history.Flags().StringVar(&historySearch, "search", "", "match canonical names, aliases or transaction text")
+	root.AddCommand(history)
 	quickBooks := &cobra.Command{
 		Use:   "quickbooks [FILE...]",
 		Short: "Generate an editable journal from QuickBooks reports",
@@ -267,6 +291,7 @@ func command() *cobra.Command {
 		panic(err)
 	}
 	root.AddCommand(quickBooks)
+	root.AddCommand(billingCommand(func() *wat.Books { return books }))
 	root.AddCommand(customerCommands(func() *wat.Books { return books }, func() wat.Config { return cfg })...)
 	return root
 }

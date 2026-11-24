@@ -1,0 +1,13 @@
+# Example only. Copy to private storage, review the accounts and effective
+# month, and keep the policy with the reconstructed journals.
+version: 1
+bill_from: "2021-10"
+billable_expenses:
+  - Expense:615.000:Electricity
+  - Expense:640.000:Chemical:Chlorine
+  - Expense:650.200:Operations:Operator
+revenue_account: Income:460.100:Water-Service
+# Optional revenue classification by connection (examples assume unmetered
+# service; verify the CPUC branch and local names for your own customers).
+# revenue_by_connection:
+#   CN-0002: Income:460.200:Commercial

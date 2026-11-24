@@ -41,6 +41,7 @@ type Config struct {
 	ManualJournalPath      string              `yaml:"manual_journal,omitempty"`
 	HistoricalJournalPaths []string            `yaml:"historical_journals,omitempty"`
 	CustomerRegistry       bool                `yaml:"customer_registry,omitempty"`
+	PayeeRegistry          bool                `yaml:"payee_registry,omitempty"`
 	Statement              StatementConfig     `yaml:"statement"`
 	Journal                string              `yaml:"-"`
 	ChartDefs              []string            `yaml:"-"`
@@ -52,11 +53,13 @@ type Config struct {
 	Sources                string              `yaml:"-"`
 	QuickBooksMappings     string              `yaml:"-"`
 	Registry               string              `yaml:"-"`
+	PayeeRegistryFile      string              `yaml:"-"`
 	root                   string
 	configPath             string
 	configState            fileState
 	registryAccounts       []string
 	registryPayees         []string
+	payeeDeclarations      []string
 }
 
 type BankAccountConfig struct {
@@ -160,8 +163,12 @@ func LoadConfig(path string) (Config, error) {
 	cfg.configPath = filepath.Join(cfg.root, filepath.Base(absolute))
 	cfg.configState = fileState{data: data, mode: info.Mode().Perm()}
 	cfg.Registry = filepath.Join(cfg.root, "registry.yaml")
+	cfg.PayeeRegistryFile = filepath.Join(cfg.root, "payees.yaml")
 	if cfg.configPath == cfg.Registry {
 		return cfg, fmt.Errorf("configuration must not use the reserved registry.yaml path")
+	}
+	if cfg.configPath == cfg.PayeeRegistryFile {
+		return cfg, fmt.Errorf("configuration must not use the reserved payees.yaml path")
 	}
 	books := filepath.Join(cfg.root, booksDirectory)
 	cfg.Journal = filepath.Join(books, masterJournal)

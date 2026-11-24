@@ -13,6 +13,8 @@ import (
 
 type JournalEntry struct {
 	ID, Date, Description string
+	OriginalDescription   string
+	searchText            string
 	ReadOnly              string
 	BankAccount           string
 	BankChange            int64
@@ -52,6 +54,9 @@ func (b *Books) transactionFile(tx journalTransaction) string {
 }
 
 func (b *Books) JournalEntries() ([]JournalEntry, error) {
+	if err := b.checkInputs(); err != nil {
+		return nil, err
+	}
 	transactions, err := b.transactions(b.Config.Journal)
 	if err != nil {
 		return nil, err
@@ -102,8 +107,10 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 		}
 		id, idErr := transactionID(tx)
 		entry := JournalEntry{
-			ID: id, Date: tx.Date, Description: tx.Description,
-			BankAccount: bankAccount, BankChange: bankChange, BankBalance: bankBalance, BankValues: bankValues,
+			ID: id, Date: tx.Date, Description: b.canonicalDescription(tx.Description),
+			OriginalDescription: tx.Description,
+			searchText:          strings.ToLower(tx.Date+" "+id+" ") + b.payeeSearchText(tx.Description),
+			BankAccount:         bankAccount, BankChange: bankChange, BankBalance: bankBalance, BankValues: bankValues,
 		}
 		switch {
 		case locked[id] != nil:
@@ -126,11 +133,25 @@ func (b *Books) JournalEntries() ([]JournalEntry, error) {
 	return entries, nil
 }
 
+func FilterJournalEntries(entries []JournalEntry, query string) []JournalEntry {
+	query = payeeKey(query)
+	var matches []JournalEntry
+	for _, entry := range entries {
+		if strings.Contains(entry.searchText, query) {
+			matches = append(matches, entry)
+		}
+	}
+	return matches
+}
+
 func presentJSON(value json.RawMessage) bool {
 	return len(value) != 0 && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 func editableEntry(tx journalTransaction) (Entry, error) {
+	if transactionTag(tx, "billing-close") != "" || transactionTag(tx, "billing-period") != "" || transactionTag(tx, "billing-month") != "" {
+		return Entry{}, fmt.Errorf("applied billing entries are read-only; record a reviewed adjustment instead")
+	}
 	unsupported := func() (Entry, error) {
 		return Entry{}, fmt.Errorf("this entry has posting annotations, status, or advanced ledger features that the structured form cannot preserve; it remains read-only in wat")
 	}

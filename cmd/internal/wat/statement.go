@@ -945,7 +945,8 @@ func (b *Books) StatementStatuses(s *Statement) ([]StatementStatus, error) {
 			payee, _, _ := strings.Cut(tx.Description, "|")
 			if !statementAccountHasIdentity(row.Description) ||
 				amount == 0 || (amount < 0) != (row.Cents < 0) ||
-				(transactionTag(tx, "bank-description") != descriptionKey(row.Description) && descriptionKey(payee) != descriptionKey(row.Description)) {
+				(transactionTag(tx, "bank-description") != descriptionKey(row.Description) &&
+					descriptionKey(b.canonicalPayee(strings.TrimSpace(payee))) != descriptionKey(b.canonicalPayee(row.Description))) {
 				continue
 			}
 			other := ""
@@ -1083,16 +1084,17 @@ func (b *Books) statementEntry(s *Statement, index int, status StatementStatus, 
 	if register.Account != "" {
 		counteraccount = register.Account
 	}
-	payee := row.Description
+	payee := b.canonicalPayee(row.Description)
 	suggestion, hasSuggestion := s.checkPayees[index]
-	if hasSuggestion {
+	knownPayee := b.payeeRegistry != nil && b.payeeRegistry.names[payeeKey(row.Description)] != ""
+	if hasSuggestion && !knownPayee {
 		payee = suggestion.Payee
 	}
 	description, reference := "", statementRowReference(row)
 	if register.exact() && register.Payee != "" {
 		payee = register.Payee
 	}
-	applyInstructions := hasSuggestion && payee == suggestion.Payee
+	applyInstructions := hasSuggestion && b.canonicalPayee(payee) == b.canonicalPayee(suggestion.Payee)
 	if applyInstructions {
 		description = suggestion.Memo
 	}
@@ -1120,7 +1122,7 @@ func (b *Books) statementEntry(s *Statement, index int, status StatementStatus, 
 			postings = append(postings, Posting{posting.Account, posting.Amount})
 		}
 	}
-	entry := Entry{Date: row.Date, Payee: payee, Description: description, Reference: reference, Source: s.Source,
+	entry := Entry{Date: row.Date, Payee: b.canonicalPayee(payee), Description: description, Reference: reference, Source: s.Source,
 		BankRow: s.key(index), BankDescription: descriptionKey(row.Description),
 		Postings: postings}
 	return entry, nil

@@ -236,7 +236,40 @@ func customerCommands(getBooks func() *wat.Books, getConfig func() wat.Config) [
 
 	payee := &cobra.Command{Use: "payee", Short: "Manage native hledger payee declarations"}
 	payee.AddCommand(&cobra.Command{
-		Use: "add NAME", Short: "Save a native payee declaration as a separate step", Args: cobra.ExactArgs(1),
+		Use: "init", Short: "Import manual payee declarations into payees.yaml without overwriting existing metadata",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			backup, err := wat.InitPayeeRegistry(getConfig())
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Created payees.yaml. Set payee_registry: true in wat.yaml. Original declarations: "+backup)
+			return err
+		},
+	}, &cobra.Command{
+		Use: "list", Short: "List canonical payees and aliases from the YAML registry",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			registry, err := getBooks().Payees()
+			if err != nil {
+				return err
+			}
+			return writeCustomerYAML(cmd, registry)
+		},
+	}, &cobra.Command{
+		Use: "alias NAME ALIAS", Short: "Add an explicit alias to a canonical payee",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			backup, _, err := getBooks().AddPayeeAlias(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Saved alias. Recovery copy: "+backup)
+			return err
+		},
+	})
+	payee.AddCommand(&cobra.Command{
+		Use: "add NAME", Short: "Add a canonical payee (or a manual declaration when the registry is disabled)", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backup, _, err := getBooks().DeclarePayee(args[0])
 			if err != nil {
