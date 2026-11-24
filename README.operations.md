@@ -501,6 +501,21 @@ factory reports `abort_ms` instead of commit phases. Compare successful runs
 with similar input; the separate `Run summary` still reports overall elapsed
 time and peak memory.
 
+For the pre-tick `pond maintain` only, selfmon enables `pond::maintain_phases=debug`.
+Use the same tick window to see which maintenance work consumed the time:
+
+```bash
+journalctl --user -u pond-selfmon@watershop-selfmon.service \
+  --since "$START" --until "$END" -o cat --no-pager | grep -F 'Maintain phase '
+```
+
+Compare `elapsed_ms` by **scope and phase together**. For example, `pack/spool`
+reports inline bytes spooled and the number of Delta scans; `pack/repack`
+reports newly written objects and bytes. `data/root_before` and `data/root_after`
+measure content verification separately from `data/compact`; a no-op compaction
+needs no `root_after`. An `incomplete` phase did not report success. The
+timings cover the named operations, not the entire process.
+
 Each successful Sitegen run also writes its discovery, export, query-execution,
 phase, and peak-memory summaries to the service journal and to
 `${SELFMON_METRICS_DIR}/.sitegen-last.log`. Failures save the full Sitegen

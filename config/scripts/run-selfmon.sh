@@ -238,7 +238,8 @@ trap write_tick_status EXIT
 #
 # --collapse-versions 100 collapses data:series files with >100 live
 # versions; the threshold self-gates.
-step maintain "${PONDBIN}" maintain --compact --collapse-versions 100 \
+RUST_LOG="${RUST_LOG:-info},pond::maintain_phases=debug" \
+    step maintain "${PONDBIN}" maintain --compact --collapse-versions 100 \
     --prune --allow-no-remote --keep-txns 1000
 
 # Bootstrap: on first run there is no journal cursor, and journalctl

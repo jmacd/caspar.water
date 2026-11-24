@@ -16,9 +16,19 @@ for at least five warm ticks. Sum each phase across the feeds per tick and
 compare with the 4m45s ingest baseline. Reusing an open pond can save repeated
 open work; it will not remove per-feed commit or publication costs.
 
-Also check whether `/system/etc/materialize-azure-access` stops reporting
-`lower_us=None` on warm append-only ticks. Item 6's maintenance timings can
-be added independently.
+**Milestone 6: instrumentation and one redundant query removal implemented
+locally, not deployed.** Watertown commit `7fe5839e` reports maintenance time
+and work counts by phase. The pack report now counts the candidates already
+classified under the write lock instead of running a second metadata survey.
+This does not change the repack threshold, content-root checks, or retention.
+
+After an approved rollout, compare `Maintain phase` records from the same five
+warm ticks against the 8m07s maintenance baseline. Separate time spent checking
+the data root from Delta optimization, and time spent discovering packs from
+spooling or rewriting them. Choose the next optimization from those measurements;
+no Watershop savings have been measured yet. Also check whether
+`/system/etc/materialize-azure-access` stops reporting `lower_us=None` on warm
+append-only ticks.
 
 The goal is less work for the **same tick**: keep the full-history benchmark, all measurement feeds, current timer, maintenance safeguards, and visible failures. Do not trade away history or correctness for a faster dashboard.
 
