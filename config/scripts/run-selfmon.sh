@@ -392,16 +392,7 @@ done
 # limiter does not require adding columns or another ingest node.
 step ingest:measure:limits "${PONDBIN}" run /system/etc/measure/limits push
 
-# Sync templates (host -> pond).  /system/site is created by the yaml
-# mkdir; we copy each template file individually because `pond copy`
-# operates per-file.
-TEMPLATE_SRC="${BASE_DIR}/config/selfmon/site"
-if [ -d "${TEMPLATE_SRC}" ]; then
-    for f in "${TEMPLATE_SRC}"/*.md; do
-        [ -f "$f" ] || continue
-        "${PONDBIN}" copy "host://${f}" "/system/site/$(basename "$f")"
-    done
-fi
+bash "${SCRIPTS}/sync-selfmon-templates.sh" "${PONDBIN}" "${BASE_DIR}/config/selfmon/site"
 
 # Materialize the perf and limiter wide series plus exact Azure access events
 # before sitegen.  All must come after journal/measure ingest and before

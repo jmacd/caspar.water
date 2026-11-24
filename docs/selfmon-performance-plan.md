@@ -1,8 +1,10 @@
 # Watershop selfmon: next performance fixes
 
-**Status: milestone 1 implemented locally, not deployed.** Selfmon now runs the count without a preflight listing and logs cursor-check/seed time separately as `selfmon_timing step=journal-cursor elapsed_s=...`. On a disposable `0.309.228` pond, a first run seeded the cursor, a warm run counted all three rows across two files without reseeding, and no-match and query-error runs each recorded one `read-benchmark` failure. The time saved on Watershop is not yet measured.
+**Status: milestones 1 and 2 implemented locally, not deployed.** Selfmon now runs the count without a preflight listing and logs cursor-check/seed time separately as `selfmon_timing step=journal-cursor elapsed_s=...`. On a disposable `0.309.228` pond, a first run seeded the cursor, a warm run counted all three rows across two files without reseeding, and no-match and query-error runs each recorded one `read-benchmark` failure.
 
-Next: skip unchanged template copies in `caspar.water`. The first Watertown engine fix is the commit-log read: it affects every small write, not just selfmon. Re-measure ingestion after that fix before designing a batch interface.
+Template sync reads the current pond templates in one snapshot, compares their bytes with the host files, and copies just the differences in one transaction. An unchanged tick makes no template commit, including after a restart; a restored pond is compared on its own contents. Use `selfmon_templates copied=... elapsed_s=...` to compare with the 1m18s baseline after rollout. Neither milestone's time savings have been measured on Watershop.
+
+Next: the first Watertown engine fix is the commit-log read. It affects every small write, not just selfmon. Re-measure ingestion after that fix before designing a batch interface.
 
 The goal is less work for the **same tick**: keep the full-history benchmark, all measurement feeds, current timer, maintenance safeguards, and visible failures. Do not trade away history or correctness for a faster dashboard.
 
