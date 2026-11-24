@@ -8,7 +8,17 @@ Watertown commit `e028d7c0` makes the transparency-log exporter check the author
 
 Watertown commit `75a63cd5` validates older JSON-log chunks against the microsecond column named by a labeled chunk of the same source. The journal writer allowed a configurable field, so its default alone is not proof. Successful checks are cached by immutable version, content, column and bounds. Expect one full target verification when adopting a previously unproven checkpoint. After that, strictly newer appends can avoid historical verification; ambiguous or conflicting time metadata still requires the conservative path. No history rewrite or pond reset is needed.
 
-Next: after an approved rollout, check whether `/system/etc/materialize-azure-access` stops reporting `lower_us=None` on warm append-only ticks, and re-measure the 12 measurement ingests before deciding whether item 5 needs session reuse. Item 6's maintenance timings can be added independently.
+**Milestone 5: instrumentation implemented locally; session reuse not decided.**
+Watertown commit `e352f202` adds opt-in phase timings to `pond run`; selfmon
+enables them for all 12 measurement feeds without changing their transactions
+or retries. After an approved rollout, use the [per-feed journal records](../README.operations.md#selfmon-io-diagnostics)
+for at least five warm ticks. Sum each phase across the feeds per tick and
+compare with the 4m45s ingest baseline. Reusing an open pond can save repeated
+open work; it will not remove per-feed commit or publication costs.
+
+Also check whether `/system/etc/materialize-azure-access` stops reporting
+`lower_us=None` on warm append-only ticks. Item 6's maintenance timings can
+be added independently.
 
 The goal is less work for the **same tick**: keep the full-history benchmark, all measurement feeds, current timer, maintenance safeguards, and visible failures. Do not trade away history or correctness for a faster dashboard.
 

@@ -379,18 +379,21 @@ step ingest:caddy-access "${PONDBIN}" run /system/etc/caddy-access push
 # text as well as the status.  This is the ingest that feeds every chart, so
 # a silent failure here stalls the entire dataset while the page keeps
 # rendering the last good data as if nothing were wrong.
-step ingest:measure:_self "${PONDBIN}" run /system/etc/measure/_self push
+ingest_measure() {
+    RUST_LOG="${RUST_LOG:-info},pond::run_phases=debug" \
+        "${PONDBIN}" run "/system/etc/measure/$1" push
+}
+step ingest:measure:_self ingest_measure _self
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
     case "$pond_name" in _*) continue ;; esac
-    step "ingest:measure:${pond_name}" \
-        "${PONDBIN}" run "/system/etc/measure/${pond_name}" push
+    step "ingest:measure:${pond_name}" ingest_measure "${pond_name}"
 done
 # Every pond appends long-form limiter rows to one shared file.  Unlike the
 # wide perf feed, limiter path is part of the row identity, so adding an alert
 # limiter does not require adding columns or another ingest node.
-step ingest:measure:limits "${PONDBIN}" run /system/etc/measure/limits push
+step ingest:measure:limits ingest_measure limits
 
 bash "${SCRIPTS}/sync-selfmon-templates.sh" "${PONDBIN}" "${BASE_DIR}/config/selfmon/site"
 
