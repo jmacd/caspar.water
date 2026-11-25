@@ -238,13 +238,15 @@ trap write_tick_status EXIT
 #
 # --collapse-versions 100 collapses data:series files with >100 live
 # versions; the threshold self-gates.
-step maintain "${PONDBIN}" maintain --compact --collapse-versions 100 \
+RUST_LOG="${RUST_LOG:-info},pond::maintain_phases=debug" \
+    step maintain "${PONDBIN}" maintain --compact --collapse-versions 100 \
     --prune --allow-no-remote --keep-txns 1000
 
 # Bootstrap: on first run there is no journal cursor, and journalctl
 # would dump the entire host history at once, blowing the binary's
 # 3GiB allocation cap.  Seed the cursor at "now" so we ingest only
 # going-forward entries.  This is idempotent: only seeds if absent.
+CURSOR_START=$SECONDS
 if ! "${PONDBIN}" cat /logs/journal/.journal-cursor >/dev/null 2>&1; then
     echo "Seeding journal cursor at current head (first run bootstrap)..."
     CURSOR_TMP=$(mktemp)
@@ -260,6 +262,7 @@ if ! "${PONDBIN}" cat /logs/journal/.journal-cursor >/dev/null 2>&1; then
     fi
     rm -f "${CURSOR_TMP}"
 fi
+printf 'selfmon_timing step=journal-cursor elapsed_s=%d\n' "$((SECONDS - CURSOR_START))"
 
 # Per-tick work, in dependency order:
 #
@@ -292,37 +295,17 @@ mkdir -p "${MEASURE_OUT_DIR}"
 {
     READ_SECONDS=0
     READ_OK=0
-    # Scan the whole directory rather than one file.  This used to target a
-    # hardcoded kernel.jsonl -- a real path: journal-ingest routes
-    # _TRANSPORT=kernel there (journal_ingest.rs:322) and collect_kernel is
-    # on.  But it is written only when the kernel actually logs, and that is
-    # sporadic: watershop's most recent kernel message predates the Jul 30
-    # pond reset, so the file simply has not been created yet and the
-    # benchmark failed on every tick.  The glob depends on no single file
-    # having appeared, and measures retained log volume directly -- which is
-    # what the metric was always described as measuring.
-    if "${PONDBIN}" list /logs/journal/ 2>/dev/null | grep -q '\.jsonl'; then
-        # A failed read must not be published as a FAST read.  This block
-        # used to time the command under `|| true` and record the elapsed
-        # time regardless, so a read that errored out in 5 ms landed on the
-        # chart as a 200x performance improvement -- the failure looked like
-        # the best tick we ever had.  Now the duration is only published
-        # when the read actually returned, and the failure is counted.
-        READ_START=$(date +%s.%N)
-        if "${PONDBIN}" cat 'jsonlogs:///logs/journal/*.jsonl' \
-            --sql 'SELECT COUNT(*) FROM source' --format=table >/dev/null; then
-            READ_END=$(date +%s.%N)
-            READ_SECONDS=$(awk -v a="${READ_END}" -v b="${READ_START}" \
-                'BEGIN{printf "%.3f", a-b}')
-            READ_OK=1
-        else
-            echo "ERROR: selfmon step 'read-benchmark' failed" >&2
-        fi
+    # The query itself rejects an unmatched glob. Listing the directory
+    # first walks the same journal twice, even if grep stops at one match.
+    READ_START=$(date +%s.%N)
+    if "${PONDBIN}" cat 'jsonlogs:///logs/journal/*.jsonl' \
+        --sql 'SELECT COUNT(*) FROM source' --format=table >/dev/null; then
+        READ_END=$(date +%s.%N)
+        READ_SECONDS=$(awk -v a="${READ_END}" -v b="${READ_START}" \
+            'BEGIN{printf "%.3f", a-b}')
+        READ_OK=1
     else
-        echo "ERROR: selfmon step 'read-benchmark' failed:" \
-            "no /logs/journal/*.jsonl to scan" >&2
-    fi
-    if [ "${READ_OK}" -eq 0 ]; then
+        echo "ERROR: selfmon step 'read-benchmark' failed" >&2
         FAILURE_COUNT=$((FAILURE_COUNT + 1))
         FAILED_STEPS="${FAILED_STEPS}${FAILED_STEPS:+,}read-benchmark"
     fi
@@ -397,29 +380,23 @@ step ingest:caddy-access "${PONDBIN}" run /system/etc/caddy-access push
 # text as well as the status.  This is the ingest that feeds every chart, so
 # a silent failure here stalls the entire dataset while the page keeps
 # rendering the last good data as if nothing were wrong.
-step ingest:measure:_self "${PONDBIN}" run /system/etc/measure/_self push
+ingest_measure() {
+    RUST_LOG="${RUST_LOG:-info},pond::run_phases=debug" \
+        "${PONDBIN}" run "/system/etc/measure/$1" push
+}
+step ingest:measure:_self ingest_measure _self
 for envf in "${BASE_DIR}/env"/*.env; do
     [ -f "$envf" ] || continue
     pond_name=$(basename "$envf" .env)
     case "$pond_name" in _*) continue ;; esac
-    step "ingest:measure:${pond_name}" \
-        "${PONDBIN}" run "/system/etc/measure/${pond_name}" push
+    step "ingest:measure:${pond_name}" ingest_measure "${pond_name}"
 done
 # Every pond appends long-form limiter rows to one shared file.  Unlike the
 # wide perf feed, limiter path is part of the row identity, so adding an alert
 # limiter does not require adding columns or another ingest node.
-step ingest:measure:limits "${PONDBIN}" run /system/etc/measure/limits push
+step ingest:measure:limits ingest_measure limits
 
-# Sync templates (host -> pond).  /system/site is created by the yaml
-# mkdir; we copy each template file individually because `pond copy`
-# operates per-file.
-TEMPLATE_SRC="${BASE_DIR}/config/selfmon/site"
-if [ -d "${TEMPLATE_SRC}" ]; then
-    for f in "${TEMPLATE_SRC}"/*.md; do
-        [ -f "$f" ] || continue
-        "${PONDBIN}" copy "host://${f}" "/system/site/$(basename "$f")"
-    done
-fi
+bash "${SCRIPTS}/sync-selfmon-templates.sh" "${PONDBIN}" "${BASE_DIR}/config/selfmon/site"
 
 # Materialize the perf and limiter wide series plus exact Azure access events
 # before sitegen.  All must come after journal/measure ingest and before

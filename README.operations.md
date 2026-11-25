@@ -463,6 +463,9 @@ pass.
 
 ### Selfmon I/O diagnostics
 
+The [Watershop selfmon performance plan](docs/selfmon-performance-plan.md)
+records the `0.309.228` baseline, the next fixes, and how to measure them.
+
 `run-selfmon.sh` emits a structured `selfmon_io` line for each wrapped step,
 including the custom Sitegen invocation, and one aggregate line when the tick
 exits:
@@ -478,6 +481,40 @@ measure bytes passed through read/write syscalls, including cache hits and
 pipes. `read_bytes` and `write_bytes` measure bytes that reached block storage.
 `syscr` and `syscw` count read/write syscalls. This requires no systemd
 `IOAccounting` or journald configuration.
+
+For the measurement ingests only, selfmon enables `pond::run_phases=debug`.
+To inspect the 12 feeds for a completed tick, set the journal window to its
+start and finish:
+
+```bash
+journalctl --user -u pond-selfmon@watershop-selfmon.service \
+  --since "$START" --until "$END" -o cat --no-pager |
+  grep -F 'Run phases path=/system/etc/measure/'
+```
+
+Each record names the feed and reports non-overlapping elapsed milliseconds:
+`open_ms` opens the pond, `begin_ms` starts the transaction, `setup_ms` resolves
+the node and config, and `factory_ms` runs the ingest. `local_commit_ms` ends
+after local commit bookkeeping; `post_commit_ms` includes tile publication,
+hooks and remote work, including pending-push retries on a no-op. A failed
+factory reports `abort_ms` instead of commit phases. Compare successful runs
+with similar input; the separate `Run summary` still reports overall elapsed
+time and peak memory.
+
+For the pre-tick `pond maintain` only, selfmon enables `pond::maintain_phases=debug`.
+Use the same tick window to see which maintenance work consumed the time:
+
+```bash
+journalctl --user -u pond-selfmon@watershop-selfmon.service \
+  --since "$START" --until "$END" -o cat --no-pager | grep -F 'Maintain phase '
+```
+
+Compare `elapsed_ms` by **scope and phase together**. For example, `pack/spool`
+reports inline bytes spooled and the number of Delta scans; `pack/repack`
+reports newly written objects and bytes. `data/root_before` and `data/root_after`
+measure content verification separately from `data/compact`; a no-op compaction
+needs no `root_after`. An `incomplete` phase did not report success. The
+timings cover the named operations, not the entire process.
 
 Each successful Sitegen run also writes its discovery, export, query-execution,
 phase, and peak-memory summaries to the service journal and to

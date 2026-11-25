@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Check selfmon wiring with `python3 config/scripts/test-selfmon.py` (PyYAML)."""
+"""Check selfmon wiring (PyYAML); build pond or set POND_BIN for the sync test."""
 
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 import unittest
 
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_POND = ROOT / "watertown/target/debug/pond"
 
 
 class SelfmonConfiguration(unittest.TestCase):
@@ -91,6 +95,49 @@ class SelfmonConfiguration(unittest.TestCase):
         self.assertTrue(expected <= ingested, f"Missing configured ponds: {expected - ingested}")
         self.assertEqual(projected, ingested, "Ingest and projection inventories differ")
         self.assertEqual(joined, ingested, "Ingest and join inventories differ")
+
+
+class SelfmonTemplates(unittest.TestCase):
+    @unittest.skipUnless("POND_BIN" in os.environ or DEFAULT_POND.is_file(), "build pond or set POND_BIN")
+    def test_sync_writes_only_missing_or_changed_bytes(self):
+        pond = os.environ.get("POND_BIN", str(DEFAULT_POND))
+        helper = ROOT / "config/scripts/sync-selfmon-templates.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            env = {**os.environ, "POND": str(path / "pond"), "RUST_LOG": "warn"}
+
+            def run(*args):
+                return subprocess.run(args, env=env, check=True, stdout=subprocess.PIPE).stdout
+
+            def sync():
+                run("bash", helper, pond, tmp)
+
+            def listing(name):
+                return run(pond, "list", f"/system/site/{name}")
+
+            run(pond, "init", "--birthplace", "selfmon-template-test")
+            run(pond, "mkdir", "-p", "/system/site")
+            checkpoint = path / "pond/tlog/checkpoint"
+            a, b = path / "first.md", path / "second.md"
+            a.write_bytes(b"first\n")
+            sync()  # Newly initialized pond with an empty template directory.
+            self.assertEqual(run(pond, "cat", "/system/site/first.md"), a.read_bytes())
+            first_version = listing(a.name)
+            b.write_bytes(b"second\n")
+            sync()  # One destination missing, the other already correct.
+            self.assertEqual(listing(a.name), first_version)
+            self.assertEqual(run(pond, "cat", "/system/site/second.md"), b.read_bytes())
+            tip = checkpoint.read_bytes()
+            sync()
+            self.assertEqual(checkpoint.read_bytes(), tip, "unchanged templates must not commit")
+
+            # Simulate a restore or out-of-band edit without touching the host source.
+            old = path / "old"
+            old.write_bytes(b"SECOND\n")
+            run(pond, "copy", f"host://{old}", "/system/site/second.md")
+            sync()
+            self.assertEqual(listing(a.name), first_version)
+            self.assertEqual(run(pond, "cat", "/system/site/second.md"), b.read_bytes())
 
 
 if __name__ == "__main__":
