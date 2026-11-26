@@ -19,6 +19,9 @@ System for managing and monitoring a small water system.
 - Data recording tools
 - Modified InfluxDB exporter
 
+See [Collector queues and acknowledgments](README.operations.md#collector-queues-and-acknowledgments)
+for how readings survive radio and NFS outages.
+
 ### Water Site (`site/`)
 - Public data portal: well depth, tank level, system pressure, chlorine, pH
 - Pump cycle analysis with drawdown/recovery charts
