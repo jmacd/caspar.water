@@ -1,3 +1,15 @@
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/file_storage
+    create_directory: true
+    max_size: 134217728  # 128 MiB per queue database
+    compaction:
+      on_rebound: true
+      rebound_needed_threshold_mib: 64
+      rebound_trigger_threshold_mib: 8
+      check_interval: 1m
+      directory: /var/lib/otelcol/file_storage/compaction
+      cleanup_on_start: true
 
 receivers:
   atlasph:
@@ -18,11 +30,14 @@ exporters:
     tls:
       insecure: true
     timeout: 1m
+    sending_queue:
+      storage: file_storage
     arrow:
       num_streams: 1
       max_stream_lifetime: 1h
 
 service:
+  extensions: [file_storage]
   pipelines:
     metrics:
       receivers:
