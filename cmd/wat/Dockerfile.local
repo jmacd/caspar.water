@@ -1,5 +1,5 @@
 FROM rust:slim-bookworm AS rust-toolchain
-FROM golang:1.24-bookworm AS go-toolchain
+FROM golang:1.26-bookworm AS go-toolchain
 FROM python:3.13-slim-trixie
 
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo

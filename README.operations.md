@@ -105,6 +105,67 @@ This applies `config/water.yaml` twice, checks its typed public schemas,
 validates the empty-input monitor report, and runs a quick filesystem check.
 Set `KEEP_WATER_SMOKE=1` to retain the temporary pond for inspection.
 
+## Collector queues and acknowledgments
+
+The NFS JSON archive is the record we want to keep. InfluxDB is a secondary
+destination. For a successful Arrow request, pumphouse releases its copy after
+the gateway's NFS append returns **and** the InfluxDB exporter has accepted the
+batch into its queue. This acknowledges a successful file write, not a separate
+NFS `fsync` or backup. The InfluxDB HTTP write can finish later.
+
+| Stage | Buffer | When the caller gets success |
+|---|---|---|
+| [Pumphouse Arrow exporter](terraform/station/pumphouse/config.yaml) | Local disk, 100,000 metric points, 128 MiB per queue database | The sensor or scraper can continue after durable enqueue. One sender forwards the batch over the radio and waits for the gateway's acknowledgment. |
+| [Gateway metrics `queue_batch`](terraform/station/gateway/config.yaml) | RAM, 100,000 metric points, one consumer | `wait_for_result: true` waits for both downstream exporters to return. `block_on_overflow: true` makes a full queue apply backpressure. |
+| [InfluxDB exporter](storage/influxdbexporter/factory.go) | RAM, 1,000 **requests** by default | `wait_for_result: false` returns on enqueue; `block_on_overflow: true` waits for space if full. The exporter handles HTTP retries itself. |
+
+**Collect before the radio link.** Previously, gateway-side edgemon scrapes
+paused for five to seven minutes when NFS stalled. A queue cannot replay a
+scrape that never happened. Pumphouse now scrapes `127.0.0.1:8888` every 30
+seconds and sends those points through the same disk queue as Sparkplug and pH.
+The `pumphouse` job and original `instance` label preserve series identity.
+Prometheus `up` now measures the local scrape; edgemon's ping latency and loss
+still measure the link to the gateway.
+
+**Size the pumphouse queue for outages.** The previous five-minute retry budget
+expired during an otherwise recoverable stall. `timeout: 10m` gives **one
+attempt** time to finish; `retry_on_failure.max_elapsed_time: 0s` lets transient
+failures retry indefinitely with backoff. One consumer on one Arrow stream is
+enough at this rate and limits the number of unacknowledged exports. The
+exporter's one-second batch flush sends sparse readings without waiting for a
+full batch.
+
+We measured about 660 sensor points and 960 edgemon scrape points per hour:
+`100,000 / 1,620` is about **62 hours** at that rate. The 128 MiB cap can bind
+first. A full logical queue waits for space; a failed disk enqueue never
+reaches the retry loop. `fsync: true` trades extra flash writes for power-loss protection.
+Rebound compaction checks once a minute: after allocation reaches 64 MiB, it
+reclaims space when live data falls to 8 MiB or less. Its scratch directory is
+on the same filesystem, with stale temporary files cleaned up at startup.
+Budget room for both files: with about 959 MiB free at rollout, even allowing
+128 MiB each for the database and scratch left about 703 MiB of headroom.
+
+**Keep the acknowledgment behind the archive write.** The custom `jsonfile`
+exporter appends synchronously. The gateway therefore puts the in-memory
+[`queue_batch` processor](collector/build.yaml) *before* the metrics fan-out;
+the logs pipeline is unchanged. The processor's 200 ms batch flush controls
+how long it collects a batch, not how long NFS may take to write it. The
+battery-backed gateway can buffer in RAM: during a stall, pumphouse still owns
+the unacknowledged batch and accumulates the backlog on disk. Gateway capacity
+is a burst limit, not another 62 hours of durable retention. InfluxDB retries
+transient HTTP failures with jittered exponential backoff and no time limit.
+A sustained outage can cause backpressure once its queue fills; a later HTTP
+failure alone does not replay an NFS append. InfluxDB points accepted only
+into RAM can be lost on gateway restart.
+
+**Read the archive by series and timestamp when diagnosing loss.** If the
+append succeeds but the acknowledgment times out or is lost, a retry can append
+the same points again. During the original stalls, pumphouse reported 17 points
+dropped after retry expiry, yet the four pump signals had no missing 30-second
+timestamps and each had 59 exact duplicate readings in the archive. Count
+missing timestamps and duplicates separately. Queue database size measures
+allocated space, not the number of points waiting to be sent.
+
 ## Gateway collector boot recovery
 
 The gateway (`192.168.80.40`, hostname `linux`) retains

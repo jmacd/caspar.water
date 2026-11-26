@@ -1,18 +1,17 @@
 
 receivers:
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'pumphouse'
-          scrape_interval: 30s
-          static_configs:
-            - targets: ['192.168.80.60:8888']
   otelarrow:
     protocols:
       grpc:
         endpoint: 192.168.80.40:4317
 
 processors:
+  queue_batch:
+    sizer: items
+    queue_size: 100000
+    num_consumers: 1
+    wait_for_result: true
+    block_on_overflow: true
 
 exporters:
   influxdb:
@@ -20,6 +19,9 @@ exporters:
     org: "casparwater"
     bucket: "production"
     token: "${INFLUXD_TOKEN}"
+    sending_queue:
+      block_on_overflow: true
+      wait_for_result: false
   # NOTE: write directly to the NFS mount path; do NOT route through
   # the /home/data symlink.  When the NFS mount drops, lumberjack's
   # MkdirAll on the symlinked parent returns EEXIST (the symlink
@@ -38,9 +40,8 @@ service:
   pipelines:
     metrics:
       receivers:
-      - prometheus
       - otelarrow
-      processors: []
+      processors: [queue_batch]
       exporters:
       - jsonfile
       - influxdb

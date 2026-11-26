@@ -38,6 +38,7 @@ receivers:
 processors:
   - gomod: github.com/jmacd/caspar.water v0.0.0
     import: github.com/jmacd/caspar.water/display/units
+  - gomod: go.opentelemetry.io/collector/processor/queuebatchprocessor v0.166.0
 
 connectors:
   - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.166.0
