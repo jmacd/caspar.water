@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -27,19 +28,17 @@ func NewFactory() exporter.Factory {
 }
 
 func createDefaultConfig() component.Config {
+	qcfg := exporterhelper.NewDefaultQueueConfig()
+	_ = qcfg.Batch.GetOrInsertDefault()
+	retry := configretry.NewDefaultBackOffConfig()
+	retry.MaxElapsedTime = 0 // Keep retrying transient failures through long outages.
 	return &Config{
 		ClientConfig: confighttp.ClientConfig{
 			Timeout: 30 * time.Second,
 			Headers: configopaque.MapList{},
 		},
-		// QueueConfig: exporterhelper.QueueConfig{
-		// 	Enabled:      false,
-		// 	NumConsumers: 1,
-		// 	QueueSize:    0,
-		// },
-		BackOffConfig: configretry.BackOffConfig{
-			Enabled: true,
-		},
+		QueueConfig:   qcfg,
+		BackOffConfig: retry,
 	}
 }
 
@@ -56,7 +55,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings, config co
 		set,
 		cfg,
 		writer.consumeMetrics,
-		// exporterhelper.WithQueue(cfg.QueueConfig),
+		exporterhelper.WithQueue(configoptional.Some(cfg.QueueConfig)),
 		exporterhelper.WithRetry(cfg.BackOffConfig),
 		exporterhelper.WithStart(writer.Start),
 	)
