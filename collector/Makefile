@@ -7,7 +7,7 @@ GOBUILD := go build -trimpath -ldflags="-s -w"
 
 all:
 	@mkdir -p ./build
-	go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
+	go install go.opentelemetry.io/collector/cmd/builder@v0.166.0
 	${HOME}/go/bin/builder --config build.yaml --skip-compilation
 	(cd build && GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o ../collector.bbb .)
 	(cd build && GOOS=linux GOARCH=amd64 $(GOBUILD) -o ../collector.linux .)

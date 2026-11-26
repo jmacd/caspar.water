@@ -7,7 +7,7 @@ Type=simple
 Restart=always
 StartLimitIntervalSec=0
 RestartSec=5
-ExecStart=/home/debian/bin/edgemon
+ExecStart=/home/debian/bin/edgemon -target 192.168.80.40
 
 [Install]
 WantedBy=multi-user.target

@@ -8,13 +8,13 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jmacd/maroto v0.0.0-20230617070925-955e5cabca9e
-	github.com/prometheus-community/pro-bing v0.4.0
+	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/rivo/tview v0.42.0
-	github.com/simonvetter/modbus v1.6.3
+	github.com/simonvetter/modbus v1.6.4
 	github.com/spf13/afero v1.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	go.bug.st/serial v1.6.4
+	go.bug.st/serial v1.8.0
 	go.opentelemetry.io/collector/component v1.49.0
 	go.opentelemetry.io/collector/config/confighttp v0.143.0
 	go.opentelemetry.io/collector/config/configopaque v1.49.0
@@ -51,7 +51,6 @@ require (
 	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/creack/goselect v0.1.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/foxboron/go-tpm-keyfiles v0.0.0-20250903184740-5d135037bd4d // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
